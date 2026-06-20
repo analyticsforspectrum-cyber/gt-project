@@ -1,0 +1,16 @@
+.git
+.next
+.mongo-data
+coverage
+dist
+node_modules
+npm-debug.log*
+*.tsbuildinfo
+.DS_Store
+
+# Local-only configuration. Compose injects runtime env explicitly.
+.env
+.env.local
+.env.*.local
+apps/api/.env
+apps/web/.env.local

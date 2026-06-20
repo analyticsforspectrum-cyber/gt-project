@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ГДЕ ТОРТ? — Генератор накладных</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16181d;--muted:#6f6e67;--paper:#fff;
+  --canvas:#e9e7e0;--panel:#f6f5f1;--line:#dcd9d0;--line-soft:#e8e5dc;
+  --honey:#b9791a;--honey-d:#94600f;--honey-soft:#f3e6cb;--honey-bg:#fbf6ec;
+  --ok:#1f7a4d;--warn:#b23b3b;--red:#c0392b;
+  --edit:#fff2cf;--edit-line:#e3bb55;--lock:#eeece6;
+  --row-a:#fff;--row-b:#faf9f5;
+  --ui:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+  --doc:'Inter',Arial,'DejaVu Sans',sans-serif;
+  --sh:0 1px 2px rgba(20,18,12,.04),0 8px 24px rgba(20,18,12,.06);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--ui);color:var(--ink);background:var(--canvas);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+
+.appbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:16px;padding:13px 24px;background:linear-gradient(180deg,#1d2026,#16181d);color:#f4f2ec;border-bottom:1px solid #000}
+.appbar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--honey),#e0a64a)}
+.brand{display:flex;align-items:center;gap:11px;font-weight:900;letter-spacing:-.02em}
+.brand .logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--honey),#dca44c);display:flex;align-items:center;justify-content:center;font-size:16px}
+.brand .mark{font-size:16px}.brand .sub{font-weight:600;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#aea99c}
+.appbar .spacer{flex:1}
+.appbar .drive-pill{font-size:12px;font-weight:600;display:flex;align-items:center;gap:7px;color:#cfcabb}
+.appbar .dot{width:9px;height:9px;border-radius:50%;background:#7d7a70}.appbar .dot.on{background:#46c98a;box-shadow:0 0 0 3px rgba(70,201,138,.2)}
+.user-pill{display:flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);border-radius:999px;padding:5px 8px 5px 11px;font-size:12px;font-weight:700;color:#f4f2ec}
+.user-pill button{border:none;background:#fff;color:#1d2026;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;cursor:pointer}
+
+.wrap{display:grid;grid-template-columns:362px 1fr;gap:0;min-height:calc(100vh - 54px)}
+.controls{background:var(--panel);border-right:1px solid var(--line);padding:20px;position:sticky;top:54px;align-self:start;height:calc(100vh - 54px);overflow:auto}
+.results{padding:22px 28px;overflow:auto}
+body.role-admin .wrap{grid-template-columns:1fr}
+body.role-admin .controls{display:none}
+body.role-admin .results{padding:22px clamp(14px,3vw,34px)}
+body.role-admin .tab[data-view="register"],body.role-admin .tab[data-view="pivot"],body.role-admin .tab[data-view="sheets"]{display:none}
+
+.field{margin-bottom:15px}
+.field label{display:block;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.hint{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.4}
+textarea{width:100%;min-height:148px;resize:vertical;font-family:var(--mono);font-size:11.5px;line-height:1.5;border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:#fff;color:var(--ink)}
+textarea::placeholder{color:#b3b0a6}
+input[type=text],input[type=date],input[type=number]{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-family:var(--mono);font-size:14px;background:#fff;color:var(--ink)}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--honey);box-shadow:0 0 0 3px var(--honey-soft)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;cursor:pointer;border:none;border-radius:11px;padding:12px 16px;font-family:var(--ui);font-weight:700;font-size:14px;letter-spacing:.01em;transition:.12s}
+.btn-primary{background:var(--honey);color:#fff;box-shadow:0 2px 8px rgba(185,121,26,.28)}.btn-primary:hover{background:var(--honey-d)}
+.btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}.btn-ghost:hover{border-color:var(--ink)}
+.btn-dark{background:var(--ink);color:#fff}.btn-dark:hover{background:#000}
+.btn-amber{background:var(--edit);color:var(--honey-d);border:1px solid var(--edit-line)}.btn-amber:hover{background:var(--honey-soft)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-row{display:flex;gap:10px;margin-top:8px}.btn-row .btn{width:auto;flex:1;font-size:13px;padding:10px 12px}
+.print-note{font-size:11px;color:var(--muted);margin-top:9px;text-align:center}.print-note b{color:var(--honey-d)}
+
+.stats-side{margin-top:18px;border-top:1px dashed var(--line);padding-top:15px;display:grid;gap:10px}
+.stat{display:flex;justify-content:space-between;align-items:baseline}
+.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700}
+.stat .v{font-family:var(--mono);font-weight:700;font-size:16px}.stat .v.big{color:var(--honey-d);font-size:18px}
+
+.msg{margin-top:12px;font-size:12.5px;padding:10px 12px;border-radius:9px;display:none}
+.msg.err{display:block;background:#fbecec;color:var(--warn);border:1px solid #efcccc}
+.msg.ok{display:block;background:#e9f5ee;color:var(--ok);border:1px solid #c4e4d2}
+
+/* ---- Main tabs ---- */
+.tabs{display:inline-flex;gap:3px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:18px;flex-wrap:wrap}
+.tab{appearance:none;border:none;background:transparent;cursor:pointer;padding:9px 16px;font-family:var(--ui);font-weight:700;font-size:13px;color:var(--muted);border-radius:9px}
+.tab:hover{color:var(--ink)}.tab.active{color:#fff;background:var(--honey)}
+.view{display:none}.view.active{display:block}
+.view-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.view-head h2{margin:0;font-size:16px;font-weight:800}
+.view-head .count{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.head-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.head-actions .btn{width:auto;font-size:12.5px;padding:8px 13px}
+
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:46vh;text-align:center;color:var(--muted)}
+.empty .big{font-size:42px;line-height:1;margin-bottom:12px;opacity:.45}.empty h3{margin:.2em 0;color:var(--ink);font-weight:700}
+
+/* ---- Register ---- */
+.register{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--sh)}
+.register th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:11px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.register td{padding:9px 14px;border-bottom:1px solid var(--line-soft);font-size:13px;vertical-align:middle}
+.register tbody tr:nth-child(odd) td{background:var(--row-a)}
+.register tbody tr:nth-child(even) td{background:var(--row-b)}
+.register tbody tr:nth-child(odd):hover td,.register tbody tr:nth-child(even):hover td{background:#fdf6e9}
+.register tr:last-child td{border-bottom:none}
+.register tr.sel td{background:#fdf6e9!important}
+.register .idx{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:23px;padding:0 7px;background:var(--honey-soft);color:var(--honey-d);border-radius:7px;font-family:var(--mono);font-weight:700;font-size:12px}
+.register td.r{text-align:right;font-family:var(--mono);font-weight:600}
+.register .tag{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.mini{font-size:12px;color:var(--honey-d);font-weight:700;border:1px solid var(--honey-soft);background:#fff;border-radius:7px;padding:5px 11px;cursor:pointer;white-space:nowrap}
+.mini:hover{background:var(--honey-soft)}.mini.solid{background:var(--honey);color:#fff;border-color:var(--honey)}.mini.solid:hover{background:var(--honey-d)}
+.actions{display:flex;gap:6px}
+.register .cbcol{width:38px;text-align:center}
+.register input[type=checkbox]{width:16px;height:16px;accent-color:var(--honey);cursor:pointer;margin:0}
+.store-link{cursor:pointer}.store-link:hover{color:var(--honey-d);text-decoration:underline}
+
+/* ---- Pivot filter bar ---- */
+.pivot-bar{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.pivot-bar input[type=text]{flex:1;min-width:180px;max-width:320px;padding:8px 12px;font-size:13px;border:1px solid var(--line);border-radius:9px;background:#fff;font-family:var(--ui)}
+.pivot-bar label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.pivot-bar input[type=checkbox]{width:16px;height:16px;accent-color:var(--honey);cursor:pointer}
+.pivot-hint{font-size:12px;color:var(--muted);margin-bottom:8px;display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.pivot-hint .legend{display:inline-flex;gap:14px;flex-wrap:wrap}
+.pivot-hint .legend span{display:inline-flex;align-items:center;gap:6px}
+.pivot-hint .sw{width:13px;height:13px;border-radius:4px;display:inline-block}
+.pivot-hint .sw.lock{background:var(--lock);border:1px solid var(--line)}.pivot-hint .sw.chg{background:var(--edit);border:1px solid var(--edit-line)}
+.pivot-wrap{overflow:auto;max-height:calc(100vh - 280px);border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:var(--sh)}
+table.pivot{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100%}
+table.pivot th,table.pivot td{border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+table.pivot thead th{position:sticky;top:0;z-index:2;background:#2a2d34;color:#f1efe9;vertical-align:bottom;padding:8px 9px;border-color:#3a3d45}
+table.pivot th.prodcol,table.pivot td.prodcol{position:sticky;left:0;z-index:1;background:#fff;text-align:left;min-width:248px;max-width:248px;white-space:normal;font-weight:600;padding:7px 12px}
+table.pivot thead th.prodcol{z-index:3;background:#2a2d34;color:#fff}
+/* alternating rows in pivot */
+table.pivot tbody tr:nth-child(odd) td.prodcol{background:var(--row-a)}
+table.pivot tbody tr:nth-child(even) td.prodcol{background:var(--row-b)}
+table.pivot tbody tr:nth-child(odd) td{background:var(--row-a)}
+table.pivot tbody tr:nth-child(even) td{background:var(--row-b)}
+table.pivot tbody tr:hover td{background:#fdf8ee!important}
+table.pivot tbody tr:hover td.prodcol{background:#fbf2dc!important}
+.colhead{display:flex;flex-direction:column;gap:2px;align-items:flex-start;min-width:104px}
+.colhead .iid{font-family:var(--mono);font-weight:700;color:#f0c074;font-size:12px}
+.colhead .mkt{font-weight:700;font-size:11.5px;color:#fff}.colhead .oid{font-family:var(--mono);font-size:9.5px;color:#b9b6ad}
+.pcell{padding:0!important;text-align:center}
+.pcell input{width:84px;border:none;background:transparent;font-family:var(--mono);font-size:12.5px;text-align:right;padding:7px 9px;color:#23262c}
+.pcell input::placeholder{color:#cdcabf}
+.pcell input:hover{background:#fbf2dc}.pcell input:focus{outline:none;background:#fff;box-shadow:inset 0 0 0 2px var(--honey)}
+.pcell.has{}.pcell.has input{font-weight:700}
+.pcell.locked input{background:var(--lock);color:#bdbab1;cursor:not-allowed}.pcell.locked input:hover{background:var(--lock)}
+.pcell.changed{background:var(--edit)!important;box-shadow:inset 0 0 0 2px var(--edit-line)}.pcell.changed input{font-weight:800;color:var(--honey-d);background:transparent}
+table.pivot tr.totrow td{background:#f1efe9;font-family:var(--mono);font-weight:700;text-align:right;font-size:11.5px;padding:7px 9px;position:sticky;bottom:0}
+table.pivot tr.totrow td.prodcol{text-align:left;font-family:var(--ui);background:#f1efe9}
+
+/* ---- Stats ---- */
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:15px 17px;box-shadow:var(--sh)}
+.kpi .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+.kpi .v{font-family:var(--mono);font-weight:800;font-size:23px;margin-top:6px}.kpi .v.honey{color:var(--honey-d)}
+.kpi .was{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
+.kpi .was b{color:var(--ok)}.kpi .was b.up{color:var(--honey-d)}
+.stat-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;align-items:start}
+.panel-box{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--sh)}
+.panel-box h4{margin:0;padding:13px 16px;font-size:13px;font-weight:800;border-bottom:1px solid var(--line);background:var(--panel);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.panel-box h4 select{border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:12px;font-family:var(--ui);background:#fff}
+.stbl{width:100%;border-collapse:collapse}
+.stbl th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;text-align:left;padding:8px 14px;border-bottom:1px solid var(--line-soft)}
+.stbl td{padding:7px 14px;border-bottom:1px solid var(--line-soft);font-size:12.5px}
+.stbl tbody tr:nth-child(odd) td{background:var(--row-a)}
+.stbl tbody tr:nth-child(even) td{background:var(--row-b)}
+.stbl tr:last-child td{border-bottom:none}
+.stbl td.r,.stbl th.r{text-align:right;font-family:var(--mono)}
+.stbl tr.clk{cursor:pointer}.stbl tr.clk:hover td{background:#fbf9f3!important}.stbl tr.on td{background:#fdf6e9!important}
+.delta{font-size:10.5px;font-family:var(--mono);padding:1px 6px;border-radius:6px;margin-left:6px}
+.delta.up{background:#eaf6ef;color:var(--ok)}.delta.dn{background:#fbecec;color:var(--warn)}
+.bar{height:6px;border-radius:3px;background:var(--honey-soft);position:relative;margin-top:3px}.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--honey);border-radius:3px}
+@media (max-width:980px){.cards{grid-template-columns:repeat(2,1fr)}.stat-grid{grid-template-columns:1fr}}
+
+/* ---- Settings sub-tabs ---- */
+.stabs{display:flex;gap:3px;border-bottom:1px solid var(--line);margin-bottom:20px;overflow-x:auto}
+.stab{appearance:none;border:none;background:transparent;cursor:pointer;padding:9px 18px 10px;font-family:var(--ui);font-weight:700;font-size:13px;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.stab:hover{color:var(--ink)}.stab.active{color:var(--honey-d);border-bottom-color:var(--honey)}
+.sview{display:none}.sview.active{display:block}
+
+/* ---- Catalog ---- */
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:18px;box-shadow:var(--sh)}
+.card h3{margin:0 0 4px;font-size:15px;font-weight:800}.card .sub{font-size:12px;color:var(--muted);margin-bottom:14px}
+.settings-head{display:flex;gap:10px;margin:0 0 12px;flex-wrap:wrap}.settings-head .btn{width:auto;font-size:13px;padding:9px 14px}
+.catalog-filter{display:flex;gap:10px;margin:0 0 12px;align-items:center;flex-wrap:wrap}
+.catalog-filter input{max-width:360px;font-family:var(--ui);font-size:13px;padding:9px 12px}
+.catalog-filter .count{font-size:12px;color:var(--muted);font-family:var(--mono)}
+table.settings{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--sh)}
+table.settings th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+table.settings td{padding:5px 8px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+table.settings tbody tr:nth-child(odd) td{background:var(--row-a)}
+table.settings tbody tr:nth-child(even) td{background:var(--row-b)}
+table.settings input{border:1px solid transparent;background:transparent;border-radius:7px;padding:7px 8px;font-size:13px;width:100%;font-family:var(--ui)}
+table.settings input.num{font-family:var(--mono);text-align:right}
+table.settings input:hover{background:#faf8f2}table.settings input:focus{outline:none;background:#fff;border-color:var(--honey);box-shadow:0 0 0 2px var(--honey-soft)}
+table.settings td.skucell input{font-family:var(--mono);font-size:12px}
+.del{border:none;background:#fbecec;color:var(--warn);border-radius:7px;width:28px;height:28px;cursor:pointer;font-weight:700}.del:hover{background:#f6d9d9}
+.settings-note{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5}
+.price-mem{font-family:var(--mono);font-size:10px;color:var(--ok);margin-left:4px;font-weight:700}
+
+/* ---- Drive ---- */
+.drive-status{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:13px;padding:6px 12px;border-radius:20px;margin-bottom:14px}
+.drive-status .dot{width:9px;height:9px;border-radius:50%}
+.drive-status.off{background:#f1efe9;color:var(--muted)}.drive-status.off .dot{background:#9a978d}
+.drive-status.on{background:#e9f5ee;color:var(--ok)}.drive-status.on .dot{background:#2faa6a}
+.drive-status.warn{background:#fdf3e6;color:var(--honey-d)}.drive-status.warn .dot{background:var(--honey)}
+.drive-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}.drive-grid .field{margin:0}
+.drive-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px}.drive-actions .btn{width:auto;font-size:13px;padding:10px 16px}
+.toggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;margin-top:12px;cursor:pointer}.toggle input{width:18px;height:18px;accent-color:var(--honey)}
+.openrow{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.openrow select{flex:1;min-width:180px;border:1px solid var(--line);border-radius:9px;padding:9px 10px;font-family:var(--mono);font-size:13px;background:#fff}
+.localrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}.localrow .btn{width:auto;font-size:13px;padding:9px 14px}
+.drive-msg{font-size:12.5px;margin-top:10px;min-height:1em}.drive-msg.ok{color:var(--ok)}.drive-msg.err{color:var(--warn)}
+details.guide{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+details.guide summary{cursor:pointer;font-weight:700;font-size:13px;color:var(--honey-d)}
+details.guide ol{margin:10px 0 0;padding-left:20px;font-size:12.5px;line-height:1.7;color:#333}
+details.guide code{background:#f2f0ea;padding:1px 6px;border-radius:4px;font-family:var(--mono);font-size:11.5px;word-break:break-all}
+.copyorigin{margin-left:6px;font-size:11px;border:1px solid var(--line);background:#fff;border-radius:5px;padding:1px 7px;cursor:pointer}
+
+/* ---- Requisites ---- */
+.req-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:700px){.req-grid{grid-template-columns:1fr}}
+.req-block{border:1px solid var(--line);border-radius:12px;padding:16px;background:#fff}
+.req-block h4{margin:0 0 12px;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px}
+.req-block h4 .chip{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--honey-d);background:var(--honey-soft);border-radius:5px;padding:2px 8px}
+.req-field{margin-bottom:10px}
+.req-field label{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.req-field input{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:var(--ui);font-size:13px;background:#fff}
+.req-field input:focus{outline:none;border-color:var(--honey);box-shadow:0 0 0 2px var(--honey-soft)}
+.contract-field{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+.contract-field label{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.contract-field input{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:var(--ui);font-size:13px;background:#fff}
+.req-save-row{margin-top:14px;display:flex;gap:10px}
+.req-save-row .btn{width:auto;font-size:13px;padding:9px 16px}
+
+/* ---- Sessions / History ---- */
+.sessions-bar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.sessions-bar .btn{width:auto;font-size:13px;padding:9px 14px}
+.session-list{display:grid;gap:10px}
+.session-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:14px;box-shadow:var(--sh)}
+.session-card.today{border-color:var(--honey);background:var(--honey-bg)}
+.session-date{font-family:var(--mono);font-weight:800;font-size:15px;color:var(--ink);min-width:100px}
+.session-meta{flex:1;font-size:12.5px;color:var(--muted);line-height:1.5}
+.session-meta b{color:var(--ink)}
+.session-actions{display:flex;gap:8px}
+.session-actions .btn{width:auto;font-size:12px;padding:7px 12px}
+.session-empty{text-align:center;padding:30px;color:var(--muted);font-size:13px}
+.compare-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:#eaf6ef;color:var(--ok);margin-left:6px}
+.compare-badge.dn{background:#fbecec;color:var(--warn)}
+.admin-daily{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.admin-list{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+@media(max-width:900px){.admin-daily{grid-template-columns:repeat(2,1fr)}.admin-list{grid-template-columns:1fr}.appbar{padding:11px 12px;gap:10px}.brand .sub,.drive-pill{display:none}.results{padding:16px 12px}.tabs{display:flex;width:100%}.tab{flex:1;padding:9px 10px}.stabs{margin-left:-4px;margin-right:-4px}.session-card{align-items:flex-start;flex-direction:column}.session-date{min-width:0}.session-actions{width:100%;flex-wrap:wrap}.session-actions .btn{flex:1}.pivot-wrap{max-height:none}.cards{grid-template-columns:1fr}.modal-body{max-height:70vh}.doc .d-meta,.doc .d-parties{grid-template-columns:1fr}}
+
+/* ---- Modal ---- */
+.modal-bg{position:fixed;inset:0;background:rgba(20,18,12,.45);z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
+.modal{background:#fff;border-radius:16px;width:min(720px,100%);box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+.modal-head h3{margin:0;font-size:16px;font-weight:800}
+.modal-x{border:none;background:#fff;border:1px solid var(--line);border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:15px}
+.modal-body{padding:18px 20px;max-height:64vh;overflow:auto}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.modal-grid .field{margin:0}
+.mp-head{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:6px 0 8px}
+.mp-list{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.mp-row{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid var(--line-soft)}
+.mp-row:last-child{border-bottom:none}.mp-row:nth-child(odd){background:var(--row-a)}.mp-row:nth-child(even){background:var(--row-b)}
+.mp-row .nm{flex:1;font-size:13px}.mp-row .pr{font-family:var(--mono);font-size:11.5px;color:var(--muted);width:90px;text-align:right}
+.mp-row input{width:80px;border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-family:var(--mono);text-align:right;font-size:13px}
+.modal-foot{display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--line);background:var(--panel)}
+.modal-foot .btn{width:auto;padding:10px 18px}
+
+/* ---- Confirm modal ---- */
+.confirm-modal{background:#fff;border-radius:16px;width:min(440px,100%);box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+.confirm-modal .cm-head{padding:16px 20px;font-weight:800;font-size:16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.confirm-modal .cm-body{padding:16px 20px;font-size:14px;line-height:1.5;color:#333}
+.confirm-modal .cm-foot{display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--line)}
+.confirm-modal .cm-foot .btn{width:auto;padding:10px 18px;font-size:13px}
+.login-modal{background:#fff;border-radius:16px;width:min(420px,100%);box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+.login-modal .lm-head{padding:18px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+.login-modal h3{margin:0;font-size:17px;font-weight:900}.login-modal .sub{font-size:12px;color:var(--muted);margin-top:4px}
+.login-modal .lm-body{padding:18px 20px;display:grid;gap:12px}
+.role-card{border:1px solid var(--line);background:#fff;border-radius:12px;padding:14px;text-align:left;cursor:pointer;font-family:var(--ui)}
+.role-card:hover{border-color:var(--honey);box-shadow:0 0 0 3px var(--honey-soft)}
+.role-card b{display:block;font-size:14px}.role-card span{display:block;font-size:12px;color:var(--muted);margin-top:3px}
+
+/* ===== Invoice document (shared) ===== */
+.doc{font-family:var(--doc);color:#1a1a1a;font-size:11px;line-height:1.3}
+.doc .d-head{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:10px}
+.doc .d-brand{font-weight:900;font-size:15px;color:var(--honey-d);line-height:1}
+.doc .d-brand small{display:block;font-weight:600;color:var(--muted);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
+.doc .d-titlewrap{text-align:right}
+.doc .d-title{font-size:17px;font-weight:800;letter-spacing:-.01em;line-height:1.05}
+.doc .d-no{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--honey-d);margin-top:2px}
+.doc .d-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:9px}
+.doc .mi{border:1px solid #e3e0d7;border-radius:8px;padding:6px 10px;background:#fafaf7}
+.doc .mi .ml{font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.doc .mi .mv{font-size:14px;font-weight:800;font-family:var(--mono);margin-top:2px;color:#1d1f24;word-break:break-word}
+.doc .d-ref{font-size:9px;color:#555;margin-bottom:9px}
+.doc .d-parties{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:9px}
+.doc .pcard{border:1px solid #e0ddd4;border-radius:8px;padding:8px 11px;background:#fcfbf8}
+.doc .pcard .chip{display:inline-block;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--honey-d);background:var(--honey-soft);border-radius:5px;padding:2px 7px;margin-bottom:5px}
+.doc .pcard .nm{font-weight:700;font-size:11px;margin-bottom:3px}
+.doc .pcard .ln{font-size:9px;color:#3a3a3a;margin:1px 0}
+.doc .pcard .ln.red{color:var(--red);font-weight:600}
+.doc table.it{width:100%;border-collapse:collapse;font-size:9.5px}
+.doc table.it th{background:var(--honey-bg);border:1px solid #d8cdb4;font-weight:700;text-align:center;font-size:8.6px;line-height:1.12;padding:3px 4px;color:#5a4014}
+.doc table.it td{border:1px solid #ddd;padding:2.8px 5px}
+.doc table.it td.c{text-align:center}.doc table.it td.n{font-family:var(--mono);text-align:right;white-space:nowrap}.doc table.it td.nm{text-align:left}
+.doc table.it tbody tr:nth-child(even) td{background:#faf9f6}
+.doc table.it tr.tot td{font-weight:800;background:#d6efd9;border-color:#a9d8af;font-size:10px}
+.doc .d-words{font-size:9.5px;margin:9px 0 3px}.doc .d-words b{font-weight:700}.doc .d-words .lbl{color:#555}
+.doc .d-signs{display:flex;justify-content:space-between;gap:24px;margin-top:7px;font-size:9.5px}
+.doc .d-signs .s b{font-weight:700}
+.doc .ln2{display:inline-block;min-width:90px;border-bottom:1px solid #888;margin:0 4px}
+.doc .d-signs2{display:flex;justify-content:space-between;gap:24px;margin-top:10px;font-size:10px}
+.doc .ln3{display:inline-block;min-width:150px;border-bottom:1px solid #888;margin-left:4px}
+
+.sheets .invoice{background:#fff;width:210mm;padding:13mm;margin:0 auto 22px;box-shadow:0 2px 16px rgba(0,0,0,.12);border-radius:3px}
+.sheets .invoice .inv-tools{text-align:right;margin-bottom:8px}
+.sheets .invoice .doc{font-size:12px}
+.sheets .invoice .doc table.it{font-size:11px}
+
+@media (max-width:1080px){
+  .wrap{grid-template-columns:1fr}
+  .controls{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .sheets .invoice{width:100%;padding:16px}
+  .drive-grid,.modal-grid{grid-template-columns:1fr}
+  .req-grid{grid-template-columns:1fr}
+}
+
+#printRoot{display:none}
+@media print{
+  @page{size:A4 portrait;margin:6mm}
+  html,body{background:#fff}
+  .appbar,.controls,.wrap,.no-print,.modal-bg{display:none!important}
+  .results{padding:0;overflow:visible;display:none!important}
+  #printRoot{display:block!important}
+  .print-page{height:283mm;display:flex;flex-direction:column;page-break-after:always;overflow:hidden}
+  .print-page:last-child{page-break-after:auto}
+  .half{height:141mm;overflow:hidden;padding:3mm 2mm;box-sizing:border-box}
+  .half.top{border-bottom:1px dashed #c0c0c0}
+  .doc{font-size:8.1px;line-height:1.22}
+  .doc .d-brand{font-size:10px}.doc .d-title{font-size:11px}.doc .d-no{font-size:13px}
+  .doc .mi .mv{font-size:9.5px}.doc .mi .ml{font-size:6.6px}
+  .doc .pcard{padding:5px 7px}.doc .pcard .nm{font-size:9px}
+  .doc table.it{font-size:7.4px}
+  .doc table.it th{padding:1.8px 3px;font-size:6.9px}
+  .doc table.it td{padding:1.4px 3px}
+  .doc table.it tbody tr:nth-child(even) td{background:#f7f6f2}
+  .doc .d-signs{margin-top:6px}.doc .d-signs2{margin-top:7px}
+}
+</style>
+</head>
+<body>
+<div class="appbar">
+  <div class="brand"><span class="logo">🍰</span><span class="mark">ГДЕ&nbsp;ТОРТ?</span><span class="sub">Накладные · счёт-фактура</span></div>
+  <div class="spacer"></div>
+  <div class="drive-pill"><span class="dot" id="drivePillDot"></span><span id="drivePillText">Google Drive: не подключён</span></div>
+  <div class="user-pill"><span id="userRoleText">Вход</span><button id="logoutBtn" type="button">Сменить</button></div>
+</div>
+
+<div class="wrap">
+  <aside class="controls">
+    <div class="field"><label>Заказы из SAP (вставьте сюда)</label>
+      <textarea id="sapInput" spellcheck="false" placeholder="Скопируйте строки заказов из SAP и вставьте (Ctrl+V)."></textarea>
+      <div class="hint">Заголовок распознаётся автоматически. Группировка — по № заказа. Цена берётся из заказа.</div></div>
+    <div class="row2">
+      <div class="field" style="margin-bottom:0"><label>Старт № счёта</label><input type="number" id="startId" value="16300" step="1"><div class="hint">Первый счёт = старт + 1</div></div>
+      <div class="field" style="margin-bottom:0"><label>Дата накладной</label><input type="date" id="invDate"><div class="hint">Имя файла = эта дата</div></div>
+    </div>
+    <div style="height:14px"></div>
+    <button class="btn btn-primary" id="genBtn">Сформировать накладные</button>
+    <div class="btn-row"><button class="btn btn-ghost" id="printBtn">Печать / PDF</button><button class="btn btn-ghost" id="saveDriveBtn">Сохранить в Drive</button></div>
+    <div class="print-note" id="printNote"></div>
+    <div id="msg" class="msg"></div>
+    <div class="stats-side" id="statsSide" style="display:none">
+      <div class="stat"><span class="k">Накладных</span><span class="v" id="stCount">0</span></div>
+      <div class="stat"><span class="k">Позиций (шт)</span><span class="v" id="stQty">0</span></div>
+      <div class="stat"><span class="k">Сумма с НДС</span><span class="v big" id="stSum">0</span></div>
+      <div class="stat"><span class="k">Диапазон №</span><span class="v" id="stRange" style="font-size:14px">—</span></div>
+    </div>
+  </aside>
+
+  <main class="results">
+    <div class="tabs no-print">
+      <button class="tab active" data-view="register">Реестр</button>
+      <button class="tab" data-view="pivot">Таблица</button>
+      <button class="tab" data-view="sheets">Накладные</button>
+      <button class="tab" data-view="stats">Статистика</button>
+      <button class="tab" data-view="settings">Настройки</button>
+    </div>
+
+    <!-- REGISTER -->
+    <section class="view active" id="view-register">
+      <div class="view-head"><span class="count" id="regCount"></span>
+        <div class="head-actions">
+          <button class="btn btn-dark" id="manualBtn">+ Накладная вручную</button>
+          <button class="btn btn-amber" id="deltaBtn">Δ Изменения</button>
+          <button class="btn btn-ghost" id="xlsxBtn">Excel</button>
+          <button class="btn btn-ghost" id="csvBtn">CSV</button>
+        </div>
+      </div>
+      <div id="regWrap"></div>
+      <div class="empty" id="emptyReg"><div class="big">▦</div><h3>Накладные появятся здесь</h3><div>Вставьте заказы слева и нажмите «Сформировать накладные»,<br>или добавьте «Накладную вручную».</div></div>
+    </section>
+
+    <!-- PIVOT -->
+    <section class="view" id="view-pivot">
+      <div class="pivot-bar">
+        <input type="text" id="pivotSearch" placeholder="Поиск товара…">
+        <label><input type="checkbox" id="hideZero" checked> Скрыть нулевые строки</label>
+        <span id="pivotFilterInfo" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div class="pivot-hint"><span>Количество меняется только здесь.</span>
+        <span class="legend"><span><span class="sw lock"></span>было 0 — заблокировано</span><span><span class="sw chg"></span>изменено вручную</span></span></div>
+      <div id="pivotWrap"></div>
+      <div class="empty" id="emptyPiv"><div class="big">▦</div><h3>Сначала сформируйте накладные</h3></div>
+    </section>
+
+    <!-- SHEETS -->
+    <section class="view" id="view-sheets"><div id="sheets" class="sheets"></div>
+      <div class="empty" id="emptySheets"><div class="big">▦</div><h3>Сначала сформируйте накладные</h3></div></section>
+
+    <!-- STATS -->
+    <section class="view" id="view-stats"><div id="statsWrap"></div>
+      <div class="empty" id="emptyStats"><div class="big">▦</div><h3>Сначала сформируйте накладные</h3></div></section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="stabs">
+        <button class="stab active" data-stab="catalog">Каталог товаров</button>
+        <button class="stab" data-stab="drive">Google Drive</button>
+        <button class="stab" data-stab="requisites">Реквизиты</button>
+        <button class="stab" data-stab="history">История сессий</button>
+      </div>
+      <div class="sview active" id="stab-catalog">
+        <div class="settings-head"><button class="btn btn-primary" id="addProd">+ Добавить товар</button><button class="btn btn-ghost" id="resetCat">Сбросить каталог</button></div>
+        <div class="catalog-filter"><input type="text" id="catalogSearch" placeholder="Фильтр товара или SKU"><span class="count" id="catalogCount"></span></div>
+        <div id="catalogWrap"></div>
+        <div class="settings-note">Цены в накладные берутся из заказа (колонка «Цена»). Каталог нужен для названий/ед.изм и как запасная цена (для ручных накладных и товаров без цены в заказе). Изменения запоминаются в браузере.<br><span style="color:var(--ok);font-weight:600">✓ из памяти</span> — цена автоматически восстановлена из прошлых заказов.</div>
+      </div>
+      <div class="sview" id="stab-drive"><div id="driveCard"></div></div>
+      <div class="sview" id="stab-requisites"><div id="reqWrap"></div></div>
+      <div class="sview" id="stab-history"><div id="historyWrap"></div></div>
+    </section>
+  </main>
+</div>
+
+<div id="printRoot"></div>
+<input type="file" id="localFile" accept=".json,application/json" style="display:none">
+<div class="modal-bg" id="manualModal" style="display:none"></div>
+<div class="modal-bg" id="confirmModal" style="display:none"></div>
+<div class="modal-bg" id="loginModal" style="display:none"></div>
+
+<script>
+"use strict";
+
+const USER_KEY='gdetort_user_v1';
+let USER={role:''};
+function loadUser(){try{const s=localStorage.getItem(USER_KEY);if(s)USER=Object.assign(USER,JSON.parse(s)||{});}catch(e){}}
+function saveUser(){try{localStorage.setItem(USER_KEY,JSON.stringify(USER));}catch(e){}}
+function applyUserRole(){
+  document.body.classList.toggle('role-admin',USER.role==='admin');
+  setText('userRoleText',USER.role==='admin'?'Admin':'User');
+  if(USER.role==='admin'){dirty.stats=true;showView('stats');}
+  else if(CURVIEW==='stats'||CURVIEW==='settings')showView(CURVIEW);else showView('register');
+}
+function openLogin(force){
+  const m=document.getElementById('loginModal');
+  if(!force&&USER.role)return;
+  m.innerHTML=`<div class="login-modal"><div class="lm-head"><h3>Выберите режим</h3><div class="sub">User создаёт накладные. Admin видит дневную статистику и настройки.</div></div>
+    <div class="lm-body">
+      <button class="role-card" data-role-pick="user"><b>User</b><span>Заказы, таблица, печать, Excel, изменения.</span></button>
+      <button class="role-card" data-role-pick="admin"><b>Admin</b><span>Только дневная статистика и настройки.</span></button>
+    </div></div>`;
+  m.style.display='flex';
+  m.querySelectorAll('[data-role-pick]').forEach(btn=>btn.addEventListener('click',()=>{USER.role=btn.dataset.rolePick;saveUser();m.style.display='none';m.innerHTML='';applyUserRole();}));
+}
+
+/* ============ DEFAULT CATALOG ============ */
+const DEFAULT_CATALOG=[
+  {sku:'117010102-00030',name:'Где торт? Тарталетки ореховые300гр',unit:'шт',price:24553.57},
+  {sku:'117010102-00039',name:'Где торт? Рогалик 300г',unit:'шт',price:21116.07},
+  {sku:'117010102-00040',name:'Где Торт? Aji Bodom 250г',unit:'шт',price:0},
+  {sku:'117010102-00060',name:'Где торт? КоКо',unit:'шт',price:23571.43},
+  {sku:'117010102-00061',name:'Где торт? Ежик 240гр',unit:'шт',price:18660.71},
+  {sku:'117010102-00063',name:'Где торт? Чак-Чак 300г',unit:'шт',price:24553.57},
+  {sku:'117010102-00064',name:'Где торт? Медовый бугирсак 500г',unit:'шт',price:30446.43},
+  {sku:'117010102-00083',name:'Где торт? "Орешки" 350г',unit:'шт',price:21607.14},
+  {sku:'117010102-00084',name:'Где торт? "Шу" 350г',unit:'шт',price:21607.14},
+  {sku:'117010102-00111',name:'Где торт? Безе 120г',unit:'шт',price:14732.15},
+  {sku:'117010102-00112',name:'Где торт? Пахлава 500г',unit:'шт',price:34375},
+  {sku:'117040304-00318',name:'Торт ГДЕ ТОРТ? Фруктовый, 1,1кг',unit:'шт',price:74537.63},
+  {sku:'117040304-00319',name:'Торт ГДЕ ТОРТ? Шоколадный, 1,1кг',unit:'шт',price:74537.63},
+  {sku:'117040304-00320',name:'Торт ГДЕ ТОРТ? Рафаелло, 1,1кг',unit:'шт',price:74537.63},
+  {sku:'117040304-00321',name:'Торт ГДЕ ТОРТ? Безе, 1,1кг',unit:'шт',price:74537.63},
+  {sku:'117040304-00012',name:'Где торт? Торт Прага 500гр',unit:'шт',price:40267.86},
+  {sku:'118040003-00076',name:'Лимонное печенье ГДЕ ТОРТ?, 200г',unit:'шт',price:24553.57},
+  {sku:'118040003-00077',name:'Трубочка ГДЕ ТОРТ?, 250г',unit:'шт',price:0},
+  {sku:'118040003-00079',name:'Бананчик ГДЕ ТОРТ?, 250г',unit:'шт',price:23571.43},
+  {sku:'118040003-00080',name:'Бискотти ГДЕ ТОРТ?, 250г',unit:'шт',price:0},
+  {sku:'118040003-00081',name:'Печенье ГДЕ ТОРТ? с кунжутом, 250г',unit:'шт',price:19642.85},
+  {sku:'118040003-00082',name:'Печенье ГДЕ ТОРТ? Кодя, 250г',unit:'шт',price:26026.78},
+  {sku:'118040003-00083',name:'Ракушка ГДЕ ТОРТ?, 250г',unit:'шт',price:19642.85},
+  {sku:'118040003-00084',name:'Печенье ГДЕ ТОРТ? туморча, 250г',unit:'шт',price:0},
+  {sku:'119011007-00001',name:'Лочира ГДЕ ТОРТ?, 250г',unit:'шт',price:18169.65},
+  {sku:'119011005-00001',name:'Чак-чак Из Корзинки в корзине, 500г',unit:'шт',price:0},
+  {sku:'119011005-00002',name:'Богирсок Из Корзинки в корзине, 650г',unit:'шт',price:0},
+  {sku:'119011005-00003',name:'Куш Тили 365 kun, 100г',unit:'шт',price:0},
+  {sku:'119011005-00004',name:'Чак-чак 365 kun, 300г',unit:'шт',price:0},
+  {sku:'119011005-00005',name:'Баурсак 365 kun, 350г',unit:'шт',price:0},
+];
+let CATALOG=DEFAULT_CATALOG.map(p=>({...p}));
+const SKU_INDEX={};
+function rebuildSkuIndex(){for(const k in SKU_INDEX)delete SKU_INDEX[k];CATALOG.forEach((p,i)=>SKU_INDEX[(p.sku||'').trim()]=i);}
+const VAT=0.12;
+
+/* ============ Requisites (editable) ============ */
+let SUPPLIER={name:'ООО «DRUZYA»',addr:'г.Ташкент, Юнусабадский р-н, кв-л 15, дом 23, кв 37',inn:'305 991 552',vat:'326010038806'};
+let RECEIVER={name:'ИП ООО "ANGLESEY FOOD"',inn:'202 099 756',vat:'326060002860'};
+let CONTRACT='к товарно-отгрузочным документам, договор № 1 от 07.09.2022 г.';
+function saveRequisites(){try{localStorage.setItem('gdetort_req_v1',JSON.stringify({SUPPLIER,RECEIVER,CONTRACT}));}catch(e){}}
+function loadRequisites(){try{const s=localStorage.getItem('gdetort_req_v1');if(s){const o=JSON.parse(s);if(o.SUPPLIER)SUPPLIER=o.SUPPLIER;if(o.RECEIVER)RECEIVER=o.RECEIVER;if(o.CONTRACT)CONTRACT=o.CONTRACT;}}catch(e){}}
+
+/* ============ Price memory ============ */
+let PRICE_MEMORY={};
+function loadPriceMemory(){try{const s=localStorage.getItem('gdetort_prices_v1');if(s)PRICE_MEMORY=JSON.parse(s)||{};}catch(e){}}
+function savePriceMemory(){try{localStorage.setItem('gdetort_prices_v1',JSON.stringify(PRICE_MEMORY));}catch(e){}}
+function recordPrices(rows){let changed=false,catChanged=false;for(const r of rows){if(r.price>0&&r.sku){PRICE_MEMORY[r.sku]=r.price;changed=true;const ix=SKU_INDEX[r.sku];if(ix!=null&&CATALOG[ix]&&CATALOG[ix].price!==r.price){CATALOG[ix].price=r.price;CATALOG[ix]._fromMemory=false;catChanged=true;}}}if(changed)savePriceMemory();if(catChanged){saveCatalog();renderCatalog();}}
+function applyPriceMemoryToCatalog(){CATALOG.forEach(p=>{if((!p.price||p.price===0)&&PRICE_MEMORY[p.sku]){p.price=PRICE_MEMORY[p.sku];p._fromMemory=true;}else{p._fromMemory=false;}});}
+
+/* ============ Sessions ============ */
+const SESSIONS_KEY='gdetort_sessions_v1';
+function loadSessions(){try{const s=localStorage.getItem(SESSIONS_KEY);return s?JSON.parse(s):{};}catch(e){return {};}}
+function saveSessions(sessions){try{localStorage.setItem(SESSIONS_KEY,JSON.stringify(sessions));}catch(e){}}
+function saveSession(snap){
+  const sessions=loadSessions();
+  const dateKey=snap.invoiceDate||new Date().toISOString().slice(0,10);
+  const prev=sessions[dateKey];
+  const versions=prev&&Array.isArray(prev.versions)?prev.versions.slice():[];
+  if(prev&&prev.snapshot)versions.unshift({savedAt:prev.savedAt,invoiceCount:prev.invoiceCount,sumTotal:prev.sumTotal,snapshot:prev.snapshot});
+  sessions[dateKey]={savedAt:new Date().toISOString(),invoiceCount:snap.invoices.length,sumTotal:snap.invoices.reduce((a,i)=>a+(i.lines||[]).reduce((b,l)=>b+((+l.qty||0)*(+l.price||0)*(1+VAT)),0),0),snapshot:snap,versions:versions.slice(0,9)};
+  // Keep max 90 entries
+  const keys=Object.keys(sessions).sort().reverse();
+  if(keys.length>90){keys.slice(90).forEach(k=>delete sessions[k]);}
+  saveSessions(sessions);
+}
+
+/* ============ Catalog persist ============ */
+function saveCatalog(){try{localStorage.setItem('gdetort_catalog_v1',JSON.stringify(CATALOG));}catch(e){}}
+function loadCatalog(){
+  try{const s=localStorage.getItem('gdetort_catalog_v1');if(s){const a=JSON.parse(s);if(Array.isArray(a)&&a.length)CATALOG=a.map(p=>({sku:p.sku||'',name:p.name||'',unit:p.unit||'шт',price:+p.price||0}));}}catch(e){}
+  loadPriceMemory();applyPriceMemoryToCatalog();rebuildSkuIndex();
+}
+
+/* ============ Helpers ============ */
+const fmt=n=>(Math.round(n*100)/100).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt0=n=>Math.round(n).toLocaleString('ru-RU');
+const r2=n=>Math.round(n*100)/100;
+function parseNum(s){if(s==null)return 0;s=(''+s).replace(/\u00a0/g,'').replace(/\s/g,'').replace(',','.');const v=parseFloat(s);return isNaN(v)?0:v;}
+function shortStore(n){if(!n)return '';return n.replace(/^\s*Korzinka\s*[-–]\s*/i,'').trim()||n.trim();}
+function fmtDateRu(iso){if(!iso)return '';const p=iso.split('-');return p.length===3?`${p[2]}.${p[1]}.${p[0]}`:iso;}
+function esc(s){return (s==null?'':''+s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
+function setText(id,t){const e=document.getElementById(id);if(e)e.textContent=t;}
+function setHTML(id,h){const e=document.getElementById(id);if(e)e.innerHTML=h;}
+function curDate(){return document.getElementById('invDate').value||new Date().toISOString().slice(0,10);}
+function todayIso(){return new Date().toISOString().slice(0,10);}
+
+const ONES=['','один','два','три','четыре','пять','шесть','семь','восемь','девять','десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать','шестнадцать','семнадцать','восемнадцать','девятнадцать'];
+const ONES_F=['','одна','две','три','четыре','пять','шесть','семь','восемь','девять','десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать','шестнадцать','семнадцать','восемнадцать','девятнадцать'];
+const TENS=['','','двадцать','тридцать','сорок','пятьдесят','шестьдесят','семьдесят','восемьдесят','девяносто'];
+const HUND=['','сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот'];
+function triad(n,f){let r=[];const h=Math.floor(n/100),t=Math.floor((n%100)/10),o=n%10;if(h)r.push(HUND[h]);if(t>1){r.push(TENS[t]);if(o)r.push((f?ONES_F:ONES)[o]);}else if(t===1)r.push(ONES[10+o]);else if(o)r.push((f?ONES_F:ONES)[o]);return r.join(' ');}
+function plural(n,fr){n=Math.abs(n)%100;const n1=n%10;if(n>10&&n<20)return fr[2];if(n1>1&&n1<5)return fr[1];if(n1===1)return fr[0];return fr[2];}
+function amountWords(total){let som=Math.floor(total),ti=Math.round((total-som)*100);if(ti===100){ti=0;som+=1;}if(som===0)return `ноль сум ${String(ti).padStart(2,'0')} тийин`;
+  const parts=[],sc=[{d:1e9,f:['миллиард','миллиарда','миллиардов'],fem:0},{d:1e6,f:['миллион','миллиона','миллионов'],fem:0},{d:1e3,f:['тысяча','тысячи','тысяч'],fem:1},{d:1,f:null,fem:0}];
+  let rem=som;for(const s of sc){const c=Math.floor(rem/s.d);rem%=s.d;if(c){parts.push(triad(c,s.fem));if(s.f)parts.push(plural(c,s.f));}}
+  let str=parts.join(' ').replace(/\s+/g,' ').trim();return str.charAt(0).toUpperCase()+str.slice(1)+` сум ${String(ti).padStart(2,'0')} тийин`;}
+
+/* ============ Parse + build ============ */
+function parseSap(raw){const rows=[];for(const line of raw.split(/\r?\n/)){if(!line.trim())continue;const c=line.split('\t');if(c.length<13)continue;if((c[0]||'').trim()==='Код магазина')continue;const order=(c[5]||'').trim(),sku=(c[10]||'').trim();if(!order||!sku)continue;rows.push({storeCode:(c[0]||'').trim(),storeName:(c[1]||'').trim(),address:(c[2]||'').trim(),order,sku,qty:parseNum(c[12]),price:parseNum(c[14])});}return rows;}
+function lineFrom(p,qty,init,price){const pr=(price!=null&&price>0)?price:(p.price||0);const cost=qty*pr,vat=cost*VAT;return {sku:p.sku,name:p.name,unit:p.unit,qty,price:pr,cost,vat,total:cost+vat,init:(init==null?qty:init)};}
+function recompute(inv){inv.sumCost=inv.lines.reduce((a,l)=>a+l.cost,0);inv.sumVat=inv.lines.reduce((a,l)=>a+l.vat,0);inv.sumTotal=inv.sumCost+inv.sumVat;inv.sumQty=inv.lines.reduce((a,l)=>a+l.qty,0);}
+function buildInvoices(rows,startId,dateIso){
+  recordPrices(rows); // save prices to memory
+  const om=new Map(),seq=[];
+  for(const r of rows){if(!om.has(r.order)){om.set(r.order,{order:r.order,storeCode:r.storeCode,storeName:r.storeName,address:r.address,q:{},pr:{}});seq.push(r.order);}const o=om.get(r.order);o.q[r.sku]=(o.q[r.sku]||0)+r.qty;if(r.price>0)o.pr[r.sku]=r.price;}
+  const cnt={};
+  return seq.map((ord,i)=>{const o=om.get(ord);const n=(cnt[o.storeCode]=(cnt[o.storeCode]||0)+1);const short=shortStore(o.storeName);
+    const inv={invNo:startId+1+i,order:ord,storeCode:o.storeCode,short,seq:n,market:`${short} /${n}`,label:`${o.storeCode}  / ${short} /${n}`,address:o.address,dateIso,manual:false,lines:CATALOG.map(p=>lineFrom(p,o.q[p.sku]||0,o.q[p.sku]||0,o.pr[p.sku]))};
+    recompute(inv);return inv;});
+}
+function reapplyCatalog(){CURRENT.forEach(inv=>{const old={};inv.lines.forEach(l=>old[l.sku]={qty:l.qty,init:l.init,price:l.price});inv.lines=CATALOG.map(p=>{const o=old[p.sku]||{qty:0,init:0,price:null};return lineFrom(p,o.qty,o.init,o.price);});recompute(inv);});}
+const isLocked=l=>l.init===0;
+const isChanged=l=>l.init>0&&l.qty!==l.init;
+function initTotals(inv){let q=0,s=0;inv.lines.forEach(l=>{q+=l.init;s+=l.init*l.price*(1+VAT);});return {q,s};}
+
+/* ============ Invoice document ============ */
+function invoiceDoc(inv){
+  const nz=inv.lines.filter(l=>l.qty>0);
+  const rows=nz.map((l,i)=>`<tr><td class="c">${i+1}</td><td class="nm">${esc(l.name)}</td><td class="c">${esc(l.unit)}</td><td class="n">${fmt0(l.qty)}</td><td class="n">${fmt(l.price)}</td><td class="n">${fmt(l.cost)}</td><td class="c">12%</td><td class="n">${fmt(l.vat)}</td><td class="n">${fmt(l.total)}</td></tr>`).join('');
+  return `<div class="doc">
+    <div class="d-head"><div class="d-brand">ГДЕ&nbsp;ТОРТ?<small>Кондитерские изделия</small></div>
+      <div class="d-titlewrap"><div class="d-title">Накладная — счёт-фактура</div><div class="d-no">№ ${inv.invNo}</div></div></div>
+    <div class="d-meta">
+      <div class="mi"><div class="ml">Дата</div><div class="mv">${fmtDateRu(inv.dateIso)}</div></div>
+      <div class="mi"><div class="ml">№ заказа</div><div class="mv">${esc(inv.order)}</div></div>
+      <div class="mi"><div class="ml">Магазин</div><div class="mv">${esc(inv.market)}</div></div>
+      <div class="mi"><div class="ml">Код магазина</div><div class="mv">${esc(inv.storeCode)}</div></div>
+    </div>
+    <div class="d-ref">${esc(CONTRACT)}</div>
+    <div class="d-parties">
+      <div class="pcard"><span class="chip">Поставщик</span><div class="nm">${esc(SUPPLIER.name)}</div><div class="ln">${esc(SUPPLIER.addr)}</div><div class="ln">ИНН: ${esc(SUPPLIER.inn)} · Рег. код НДС: ${esc(SUPPLIER.vat)}</div></div>
+      <div class="pcard"><span class="chip">Получатель</span><div class="nm">${esc(RECEIVER.name)}</div><div class="ln red">Адрес: ${esc(inv.address)}</div><div class="ln">ИНН: ${esc(RECEIVER.inn)} · Рег. код НДС: ${esc(RECEIVER.vat)}</div></div>
+    </div>
+    <table class="it"><thead><tr><th style="width:20px">#</th><th>Наименование товара</th><th style="width:28px">Ед.</th><th style="width:40px">Кол-во</th><th style="width:62px">Цена</th><th style="width:74px">Стоимость</th><th style="width:30px">НДС%</th><th style="width:70px">НДС</th><th style="width:82px">С НДС</th></tr></thead>
+    <tbody>${rows}<tr class="tot"><td></td><td>Итого</td><td></td><td class="n">${fmt0(inv.sumQty)}</td><td></td><td class="n">${fmt(inv.sumCost)}</td><td class="c">12%</td><td class="n">${fmt(inv.sumVat)}</td><td class="n">${fmt(inv.sumTotal)}</td></tr></tbody></table>
+    <div class="d-words"><span class="lbl">Всего отпущено на сумму:</span> <b>${esc(amountWords(inv.sumTotal))}</b></div>
+    <div class="d-signs"><div class="s">Руководитель <span class="ln2"></span> <b>BAYMATOVA D.A</b></div><div class="s">Главный бухгалтер <span class="ln2"></span> <b>НЕ ПРЕДУСМОТРЕН</b></div></div>
+    <div class="d-signs2"><div>Отпустил <span class="ln3"></span></div><div>Получил <span class="ln3"></span></div></div>
+  </div>`;
+}
+
+/* ============ Register ============ */
+function renderRegister(){
+  const empty=document.getElementById('emptyReg');
+  if(!CURRENT.length){document.getElementById('regWrap').innerHTML='';empty.style.display='flex';updateSelInfo();return;}
+  empty.style.display='none';
+  const rows=CURRENT.map(inv=>`<tr id="reg-${inv.invNo}">
+    <td class="cbcol"><input type="checkbox" class="rsel" data-inv="${inv.invNo}"></td>
+    <td><span class="idx">${inv.invNo}</span></td><td class="tag">${esc(inv.order)}</td>
+    <td class="store-link" data-go="${inv.invNo}"><b>${esc(inv.market)}</b> <span class="tag">(${esc(inv.storeCode)})</span>${inv.manual?' <span class="tag" style="color:var(--honey-d)">вручную</span>':''}</td>
+    <td class="r" id="rq-${inv.invNo}">${fmt0(inv.sumQty)}</td><td class="r" id="rs-${inv.invNo}">${fmt(inv.sumTotal)}</td>
+    <td><div class="actions"><button class="mini solid" data-print1="${inv.invNo}">Печать</button><button class="mini" data-go="${inv.invNo}">Открыть</button></div></td></tr>`).join('');
+  document.getElementById('regWrap').innerHTML=`<table class="register"><thead><tr>
+    <th class="cbcol"><input type="checkbox" id="selAll" title="Выбрать все"></th><th>№ счёта</th><th>№ заказа</th><th>Магазин</th>
+    <th style="text-align:right">Кол-во</th><th style="text-align:right">Сумма с НДС</th><th>Действия</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('selAll').addEventListener('change',e=>{document.querySelectorAll('.rsel').forEach(cb=>{cb.checked=e.target.checked;syncRow(cb);});updateSelInfo();});
+  document.querySelectorAll('.rsel').forEach(cb=>cb.addEventListener('change',()=>{syncRow(cb);refreshSelAll();updateSelInfo();}));
+  updateSelInfo();
+}
+function syncRow(cb){const tr=document.getElementById('reg-'+cb.dataset.inv);if(tr)tr.classList.toggle('sel',cb.checked);}
+function refreshSelAll(){const all=[...document.querySelectorAll('.rsel')],on=all.filter(c=>c.checked);const sa=document.getElementById('selAll');if(!sa)return;sa.checked=on.length===all.length&&all.length>0;sa.indeterminate=on.length>0&&on.length<all.length;}
+function selectedInvoices(){const ch=[...document.querySelectorAll('.rsel:checked')].map(c=>+c.dataset.inv);if(!ch.length)return CURRENT.slice();const s=new Set(ch);return CURRENT.filter(i=>s.has(i.invNo));}
+function updateSelInfo(){const n=document.querySelectorAll('.rsel:checked').length,total=CURRENT.length;const range=total?`${CURRENT[0].invNo}–${CURRENT[CURRENT.length-1].invNo}`:'';
+  setText('regCount',total?`${total} накладных · ${n?'выбрано '+n:'выбраны все'} · № ${range}`:'');
+  setHTML('printNote',total?`Печать: <b>${n?n+' выбранных':'все '+total}</b> · A4 = накладная + копия`:'');}
+
+/* ============ Pivot filter state ============ */
+let pivotFilter='';
+let pivotHideZero=true;
+
+function filteredCatalogIndices(){
+  const q=pivotFilter.toLowerCase().trim();
+  return CATALOG.map((_,i)=>i).filter(i=>{
+    const p=CATALOG[i];
+    if(q&&!p.name.toLowerCase().includes(q)&&!p.sku.toLowerCase().includes(q))return false;
+    if(pivotHideZero){const total=CURRENT.reduce((s,inv)=>{const l=inv.lines[i];return s+(l?l.qty:0);},0);if(total===0)return false;}
+    return true;
+  });
+}
+
+/* ============ Pivot ============ */
+function renderPivot(){
+  const empty=document.getElementById('emptyPiv'),wrap=document.getElementById('pivotWrap');
+  if(!CURRENT.length){wrap.innerHTML='';empty.style.display='flex';return;}
+  empty.style.display='none';
+  const indices=filteredCatalogIndices();
+  const info=document.getElementById('pivotFilterInfo');
+  if(info){const hidden=CATALOG.length-indices.length;info.textContent=hidden>0?`Скрыто: ${hidden} строк`:`Показано: ${indices.length} из ${CATALOG.length}`;}
+  let head='<th class="prodcol">Товар \\ Заказ</th>';
+  CURRENT.forEach(inv=>{head+=`<th><div class="colhead"><span class="iid">№ ${inv.invNo}</span><span class="mkt">${esc(inv.market)}</span><span class="oid">${esc(inv.order)}</span></div></th>`;});
+  let body='';
+  indices.forEach(pi=>{const p=CATALOG[pi];let r=`<td class="prodcol">${esc(p.name)}</td>`;
+    CURRENT.forEach(inv=>{const l=inv.lines[pi];const q=l?l.qty:0;const lk=l?isLocked(l):true;const ch=l?isChanged(l):false;
+      r+=`<td class="pcell ${q>0?'has':''} ${lk?'locked':''} ${ch?'changed':''}"><input data-inv="${inv.invNo}" data-line="${pi}" value="${q||''}" inputmode="numeric" placeholder="0" ${lk?'disabled title="В заказе было 0 — изменение запрещено"':''}></td>`;});
+    body+=`<tr>${r}</tr>`;});
+  let tq='<td class="prodcol">Итого, шт</td>',ts='<td class="prodcol">Сумма с НДС</td>';
+  CURRENT.forEach(inv=>{tq+=`<td id="pq-${inv.invNo}">${fmt0(inv.sumQty)}</td>`;ts+=`<td id="ps-${inv.invNo}">${fmt(inv.sumTotal)}</td>`;});
+  wrap.innerHTML=`<div class="pivot-wrap"><table class="pivot"><thead><tr>${head}</tr></thead><tbody>${body}<tr class="totrow">${tq}</tr><tr class="totrow">${ts}</tr></tbody></table></div>`;
+}
+
+/* ============ Sheets ============ */
+function renderSheets(){const empty=document.getElementById('emptySheets');if(!CURRENT.length){document.getElementById('sheets').innerHTML='';empty.style.display='flex';return;}empty.style.display='none';
+  document.getElementById('sheets').innerHTML=CURRENT.map(inv=>`<div class="invoice"><div class="inv-tools no-print"><button class="mini solid" data-print1="${inv.invNo}">Печать</button></div>${invoiceDoc(inv)}</div>`).join('');}
+
+/* ============ Statistics ============ */
+let statMarket='all';
+function renderStats(){
+  if(USER.role==='admin'){renderAdminStats();return;}
+  const empty=document.getElementById('emptyStats'),wrap=document.getElementById('statsWrap');
+  if(!CURRENT.length){wrap.innerHTML='';empty.style.display='flex';return;}
+  empty.style.display='none';
+  let totQ=0,totS=0,iQ=0,iS=0;
+  CURRENT.forEach(inv=>{totQ+=inv.sumQty;totS+=inv.sumTotal;const it=initTotals(inv);iQ+=it.q;iS+=it.s;});
+  const filt=statMarket==='all'?CURRENT:CURRENT.filter(i=>String(i.invNo)===String(statMarket));
+  const prod=CATALOG.map((p,pi)=>{let q=0,s=0,qi=0;filt.forEach(inv=>{const l=inv.lines[pi];if(l){q+=l.qty;s+=l.total;qi+=l.init;}});return {name:p.name,qty:q,sum:s,qi};}).filter(r=>r.qty>0||r.qi>0).sort((a,b)=>b.qty-a.qty);
+  const maxQ=Math.max(1,...prod.map(r=>r.qty));
+  const mk=CURRENT.map(inv=>{const it=initTotals(inv);return {invNo:inv.invNo,label:inv.market,qty:inv.sumQty,sum:inv.sumTotal,qi:it.q};}).sort((a,b)=>b.sum-a.sum);
+  const opts=`<option value="all">Все магазины</option>`+CURRENT.map(i=>`<option value="${i.invNo}" ${String(statMarket)===String(i.invNo)?'selected':''}>№${i.invNo} · ${esc(i.market)}</option>`).join('');
+  const dlt=(now,was)=>{const d=now-was;if(!d)return '';return `<span class="delta ${d>0?'up':'dn'}">${d>0?'+':''}${fmt0(d)}</span>`;};
+  const prodRows=prod.map(r=>`<tr><td>${esc(r.name)}<div class="bar"><i style="width:${(r.qty/maxQ*100).toFixed(1)}%"></i></div></td><td class="r">${fmt0(r.qi)}</td><td class="r">${fmt0(r.qty)}${dlt(r.qty,r.qi)}</td><td class="r">${fmt(r.sum)}</td></tr>`).join('')||`<tr><td colspan="4" style="color:var(--muted)">Нет позиций</td></tr>`;
+  const mkRows=mk.map(m=>`<tr class="clk ${String(statMarket)===String(m.invNo)?'on':''}" data-mk="${m.invNo}"><td><b>${esc(m.label)}</b> <span class="tag" style="color:var(--muted);font-family:var(--mono);font-size:11px">№${m.invNo}</span></td><td class="r">${fmt0(m.qi)}</td><td class="r">${fmt0(m.qty)}${dlt(m.qty,m.qi)}</td><td class="r">${fmt(m.sum)}</td></tr>`).join('');
+  const wasLine=(now,was,money)=>{const d=now-was;const cls=d>0?'up':'';return `было ${money?fmt0(was):fmt0(was)} ${d?`· <b class="${cls}">${d>0?'+':''}${money?fmt0(d):fmt0(d)}</b>`:''}`;};
+  wrap.innerHTML=`
+    <div class="cards">
+      <div class="kpi"><div class="k">Накладных</div><div class="v">${CURRENT.length}</div></div>
+      <div class="kpi"><div class="k">Позиций, шт (стало)</div><div class="v">${fmt0(totQ)}</div><div class="was">${wasLine(totQ,iQ)}</div></div>
+      <div class="kpi"><div class="k">Сумма с НДС (стало)</div><div class="v honey">${fmt0(totS)}</div><div class="was">${wasLine(totS,iS,true)}</div></div>
+      <div class="kpi"><div class="k">Средний чек</div><div class="v">${fmt0(totS/Math.max(1,CURRENT.length))}</div></div>
+    </div>
+    <div class="stat-grid">
+      <div class="panel-box"><h4><span>По товарам — было / стало</span><select id="statMkSel">${opts}</select></h4>
+        <table class="stbl"><thead><tr><th>Товар</th><th class="r">Было</th><th class="r">Стало</th><th class="r">Сумма с НДС</th></tr></thead><tbody>${prodRows}</tbody></table></div>
+      <div class="panel-box"><h4><span>По магазинам</span><span style="font-size:11px;color:var(--muted);font-weight:600">клик → фильтр</span></h4>
+        <table class="stbl"><thead><tr><th>Магазин</th><th class="r">Было</th><th class="r">Стало</th><th class="r">Сумма</th></tr></thead><tbody>${mkRows}</tbody></table></div>
+    </div>`;
+  const sel=document.getElementById('statMkSel');sel.addEventListener('change',()=>{statMarket=sel.value;renderStats();});
+  wrap.querySelectorAll('[data-mk]').forEach(tr=>tr.addEventListener('click',()=>{statMarket=(String(statMarket)===tr.dataset.mk)?'all':tr.dataset.mk;renderStats();}));
+}
+
+/* ============ Catalog ============ */
+let catalogFilter='';
+function renderCatalog(){
+  const q=catalogFilter.toLowerCase().trim();
+  const visible=CATALOG.map((p,i)=>({p,i})).filter(({p})=>!q||(p.name||'').toLowerCase().includes(q)||(p.sku||'').toLowerCase().includes(q));
+  setText('catalogCount',q?`Показано ${visible.length} из ${CATALOG.length}`:`${CATALOG.length} товаров`);
+  const rows=visible.map(({p,i},rowNo)=>`<tr data-i="${i}"><td style="width:34px;color:var(--muted);font-family:var(--mono)">${rowNo+1}</td>
+    <td class="skucell" style="width:160px"><input data-f="sku" value="${esc(p.sku)}"></td>
+    <td><input data-f="name" value="${esc(p.name)}"></td>
+    <td style="width:64px"><input data-f="unit" value="${esc(p.unit)}"></td>
+    <td style="width:160px"><input class="num" data-f="price" value="${p.price||0}" inputmode="decimal">${p._fromMemory?'<span class="price-mem" title="Из памяти прошлых заказов">✓ из памяти</span>':''}</td>
+    <td style="width:42px;text-align:center"><button class="del" data-del="${i}" title="Удалить">✕</button></td></tr>`).join('');
+  document.getElementById('catalogWrap').innerHTML=`<table class="settings"><thead><tr><th>#</th><th>SKU (код материала)</th><th>Наименование товара</th><th>Ед.</th><th>Цена (запасная)</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6" style="padding:18px;color:var(--muted);text-align:center">Ничего не найдено</td></tr>'}</tbody></table>`;
+}
+
+/* ============ Requisites panel ============ */
+function renderRequisites(){
+  document.getElementById('reqWrap').innerHTML=`
+    <div class="req-grid">
+      <div class="req-block">
+        <h4><span class="chip">Поставщик</span></h4>
+        <div class="req-field"><label>Название</label><input id="rSName" value="${esc(SUPPLIER.name)}"></div>
+        <div class="req-field"><label>Адрес</label><input id="rSAddr" value="${esc(SUPPLIER.addr)}"></div>
+        <div class="req-field"><label>ИНН</label><input id="rSInn" value="${esc(SUPPLIER.inn)}"></div>
+        <div class="req-field"><label>Рег. код НДС</label><input id="rSVat" value="${esc(SUPPLIER.vat)}"></div>
+      </div>
+      <div class="req-block">
+        <h4><span class="chip">Получатель</span></h4>
+        <div class="req-field"><label>Название</label><input id="rRName" value="${esc(RECEIVER.name)}"></div>
+        <div class="req-field"><label>ИНН</label><input id="rRInn" value="${esc(RECEIVER.inn)}"></div>
+        <div class="req-field"><label>Рег. код НДС</label><input id="rRVat" value="${esc(RECEIVER.vat)}"></div>
+      </div>
+    </div>
+    <div class="contract-field">
+      <label>Договор (строка ссылки)</label>
+      <input id="rContract" value="${esc(CONTRACT)}">
+    </div>
+    <div class="req-save-row">
+      <button class="btn btn-primary" id="reqSaveBtn" style="width:auto;padding:10px 20px">Сохранить реквизиты</button>
+      <button class="btn btn-ghost" id="reqResetBtn" style="width:auto;padding:10px 16px">Сбросить</button>
+    </div>
+    <div id="reqMsg" style="margin-top:10px;font-size:12.5px"></div>`;
+  document.getElementById('reqSaveBtn').onclick=()=>{
+    SUPPLIER={name:document.getElementById('rSName').value,addr:document.getElementById('rSAddr').value,inn:document.getElementById('rSInn').value,vat:document.getElementById('rSVat').value};
+    RECEIVER={name:document.getElementById('rRName').value,inn:document.getElementById('rRInn').value,vat:document.getElementById('rRVat').value};
+    CONTRACT=document.getElementById('rContract').value;
+    saveRequisites();dirty.sheets=true;
+    const m=document.getElementById('reqMsg');m.textContent='✓ Реквизиты сохранены';m.style.color='var(--ok)';setTimeout(()=>m.textContent='',3000);
+  };
+  document.getElementById('reqResetBtn').onclick=()=>{if(!confirm('Сбросить реквизиты к стандартным?'))return;
+    SUPPLIER={name:'ООО «DRUZYA»',addr:'г.Ташкент, Юнусабадский р-н, кв-л 15, дом 23, кв 37',inn:'305 991 552',vat:'326010038806'};
+    RECEIVER={name:'ИП ООО "ANGLESEY FOOD"',inn:'202 099 756',vat:'326060002860'};
+    CONTRACT='к товарно-отгрузочным документам, договор № 1 от 07.09.2022 г.';
+    saveRequisites();renderRequisites();};
+}
+
+/* ============ History / Sessions panel ============ */
+function renderHistory(){
+  const sessions=loadSessions();
+  const keys=Object.keys(sessions).sort().reverse();
+  const today=new Date().toISOString().slice(0,10);
+  const wrap=document.getElementById('historyWrap');
+  if(!keys.length){wrap.innerHTML=`<div class="session-empty">Нет сохранённых сессий.<br>Сессии сохраняются автоматически при формировании накладных.</div>`;return;}
+  const cards=keys.map(date=>{
+    const s=sessions[date];
+    const isToday=date===today;
+    const savedTime=s.savedAt?new Date(s.savedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'';
+    const versionCount=Array.isArray(s.versions)?s.versions.length:0;
+    return `<div class="session-card ${isToday?'today':''}">
+      <div class="session-date">${fmtDateRu(date)}${isToday?' <span style="font-size:10px;color:var(--honey-d);font-weight:700;font-family:var(--ui)">сегодня</span>':''}</div>
+      <div class="session-meta"><b>${s.invoiceCount||0} накладных</b> · ${s.sumTotal?fmt0(s.sumTotal)+' сум':'сумма неизвестна'}<br>Сохранено: ${savedTime||s.savedAt||'—'}${versionCount?` · старых версий: ${versionCount}`:''}</div>
+      <div class="session-actions">
+        <button class="btn btn-primary" data-load-session="${date}" style="width:auto;font-size:12px;padding:7px 14px">Открыть</button>
+        ${versionCount?`<button class="btn btn-ghost" data-load-prev="${date}" style="width:auto;font-size:12px;padding:7px 10px">Предыдущая</button>`:''}
+        <button class="btn btn-ghost" data-del-session="${date}" style="width:auto;font-size:12px;padding:7px 10px">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+  wrap.innerHTML=`<div class="sessions-bar"><button class="btn btn-ghost" id="clearAllSessions" style="width:auto;font-size:13px;padding:9px 14px">Очистить всё</button>
+    <span style="font-size:12px;color:var(--muted);align-self:center">Хранится ${keys.length} сессий (макс 90)</span></div>
+    <div class="session-list">${cards}</div>`;
+  wrap.querySelectorAll('[data-load-session]').forEach(btn=>{btn.addEventListener('click',()=>{const date=btn.dataset.loadSession;const s=sessions[date];if(!s||!s.snapshot)return;
+    if(CURRENT.length){confirmDo(`Открыть сессию от ${fmtDateRu(date)}?`,`Текущие ${CURRENT.length} накладных будут заменены. Продолжить?`,()=>restoreSnapshot(s.snapshot));}
+    else restoreSnapshot(s.snapshot);});});
+  wrap.querySelectorAll('[data-load-prev]').forEach(btn=>{btn.addEventListener('click',()=>{const date=btn.dataset.loadPrev;const s=sessions[date];const prev=s&&s.versions&&s.versions[0];if(!prev||!prev.snapshot)return;
+    confirmDo(`Открыть предыдущую версию ${fmtDateRu(date)}?`,`Будет открыта версия, сохранённая ${prev.savedAt?new Date(prev.savedAt).toLocaleString('ru-RU'):'раньше'}.`,()=>restoreSnapshot(prev.snapshot));});});
+  wrap.querySelectorAll('[data-del-session]').forEach(btn=>{btn.addEventListener('click',()=>{const sessions2=loadSessions();delete sessions2[btn.dataset.delSession];saveSessions(sessions2);renderHistory();});});
+  const ca=document.getElementById('clearAllSessions');if(ca)ca.addEventListener('click',()=>{if(!confirm('Удалить все сохранённые сессии?'))return;saveSessions({});renderHistory();});
+}
+
+function renderAdminStats(){
+  const sessions=loadSessions();
+  const keys=Object.keys(sessions).sort().reverse();
+  const today=todayIso();
+  const todays=sessions[today];
+  const last7=keys.slice(0,7).map(k=>sessions[k]||{});
+  const totalDays=keys.length;
+  const totalInvoices=last7.reduce((a,s)=>a+(+s.invoiceCount||0),0);
+  const totalSum=last7.reduce((a,s)=>a+(+s.sumTotal||0),0);
+  const currentSum=CURRENT.reduce((a,i)=>a+i.sumTotal,0);
+  const recent=keys.slice(0,12).map(k=>{const s=sessions[k];return `<tr><td>${fmtDateRu(k)}${k===today?' <span class="compare-badge">сегодня</span>':''}</td><td class="r">${s.invoiceCount||0}</td><td class="r">${fmt0(s.sumTotal||0)}</td><td class="r">${s.versions&&s.versions.length?s.versions.length:0}</td></tr>`;}).join('')||`<tr><td colspan="4" style="color:var(--muted)">Нет сохранённых дней</td></tr>`;
+  const liveRows=CURRENT.slice(0,12).map(i=>`<tr><td><b>${esc(i.market)}</b><div class="tag">${esc(i.order)}</div></td><td class="r">${fmt0(i.sumQty)}</td><td class="r">${fmt0(i.sumTotal)}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">Сегодняшние накладные ещё не открыты</td></tr>`;
+  document.getElementById('statsWrap').innerHTML=`
+    <div class="admin-daily">
+      <div class="kpi"><div class="k">Сегодня сохранено</div><div class="v">${todays?todays.invoiceCount||0:0}</div><div class="was">${todays&&todays.savedAt?'последнее '+new Date(todays.savedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'нет сессии'}</div></div>
+      <div class="kpi"><div class="k">Сегодня сумма</div><div class="v honey">${fmt0(todays?todays.sumTotal||0:currentSum)}</div></div>
+      <div class="kpi"><div class="k">Последние 7 дней</div><div class="v">${totalInvoices}</div><div class="was">${fmt0(totalSum)} сум</div></div>
+      <div class="kpi"><div class="k">Дней в истории</div><div class="v">${totalDays}</div></div>
+    </div>
+    <div class="admin-list">
+      <div class="panel-box"><h4><span>Дни и финальные версии</span></h4><table class="stbl"><thead><tr><th>Дата</th><th class="r">Накл.</th><th class="r">Сумма</th><th class="r">Старые</th></tr></thead><tbody>${recent}</tbody></table></div>
+      <div class="panel-box"><h4><span>Открытая сессия</span></h4><table class="stbl"><thead><tr><th>Заказ</th><th class="r">Шт</th><th class="r">Сумма</th></tr></thead><tbody>${liveRows}</tbody></table></div>
+    </div>`;
+  document.getElementById('emptyStats').style.display='none';
+}
+
+/* ============ Confirm helper ============ */
+function confirmDo(title,body,onOk){
+  const m=document.getElementById('confirmModal');
+  m.innerHTML=`<div class="confirm-modal"><div class="cm-head">${esc(title)}</div><div class="cm-body">${esc(body)}</div>
+    <div class="cm-foot"><button class="btn btn-ghost" id="cmCancel">Отмена</button><button class="btn btn-primary" id="cmOk">Продолжить</button></div></div>`;
+  m.style.display='flex';
+  document.getElementById('cmCancel').onclick=()=>{m.style.display='none';m.innerHTML='';};
+  document.getElementById('cmOk').onclick=()=>{m.style.display='none';m.innerHTML='';onOk();};
+  m.onclick=e=>{if(e.target===m){m.style.display='none';m.innerHTML='';}};
+}
+
+/* ============ Settings sub-tabs ============ */
+function initSettingsTabs(){
+  document.querySelectorAll('.stab').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('.stab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.sview').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const sv=document.getElementById('stab-'+t.dataset.stab);if(sv)sv.classList.add('active');
+    if(t.dataset.stab==='drive')renderDrivePanel();
+    if(t.dataset.stab==='requisites')renderRequisites();
+    if(t.dataset.stab==='history')renderHistory();
+  }));
+}
+
+/* ============ recompute helpers ============ */
+function updateStats(){setText('stQty',fmt0(CURRENT.reduce((a,i)=>a+i.sumQty,0)));setText('stSum',fmt0(CURRENT.reduce((a,i)=>a+i.sumTotal,0)));setText('stCount',CURRENT.length);}
+function refreshRegisterRow(inv){setText(`rq-${inv.invNo}`,fmt0(inv.sumQty));setText(`rs-${inv.invNo}`,fmt(inv.sumTotal));}
+function applyQty(inv,i,q){const l=inv.lines[i];l.qty=q;l.cost=q*l.price;l.vat=l.cost*VAT;l.total=l.cost+l.vat;recompute(inv);refreshRegisterRow(inv);updateStats();}
+
+/* ============ Tabs ============ */
+const dirty={register:false,pivot:false,sheets:false,stats:false};
+let CURVIEW='register';
+function showView(name){if(USER.role==='admin'&&!['stats','settings'].includes(name))name='stats';CURVIEW=name;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+name));if(dirty[name]){dirty[name]=false;rebuildView(name);}
+  if(name==='settings'){const activeStab=document.querySelector('.stab.active');if(activeStab&&activeStab.dataset.stab==='drive')renderDrivePanel();}}
+function rebuildView(name){if(name==='register')renderRegister();else if(name==='pivot')renderPivot();else if(name==='sheets')renderSheets();else if(name==='stats')renderStats();}
+function markDirtyExcept(except){['register','pivot','sheets','stats'].forEach(v=>{if(v!==except)dirty[v]=true;});}
+function refreshAfterCatalog(){updateStats();['register','pivot','sheets','stats'].forEach(v=>{if(CURVIEW===v){dirty[v]=false;rebuildView(v);}});}
+function refreshAllViews(){renderRegister();dirty.pivot=dirty.sheets=dirty.stats=true;['pivot','sheets','stats'].forEach(v=>{if(CURVIEW===v){dirty[v]=false;rebuildView(v);}});}
+
+/* ============ Print ============ */
+let printBuilt=false,printScope=null;
+const printRoot=document.getElementById('printRoot');
+function buildPrint(){if(printBuilt)return;const list=printScope||selectedInvoices();if(!list.length)return;
+  printRoot.innerHTML=list.map(inv=>{const d=invoiceDoc(inv);return `<div class="print-page"><div class="half top">${d}</div><div class="half">${d}</div></div>`;}).join('');printBuilt=true;}
+function teardownPrint(){printRoot.innerHTML='';printBuilt=false;printScope=null;}
+function doPrint(scope){if(!CURRENT.length){showMsg('Сначала сформируйте накладные.','err');return;}teardownPrint();printScope=scope;buildPrint();window.print();}
+window.onbeforeprint=buildPrint;window.onafterprint=teardownPrint;
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&(e.key==='p'||e.key==='P')){if(!CURRENT.length)return;teardownPrint();printScope=null;buildPrint();}},true);
+
+/* ============ Generate ============ */
+let CURRENT=[];
+function showMsg(t,type){const m=document.getElementById('msg');m.textContent=t;m.className='msg '+type;}
+function generate(){
+  const raw=document.getElementById('sapInput').value;const startId=parseInt(document.getElementById('startId').value,10);const dateIso=curDate();
+  if(!raw.trim()){showMsg('Вставьте заказы из SAP.','err');return;}
+  if(isNaN(startId)){showMsg('Укажите стартовый № счёта.','err');return;}
+  const rows=parseSap(raw);if(!rows.length){showMsg('Не удалось распознать строки заказа. Данные через табуляцию.','err');return;}
+  CURRENT=buildInvoices(rows,startId,dateIso);statMarket='all';
+  document.getElementById('statsSide').style.display='grid';updateStats();setText('stRange',CURRENT.length?`${CURRENT[0].invNo}–${CURRENT[CURRENT.length-1].invNo}`:'—');
+  refreshAllViews();showMsg(`Готово: ${CURRENT.length} накладных из ${rows.length} строк.`,'ok');
+  // Auto-save session
+  const snap=snapshot();saveSession(snap);
+  if(DRIVE.autosave&&DRIVE.token)driveSaveDay(true);
+}
+
+/* ============ Export helpers ============ */
+function regData(){const head=['№ счёта','№ заказа','Код магазина','Магазин','Дата','Кол-во','Стоимость','НДС','Сумма с НДС'];
+  const body=CURRENT.map(i=>[i.invNo,i.order,i.storeCode,i.market,fmtDateRu(i.dateIso),Math.round(i.sumQty),r2(i.sumCost),r2(i.sumVat),r2(i.sumTotal)]);
+  const tot=['','','','','ИТОГО',Math.round(CURRENT.reduce((a,i)=>a+i.sumQty,0)),r2(CURRENT.reduce((a,i)=>a+i.sumCost,0)),r2(CURRENT.reduce((a,i)=>a+i.sumVat,0)),r2(CURRENT.reduce((a,i)=>a+i.sumTotal,0))];
+  return {head,body,tot};}
+
+function exportCsv(){if(!CURRENT.length){showMsg('Сначала сформируйте накладные.','err');return;}const {head,body,tot}=regData();
+  const lines=[head.join(';'),...body.map(r=>r.join(';')),tot.join(';')];
+  dl(new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}),`reestr_${curDate()}.csv`);}
+
+function exportXlsx(){if(!CURRENT.length){showMsg('Сначала сформируйте накладные.','err');return;}
+  if(typeof XLSX==='undefined'){exportCsv();showMsg('Библиотека Excel недоступна — скачан CSV.','ok');return;}
+  const {head,body,tot}=regData();const aoa=[head,...body,tot];
+  const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:9},{wch:13},{wch:12},{wch:18},{wch:11},{wch:8},{wch:14},{wch:13},{wch:15}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Реестр');XLSX.writeFile(wb,`reestr_${curDate()}.xlsx`);
+  showMsg('Excel-файл реестра скачан.','ok');}
+
+/* Feature 6: Export CHANGED quantities */
+function exportDelta(){
+  if(!CURRENT.length){showMsg('Сначала сформируйте накладные.','err');return;}
+  const rows=[],orders=[];
+  CURRENT.forEach(inv=>{
+    let initQty=0,finalQty=0,initSum=0,finalSum=0,changedLines=0;
+    inv.lines.forEach(l=>{
+      const initTotal=(+l.init||0)*(+l.price||0)*(1+VAT);
+      initQty+=+l.init||0;finalQty+=+l.qty||0;initSum+=initTotal;finalSum+=+l.total||0;
+      if(l.qty!==l.init){
+        changedLines++;
+        rows.push([inv.invNo,inv.market,inv.order,l.sku,l.name,l.unit,l.init,l.qty,l.qty-l.init,r2(l.price),r2((l.qty-l.init)*l.price*(1+VAT))]);
+      }
+    });
+    orders.push([inv.invNo,inv.market,inv.order,fmtDateRu(inv.dateIso),initQty,finalQty,finalQty-initQty,r2(initSum),r2(finalSum),r2(finalSum-initSum),changedLines]);
+  });
+  const head=['№ счёта','Магазин','№ заказа','SKU','Товар','Ед.','Было','Стало','Дельта','Цена','Сумма дельты с НДС'];
+  const orderHead=['№ счёта','Магазин','№ заказа','Дата','Было, шт','Финал, шт','Изменение, шт','Было с НДС','Финал с НДС','Изменение с НДС','Изм. строк'];
+  if(typeof XLSX!=='undefined'){
+    const wb=XLSX.utils.book_new();
+    const wsOrders=XLSX.utils.aoa_to_sheet([orderHead,...orders]);
+    wsOrders['!cols']=[{wch:8},{wch:22},{wch:14},{wch:11},{wch:10},{wch:10},{wch:12},{wch:14},{wch:14},{wch:16},{wch:10}];
+    XLSX.utils.book_append_sheet(wb,wsOrders,'Заказы финал');
+    const ws=XLSX.utils.aoa_to_sheet([head,...rows]);
+    ws['!cols']=[{wch:8},{wch:18},{wch:13},{wch:20},{wch:36},{wch:5},{wch:7},{wch:7},{wch:8},{wch:12},{wch:18}];
+    XLSX.utils.book_append_sheet(wb,ws,'Изменённые строки');
+    XLSX.writeFile(wb,`orders_changed_final_${curDate()}.xlsx`);
+    showMsg(`Скачан файл: ${orders.length} заказов, ${rows.length} изменённых строк.`,'ok');
+  } else {
+    const lines=[orderHead.join(';'),...orders.map(r=>r.join(';')),'',head.join(';'),...rows.map(r=>r.join(';'))];
+    dl(new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}),`orders_changed_final_${curDate()}.csv`);
+    showMsg(`Скачан CSV: ${orders.length} заказов, ${rows.length} изменённых строк.`,'ok');
+  }
+}
+
+function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);}
+
+/* ============ Manual invoice ============ */
+function openManual(){
+  const today=curDate();
+  const prodRows=CATALOG.map((p,i)=>`<div class="mp-row"><span class="nm">${esc(p.name)}</span><span class="pr">${p.price?fmt(p.price):'—'}</span><input data-mi="${i}" inputmode="numeric" placeholder="0"></div>`).join('');
+  const m=document.getElementById('manualModal');
+  m.innerHTML=`<div class="modal"><div class="modal-head"><h3>Новая накладная вручную</h3><button class="modal-x" id="mClose">✕</button></div>
+    <div class="modal-body">
+      <div class="modal-grid">
+        <div class="field"><label>Код магазина</label><input type="text" id="mCode" placeholder="K004"></div>
+        <div class="field"><label>Название магазина</label><input type="text" id="mName" placeholder="Rakat"></div>
+        <div class="field" style="grid-column:1/3"><label>Адрес получателя</label><input type="text" id="mAddr" placeholder="Toshkent, ..."></div>
+        <div class="field"><label>№ заказа</label><input type="text" id="mOrder" placeholder="необязательно"></div>
+        <div class="field"><label>Дата</label><input type="date" id="mDate" value="${today}"></div>
+      </div>
+      <div class="mp-head">Количество по товарам</div>
+      <div class="mp-list">${prodRows}</div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="mCancel">Отмена</button><button class="btn btn-primary" id="mCreate">Создать накладную</button></div></div>`;
+  m.style.display='flex';
+  document.getElementById('mClose').onclick=closeManual;
+  document.getElementById('mCancel').onclick=closeManual;
+  m.onclick=e=>{if(e.target===m)closeManual();};
+  document.getElementById('mCreate').onclick=createManual;
+}
+function closeManual(){const m=document.getElementById('manualModal');m.style.display='none';m.innerHTML='';}
+function createManual(){
+  const code=(document.getElementById('mCode').value||'MANUAL').trim();
+  const name=(document.getElementById('mName').value||code).trim();
+  const addr=(document.getElementById('mAddr').value||'').trim();
+  const order=(document.getElementById('mOrder').value||('ВР-'+Date.now().toString().slice(-6))).trim();
+  const dateIso=document.getElementById('mDate').value||curDate();
+  const q={};let any=false;
+  document.querySelectorAll('#manualModal [data-mi]').forEach(inp=>{const v=parseNum(inp.value);if(v>0){q[+inp.dataset.mi]=v;any=true;}});
+  if(!any){alert('Введите количество хотя бы для одного товара.');return;}
+  const startId=parseInt(document.getElementById('startId').value,10)||16300;
+  const maxNo=CURRENT.reduce((mx,i)=>Math.max(mx,i.invNo),startId);
+  const seq=CURRENT.filter(i=>i.storeCode===code).length+1;
+  const short=shortStore(name);
+  const inv={invNo:maxNo+1,order,storeCode:code,short,seq,market:`${short} /${seq}`,label:`${code}  / ${short} /${seq}`,address:addr,dateIso,manual:true,
+    lines:CATALOG.map((p,i)=>lineFrom(p,q[i]||0,q[i]||0,null))};
+  recompute(inv);CURRENT.push(inv);
+  document.getElementById('statsSide').style.display='grid';updateStats();setText('stRange',`${CURRENT[0].invNo}–${CURRENT[CURRENT.length-1].invNo}`);
+  refreshAllViews();closeManual();showView('register');showMsg(`Накладная № ${inv.invNo} добавлена вручную.`,'ok');
+  saveSession(snapshot());
+}
+
+/* ============ Day-file / Snapshot ============ */
+function snapshot(){return {app:'gdetort',v:6,savedAt:new Date().toISOString(),invoiceDate:curDate(),startId:+document.getElementById('startId').value,sapRaw:document.getElementById('sapInput').value,catalog:CATALOG,
+  invoices:CURRENT.map(inv=>({invNo:inv.invNo,order:inv.order,storeCode:inv.storeCode,short:inv.short,seq:inv.seq,market:inv.market,label:inv.label,address:inv.address,dateIso:inv.dateIso,manual:!!inv.manual,lines:inv.lines.map(l=>({sku:l.sku,name:l.name,unit:l.unit,price:l.price,qty:l.qty,init:l.init}))}))};}
+function restoreSnapshot(s){
+  if(!s||!s.invoices){showMsg('Файл не распознан.','err');return false;}
+  if(Array.isArray(s.catalog)&&s.catalog.length){CATALOG=s.catalog.map(p=>({...p}));rebuildSkuIndex();saveCatalog();renderCatalog();}
+  document.getElementById('sapInput').value=s.sapRaw||'';
+  if(s.startId)document.getElementById('startId').value=s.startId;
+  if(s.invoiceDate)document.getElementById('invDate').value=s.invoiceDate;
+  CURRENT=s.invoices.map(inv=>{const lines=inv.lines.map(l=>{const qty=+l.qty||0,price=+l.price||0,cost=qty*price,vat=cost*VAT;return {sku:l.sku,name:l.name,unit:l.unit,price,qty,cost,vat,total:cost+vat,init:(l.init!=null?l.init:qty)};});const o={...inv,manual:!!inv.manual,lines};recompute(o);return o;});
+  statMarket='all';document.getElementById('statsSide').style.display='grid';updateStats();setText('stRange',CURRENT.length?`${CURRENT[0].invNo}–${CURRENT[CURRENT.length-1].invNo}`:'—');
+  refreshAllViews();showMsg('Файл дня загружен: '+(s.invoiceDate||''),'ok');return true;
+}
+function downloadDay(){if(!CURRENT.length){showMsg('Сначала сформируйте накладные.','err');return;}dl(new Blob([JSON.stringify(snapshot(),null,2)],{type:'application/json'}),curDate()+'.json');}
+document.getElementById('localFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{restoreSnapshot(JSON.parse(rd.result));}catch(err){showMsg('Не удалось прочитать файл.','err');}};rd.readAsText(f);e.target.value='';});
+
+/* ============ Google Drive ============ */
+const DRIVE={clientId:'',folderId:'',folderName:'ГДЕ ТОРТ — Накладные',token:null,tokenClient:null,autosave:false,files:[]};
+function driveLoadCfg(){try{const s=localStorage.getItem('gdetort_drive');if(s){const o=JSON.parse(s);DRIVE.clientId=o.clientId||'';DRIVE.folderId=o.folderId||'';DRIVE.autosave=!!o.autosave;}}catch(e){}}
+function driveSaveCfg(){try{localStorage.setItem('gdetort_drive',JSON.stringify({clientId:DRIVE.clientId,folderId:DRIVE.folderId,autosave:DRIVE.autosave}));}catch(e){}}
+const isFileProto=location.protocol==='file:';
+function driveConnected(){return !!DRIVE.token;}
+function drivePill(){const on=driveConnected();const d=document.getElementById('drivePillDot');if(d)d.classList.toggle('on',on);setText('drivePillText','Google Drive: '+(isFileProto?'недоступен (файл)':(on?'подключён':'не подключён')));}
+function driveMsg(t,cls){const e=document.getElementById('driveMsg');if(e){e.textContent=t;e.className='drive-msg '+(cls||'');}}
+function driveInit(){
+  if(!DRIVE.clientId){driveMsg('Сначала введите Client ID.','err');return false;}
+  if(!(window.google&&google.accounts&&google.accounts.oauth2)){driveMsg('Библиотека Google ещё не загрузилась — проверьте интернет и обновите страницу.','err');return false;}
+  DRIVE.tokenClient=google.accounts.oauth2.initTokenClient({client_id:DRIVE.clientId.trim(),scope:'https://www.googleapis.com/auth/drive.file',
+    callback:(r)=>{if(r&&r.error){driveMsg('Ошибка входа: '+r.error,'err');return;}DRIVE.token=r.access_token;drivePill();driveMsg('Подключено к Google Drive.','ok');renderDrivePanel();}});
+  return true;
+}
+function driveConnect(){if(!driveInit())return;try{DRIVE.tokenClient.requestAccessToken({prompt:driveConnected()?'':'consent'});}catch(e){driveMsg('Не удалось открыть окно входа Google.','err');}}
+function driveDisconnect(){try{if(DRIVE.token&&window.google&&google.accounts)google.accounts.oauth2.revoke(DRIVE.token,()=>{});}catch(e){}DRIVE.token=null;drivePill();renderDrivePanel();}
+async function driveFetch(url,opt){opt=opt||{};opt.headers=Object.assign({Authorization:'Bearer '+DRIVE.token},opt.headers||{});const r=await fetch(url,opt);if(r.status===401){DRIVE.token=null;drivePill();throw new Error('Сессия Google истекла — подключитесь снова.');}return r;}
+async function driveEnsureFolder(){
+  if(DRIVE.folderId)return DRIVE.folderId;
+  const q=encodeURIComponent(`mimeType='application/vnd.google-apps.folder' and name='${DRIVE.folderName}' and trashed=false`);
+  let r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);let d=await r.json();
+  if(d.files&&d.files.length){DRIVE.folderId=d.files[0].id;}
+  else{r=await driveFetch('https://www.googleapis.com/drive/v3/files',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:DRIVE.folderName,mimeType:'application/vnd.google-apps.folder'})});d=await r.json();DRIVE.folderId=d.id;}
+  driveSaveCfg();return DRIVE.folderId;
+}
+async function driveSaveDay(silent){
+  if(!driveConnected()){if(!silent)driveMsg('Сначала подключите Google Drive.','err');return;}
+  if(!CURRENT.length){if(!silent)driveMsg('Сначала сформируйте накладные.','err');return;}
+  try{driveMsg('Сохранение…');await driveEnsureFolder();
+    const name=curDate()+'.json',content=JSON.stringify(snapshot());
+    const q=encodeURIComponent(`name='${name}' and '${DRIVE.folderId}' in parents and trashed=false`);
+    let r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);let d=await r.json();
+    const exists=d.files&&d.files.length;const bound='gdt'+Date.now();
+    const meta=exists?{name}:{name,parents:[DRIVE.folderId],mimeType:'application/json'};
+    const body=`--${bound}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${bound}\r\nContent-Type: application/json\r\n\r\n${content}\r\n--${bound}--`;
+    const url=exists?`https://www.googleapis.com/upload/drive/v3/files/${d.files[0].id}?uploadType=multipart`:`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+    r=await driveFetch(url,{method:exists?'PATCH':'POST',headers:{'Content-Type':'multipart/related; boundary='+bound},body});
+    if(r.ok){driveMsg('✓ Сохранено в Google Drive: '+name+(exists?' (обновлён)':''),'ok');driveListDays();}else driveMsg('Ошибка сохранения ('+r.status+').','err');
+  }catch(e){driveMsg(e.message||'Ошибка сохранения.','err');}
+}
+async function driveListDays(){
+  if(!driveConnected())return;
+  try{await driveEnsureFolder();const q=encodeURIComponent(`'${DRIVE.folderId}' in parents and trashed=false and mimeType='application/json'`);
+    const r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name desc`);const d=await r.json();
+    DRIVE.files=d.files||[];const sel=document.getElementById('driveOpenSelect');
+    if(sel)sel.innerHTML=DRIVE.files.length?DRIVE.files.map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join(''):'<option value="">— файлов пока нет —</option>';
+  }catch(e){driveMsg(e.message||'Ошибка списка.','err');}
+}
+async function driveOpenSelected(){
+  const sel=document.getElementById('driveOpenSelect');if(!sel||!sel.value){driveMsg('Выберите файл для открытия.','err');return;}
+  try{driveMsg('Открытие…');const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${sel.value}?alt=media`);const snap=await r.json();restoreSnapshot(snap);driveMsg('✓ Открыт файл из Google Drive.','ok');}
+  catch(e){driveMsg(e.message||'Ошибка открытия.','err');}
+}
+function renderDrivePanel(){
+  const on=driveConnected();const origin=isFileProto?'(сайт открыт как файл)':location.origin;
+  const statusHtml=isFileProto?`<div class="drive-status warn"><span class="dot"></span>Google Drive недоступен: страница открыта как файл</div>`
+    :(on?`<div class="drive-status on"><span class="dot"></span>Подключено к Google Drive</div>`:`<div class="drive-status off"><span class="dot"></span>Не подключено</div>`);
+  const fileWarn=isFileProto?`<div class="hint" style="margin-bottom:12px">Чтобы включить Google Drive, страница должна открываться по веб-адресу (http/https).</div>`:'';
+  document.getElementById('driveCard').innerHTML=`<div class="card">
+    <h3>Google Drive — файл за день</h3>
+    <div class="sub">Имя файла — дата накладной (например <b>${esc(curDate())}.json</b>). Повторное сохранение обновляет тот же файл.</div>
+    ${statusHtml}${fileWarn}
+    <div class="drive-grid">
+      <div class="field"><label>Client ID (из Google Cloud)</label><input type="text" id="driveClientId" value="${esc(DRIVE.clientId)}" placeholder="xxxx.apps.googleusercontent.com" ${isFileProto?'disabled':''}></div>
+      <div class="field"><label>ID папки (необязательно)</label><input type="text" id="driveFolderId" value="${esc(DRIVE.folderId)}" placeholder="пусто — папка создастся сама" ${isFileProto?'disabled':''}></div>
+    </div>
+    <div class="drive-actions">
+      ${on?`<button class="btn btn-ghost" id="driveDisc">Отключить</button>`:`<button class="btn btn-primary" id="driveConn" ${isFileProto?'disabled':''}>Подключить Google Drive</button>`}
+      <button class="btn btn-primary" id="driveSave" ${on?'':'disabled'}>Сохранить файл за сегодня</button>
+    </div>
+    <label class="toggle"><input type="checkbox" id="driveAuto" ${DRIVE.autosave?'checked':''} ${isFileProto?'disabled':''}> Автосохранение при формировании накладных</label>
+    <div class="openrow"><select id="driveOpenSelect"><option value="">${on?'нажмите «Обновить список»':'— подключитесь, чтобы видеть файлы —'}</option></select>
+      <button class="btn btn-ghost" id="driveRefresh" ${on?'':'disabled'} style="width:auto">Обновить список</button>
+      <button class="btn btn-ghost" id="driveOpen" ${on?'':'disabled'} style="width:auto">Открыть выбранный</button></div>
+    <div class="localrow"><button class="btn btn-ghost" id="dlDay">Скачать файл дня</button><button class="btn btn-ghost" id="ldDay">Загрузить файл дня</button></div>
+    <div class="drive-msg" id="driveMsg"></div>
+    <details class="guide"><summary>Как настроить Google Drive (один раз)</summary>
+      <ol><li>Откройте <code>console.cloud.google.com</code> и создайте проект.</li>
+      <li>«APIs &amp; Services» → включите <b>Google Drive API</b>.</li>
+      <li>«OAuth consent screen» → <b>External</b>, добавьте себя в <b>Test users</b>.</li>
+      <li>«Credentials» → «Create credentials» → <b>OAuth client ID</b> → <b>Web application</b>.</li>
+      <li>В «Authorized JavaScript origins» добавьте: <code>${esc(origin)}</code> <button class="copyorigin" id="copyOrigin" type="button">копировать</button></li>
+      <li>Вставьте <b>Client ID</b> в поле выше и нажмите «Подключить».</li></ol></details></div>`;
+  drivePill();
+  const $=id=>document.getElementById(id);
+  if($('driveClientId'))$('driveClientId').addEventListener('change',e=>{DRIVE.clientId=e.target.value.trim();driveSaveCfg();});
+  if($('driveFolderId'))$('driveFolderId').addEventListener('change',e=>{DRIVE.folderId=e.target.value.trim();driveSaveCfg();});
+  if($('driveConn'))$('driveConn').addEventListener('click',driveConnect);
+  if($('driveDisc'))$('driveDisc').addEventListener('click',driveDisconnect);
+  if($('driveSave'))$('driveSave').addEventListener('click',()=>driveSaveDay(false));
+  if($('driveAuto'))$('driveAuto').addEventListener('change',e=>{DRIVE.autosave=e.target.checked;driveSaveCfg();});
+  if($('driveRefresh'))$('driveRefresh').addEventListener('click',driveListDays);
+  if($('driveOpen'))$('driveOpen').addEventListener('click',driveOpenSelected);
+  if($('dlDay'))$('dlDay').addEventListener('click',downloadDay);
+  if($('ldDay'))$('ldDay').addEventListener('click',()=>document.getElementById('localFile').click());
+  if($('copyOrigin'))$('copyOrigin').addEventListener('click',()=>{try{navigator.clipboard&&navigator.clipboard.writeText(origin);}catch(e){}driveMsg('Адрес скопирован: '+origin,'ok');});
+  if(on)driveListDays();
+}
+
+/* ============ Events ============ */
+document.getElementById('invDate').value=new Date().toISOString().slice(0,10);
+document.getElementById('genBtn').addEventListener('click',generate);
+document.getElementById('printBtn').addEventListener('click',()=>doPrint(null));
+document.getElementById('csvBtn').addEventListener('click',exportCsv);
+document.getElementById('xlsxBtn').addEventListener('click',exportXlsx);
+document.getElementById('deltaBtn').addEventListener('click',exportDelta);
+document.getElementById('manualBtn').addEventListener('click',openManual);
+document.getElementById('logoutBtn').addEventListener('click',()=>openLogin(true));
+document.getElementById('saveDriveBtn').addEventListener('click',()=>{showView('settings');document.querySelectorAll('.stab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.sview').forEach(s=>s.classList.remove('active'));const dt=document.querySelector('[data-stab="drive"]');if(dt)dt.classList.add('active');const dv=document.getElementById('stab-drive');if(dv)dv.classList.add('active');renderDrivePanel();if(driveConnected())driveSaveDay(false);else driveMsg('Подключите Google Drive ниже, затем нажмите «Сохранить».','err');});
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
+
+/* Pivot filter controls */
+document.getElementById('pivotSearch').addEventListener('input',e=>{pivotFilter=e.target.value;if(CURRENT.length)renderPivot();});
+document.getElementById('hideZero').addEventListener('change',e=>{pivotHideZero=e.target.checked;if(CURRENT.length)renderPivot();});
+document.getElementById('catalogSearch').addEventListener('input',e=>{catalogFilter=e.target.value;renderCatalog();});
+
+document.querySelector('.results').addEventListener('click',e=>{
+  const go=e.target.closest('[data-go]');
+  if(go){showView('sheets');setTimeout(()=>{const list=[...document.querySelectorAll('.invoice .d-no')];const el=list.find(n=>n.textContent.replace(/\D/g,'')===go.dataset.go);if(el)el.closest('.invoice').scrollIntoView({behavior:'smooth',block:'start'});},60);return;}
+  const p1=e.target.closest('[data-print1]');
+  if(p1){const inv=CURRENT.find(x=>x.invNo===+p1.dataset.print1);if(inv)doPrint([inv]);return;}
+  const del=e.target.closest('[data-del]');
+  if(del){CATALOG.splice(+del.dataset.del,1);rebuildSkuIndex();saveCatalog();reapplyCatalog();renderCatalog();markDirtyExcept('settings');refreshAfterCatalog();return;}
+});
+
+document.getElementById('addProd').addEventListener('click',()=>{CATALOG.push({sku:'',name:'Новый товар',unit:'шт',price:0});rebuildSkuIndex();saveCatalog();reapplyCatalog();renderCatalog();markDirtyExcept('settings');refreshAfterCatalog();const w=document.getElementById('catalogWrap');if(w)w.scrollTop=w.scrollHeight;});
+document.getElementById('resetCat').addEventListener('click',()=>{if(!confirm('Сбросить каталог к стандартному списку товаров?'))return;CATALOG=DEFAULT_CATALOG.map(p=>({...p}));rebuildSkuIndex();saveCatalog();reapplyCatalog();renderCatalog();markDirtyExcept('settings');refreshAfterCatalog();});
+
+document.querySelector('.results').addEventListener('input',e=>{
+  const t=e.target;
+  if(t.closest('.pivot')&&t.tagName==='INPUT'){
+    const inv=CURRENT.find(x=>x.invNo===+t.dataset.inv);if(!inv)return;const i=+t.dataset.line;applyQty(inv,i,parseNum(t.value));
+    const l=inv.lines[i];setText(`pq-${inv.invNo}`,fmt0(inv.sumQty));setText(`ps-${inv.invNo}`,fmt(inv.sumTotal));
+    const cell=t.closest('.pcell');cell.classList.toggle('has',l.qty>0);cell.classList.toggle('changed',isChanged(l));dirty.sheets=dirty.stats=true;
+  } else if(t.closest('.settings')){
+    const tr=t.closest('tr[data-i]');if(!tr)return;const i=+tr.dataset.i;const f=t.dataset.f;
+    if(f==='price'){const newPrice=parseNum(t.value);CATALOG[i].price=newPrice;// save to price memory when user edits
+      if(newPrice>0&&CATALOG[i].sku){PRICE_MEMORY[CATALOG[i].sku]=newPrice;savePriceMemory();}}
+    else CATALOG[i][f]=t.value;
+    if(f==='sku')rebuildSkuIndex();saveCatalog();reapplyCatalog();markDirtyExcept('settings');updateStats();
+  }
+});
+
+/* ============ Daily session guidance ============ */
+// When user opens page mid-day with existing session for today, auto-restore prompt
+(function checkTodaySession(){
+  const today=new Date().toISOString().slice(0,10);
+  const sessions=loadSessions();
+  if(sessions[today]&&sessions[today].snapshot){
+    // Show a non-intrusive banner instead of confirm (user may just be opening fresh)
+    const bar=document.createElement('div');
+    bar.style.cssText='position:fixed;bottom:18px;right:18px;z-index:50;background:#fff;border:1px solid var(--honey);border-radius:12px;padding:13px 16px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:flex;align-items:center;gap:12px;max-width:360px;font-size:13px;';
+    bar.innerHTML=`<span>🍰 Найдена сессия за <b>${fmtDateRu(today)}</b> (${sessions[today].invoiceCount} накладных)</span>
+      <button id="restoreToday" style="border:none;background:var(--honey);color:#fff;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer;font-size:12px;white-space:nowrap">Восстановить</button>
+      <button id="dismissToday" style="border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;padding:4px">✕</button>`;
+    document.body.appendChild(bar);
+    document.getElementById('restoreToday').onclick=()=>{restoreSnapshot(sessions[today].snapshot);bar.remove();};
+    document.getElementById('dismissToday').onclick=()=>bar.remove();
+    setTimeout(()=>{if(bar.parentNode)bar.remove();},12000);
+  }
+})();
+
+/* init */
+loadUser();loadCatalog();renderCatalog();driveLoadCfg();renderDrivePanel();drivePill();initSettingsTabs();loadRequisites();if(USER.role)applyUserRole();else openLogin(true);
+</script>
+</body>
+</html>
