@@ -16,7 +16,6 @@ export class RequisitesController {
   }
 
   @Put()
-  @Roles('admin')
   update(@Body() dto: UpdateRequisitesDto) {
     return this.requisitesService.update(dto);
   }

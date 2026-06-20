@@ -4,8 +4,6 @@ import * as multer from 'multer';
 import { Request } from 'express';
 import * as XLSX from 'xlsx';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PublicUser } from '../users/users.types';
 import { AuditService } from '../audit/audit.service';
@@ -26,8 +24,6 @@ export class ImportsController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles('admin')
   create(@Body() dto: CreateImportDto, @CurrentUser() user: PublicUser) {
     return this.importsService.create({
       ...dto,
