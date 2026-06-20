@@ -16,6 +16,7 @@ import {
   Save,
   Search,
   Settings,
+  Palette,
   Shield,
   Table2,
   Trash2,
@@ -56,8 +57,30 @@ import {
   SessionSummary
 } from '@/types/domain';
 
-type View = 'register' | 'matrix' | 'documents' | 'stats' | 'settings' | 'operations' | 'customers' | 'analytics' | 'orders' | 'schedule' | 'dispatch' | 'undelivered';
+type View = 'register' | 'matrix' | 'documents' | 'stats' | 'settings' | 'operations' | 'customers' | 'analytics' | 'orders' | 'schedule' | 'dispatch' | 'undelivered' | 'preferences';
 type SettingsView = 'catalog' | 'requisites' | 'sessions' | 'users' | 'exceptions';
+type Theme = 'dark' | 'light';
+type Density = 'compact' | 'cozy' | 'comfortable';
+
+// Curated backgrounds guaranteed to match the rest of the UI. `theme` is the
+// readable text/surface theme each background pairs with.
+const BG_PRESETS: { id: string; label: string; value: string; theme: Theme }[] = [
+  { id: 'midnight', label: 'Midnight', value: 'linear-gradient(180deg, #0b0e12 0%, #080a0d 100%)', theme: 'dark' },
+  { id: 'ocean',    label: 'Ocean',    value: 'linear-gradient(160deg, #0a1420 0%, #080d14 100%)', theme: 'dark' },
+  { id: 'plum',     label: 'Plum',     value: 'linear-gradient(160deg, #16101c 0%, #0b0810 100%)', theme: 'dark' },
+  { id: 'forest',   label: 'Forest',   value: 'linear-gradient(160deg, #0c1612 0%, #080d0b 100%)', theme: 'dark' },
+  { id: 'graphite', label: 'Graphite', value: '#0f1115', theme: 'dark' },
+  { id: 'paper',    label: 'Paper',    value: 'linear-gradient(180deg, #eef1f6 0%, #e4e9f1 100%)', theme: 'light' },
+];
+
+// Relative luminance of a #rrggbb color → decide light vs dark text/surfaces.
+function isLightColor(hex: string): boolean {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6;
+}
 type AnalyticsTab = 'overview' | 'products' | 'inventory' | 'customers';
 type Toast = { kind: 'ok' | 'err' | 'info'; text: string } | null;
 
@@ -149,6 +172,26 @@ export default function Home() {
   const [lang, setLang] = useState<'uz' | 'ru' | 'en'>(() =>
     typeof window !== 'undefined' ? ((localStorage.getItem('lang') as 'uz' | 'ru' | 'en') || 'uz') : 'uz'
   );
+  const [theme, setTheme] = useState<Theme>(() =>
+    typeof window !== 'undefined' ? ((localStorage.getItem('pref_theme') as Theme) || 'dark') : 'dark'
+  );
+  const [density, setDensity] = useState<Density>(() =>
+    typeof window !== 'undefined' ? ((localStorage.getItem('pref_density') as Density) || 'cozy') : 'cozy'
+  );
+  const [appBg, setAppBg] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('pref_bg') || '') : ''
+  );
+  // Apply visual preferences to <html> so all token-based styling reacts.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.dataset.density = density;
+    if (appBg) root.style.setProperty('--app-bg', appBg);
+    else root.style.removeProperty('--app-bg');
+    localStorage.setItem('pref_theme', theme);
+    localStorage.setItem('pref_density', density);
+    localStorage.setItem('pref_bg', appBg);
+  }, [theme, density, appBg]);
   const [unsaved, setUnsaved] = useState(false);
   const [printInvoices, setPrintInvoices] = useState<Invoice[]>([]);
   const [manualOpen, setManualOpen] = useState(false);
@@ -882,10 +925,10 @@ export default function Home() {
             {/* Session date switcher */}
             {sessions.length > 0 && (
               <select
+                className="sessionSelect"
                 value={dateIso}
                 onChange={(e) => { if (e.target.value) void loadSession(e.target.value); }}
                 title="Sessiyani tanlang"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)', color: '#fff', borderRadius: 8, padding: '3px 8px', fontSize: 12, cursor: 'pointer', maxWidth: 130 }}
               >
                 {sessions.map((s) => (
                   <option key={s.invoiceDate} value={s.invoiceDate}>
@@ -901,9 +944,9 @@ export default function Home() {
           </div>
           <div className="userbar">
             <select
+              className="langSelect"
               value={lang}
               onChange={(e) => { const l = e.target.value as Lang; setLang(l); localStorage.setItem('lang', l); }}
-              style={{ background: 'rgba(255,255,255,0.10)', border: '0.5px solid rgba(255,255,255,0.18)', color: '#fff', borderRadius: 8, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}
             >
               <option value="uz">UZ</option>
               <option value="ru">RU</option>
@@ -931,6 +974,7 @@ export default function Home() {
           <Tab             active={view === 'undelivered'} icon={<AlertTriangle size={18} />} label="Qaytgan" onClick={() => setView('undelivered')}
             badge={invoices.filter(i => i.status === 'saved').length || undefined} />
           <Tab             active={view === 'settings'}    icon={<Settings size={18} />}      label={T('nav_settings')}  onClick={() => setView('settings')} />
+          <Tab             active={view === 'preferences'} icon={<Palette size={18} />}       label={T('nav_preferences')} onClick={() => setView('preferences')} />
         </nav>
 
         <main className="workspace">
@@ -1048,7 +1092,7 @@ export default function Home() {
                     onChange={(e) => setUndeliverModal({ ...undeliverModal, comment: e.target.value })}
                     style={{
                       width: '100%', boxSizing: 'border-box', resize: 'vertical',
-                      background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)',
+                      background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)',
                       borderRadius: 8, color: 'inherit', fontSize: 14, padding: '8px 12px',
                       fontFamily: 'inherit', outline: 'none',
                     }}
@@ -1059,7 +1103,7 @@ export default function Home() {
                   <button
                     className="small"
                     type="button"
-                    style={{ background: 'var(--danger, #e53e3e)', color: '#fff', opacity: undeliverModal.comment.trim() ? 1 : 0.4 }}
+                    style={{ background: 'var(--danger)', color: '#fff', opacity: undeliverModal.comment.trim() ? 1 : 0.4 }}
                     onClick={confirmUndeliver}
                   >
                     Tasdiqlash
@@ -1088,7 +1132,7 @@ export default function Home() {
                       onChange={(e) => setRestoreModal({ ...restoreModal, date: e.target.value })}
                       style={{
                         width: '100%', boxSizing: 'border-box',
-                        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)',
+                        background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)',
                         borderRadius: 8, color: 'inherit', fontSize: 14, padding: '8px 12px',
                         fontFamily: 'inherit', outline: 'none',
                       }}
@@ -1100,14 +1144,14 @@ export default function Home() {
                       <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 8 }}>Mahsulotlar (sonini o&apos;zgartiring)</label>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
                         {restoreModal.lines.map((line, i) => (
-                          <div key={line.sku} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 8 }}>
+                          <div key={line.sku} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(var(--hi-rgb),0.04)', borderRadius: 8 }}>
                             <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
                               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.name}</div>
                               <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmt(line.price * 1.12)} so&apos;m / {line.unit}</div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                               <button type="button"
-                                style={{ width: 26, height: 26, borderRadius: 6, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                                style={{ width: 26, height: 26, borderRadius: 6, background: 'rgba(var(--hi-rgb),0.08)', border: '1px solid rgba(var(--hi-rgb),0.12)', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
                                 onClick={() => {
                                   const updated = restoreModal.lines.map((l, idx) => idx === i ? { ...l, qty: Math.max(0, l.qty - 1) } : l);
                                   setRestoreModal({ ...restoreModal, lines: updated });
@@ -1120,15 +1164,15 @@ export default function Home() {
                                   const updated = restoreModal.lines.map((l, idx) => idx === i ? { ...l, qty: v } : l);
                                   setRestoreModal({ ...restoreModal, lines: updated });
                                 }}
-                                style={{ width: 48, textAlign: 'center', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, color: 'inherit', fontSize: 14, padding: '3px 4px', fontFamily: 'var(--mono)' }}
+                                style={{ width: 48, textAlign: 'center', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 6, color: 'inherit', fontSize: 14, padding: '3px 4px', fontFamily: 'var(--mono)' }}
                               />
                               <button type="button"
-                                style={{ width: 26, height: 26, borderRadius: 6, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                                style={{ width: 26, height: 26, borderRadius: 6, background: 'rgba(var(--hi-rgb),0.08)', border: '1px solid rgba(var(--hi-rgb),0.12)', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
                                 onClick={() => {
                                   const updated = restoreModal.lines.map((l, idx) => idx === i ? { ...l, qty: Math.min(l.initQty, l.qty + 1) } : l);
                                   setRestoreModal({ ...restoreModal, lines: updated });
                                 }}>+</button>
-                              <span style={{ fontSize: 11, color: line.qty < line.initQty ? '#ffa500' : 'var(--muted)', minWidth: 30, textAlign: 'right' }}>
+                              <span style={{ fontSize: 11, color: line.qty < line.initQty ? 'var(--warn)' : 'var(--muted)', minWidth: 30, textAlign: 'right' }}>
                                 /{line.initQty}
                               </span>
                             </div>
@@ -1176,7 +1220,7 @@ export default function Home() {
                         <span style={{ color: 'var(--muted)', fontSize: 12, display: 'block', marginBottom: 3 }}>
                           ⚠️ Bekor qilish sababi{invoiceDetail.undeliveredAt ? ` · ${new Date(invoiceDetail.undeliveredAt).toLocaleString('uz-UZ')}` : ''}:
                         </span>
-                        <b style={{ fontSize: 13, color: '#ffa500' }}>{invoiceDetail.undeliverComment}</b>
+                        <b style={{ fontSize: 13, color: 'var(--warn)' }}>{invoiceDetail.undeliverComment}</b>
                       </div>
                     )}
                   </div>
@@ -1770,10 +1814,10 @@ export default function Home() {
               <section className="pane">
                 <div className="paneHead">
                   <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <AlertTriangle size={18} color="#e53e3e" />
+                    <AlertTriangle size={18} style={{ color: 'var(--danger)' }} />
                     Yetkazilmagan nakladnoylar
                     {undeliveredList.length > 0 && (
-                      <span style={{ background: '#e53e3e', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>
+                      <span style={{ background: 'var(--danger)', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>
                         {undeliveredList.length}
                       </span>
                     )}
@@ -1810,7 +1854,7 @@ export default function Home() {
                             <td className="right mono">{fmt(inv.sumTotal)}</td>
                             <td>
                               {inv.undeliverComment ? (
-                                <span style={{ color: '#ffa500', fontSize: 13 }}>⚠️ {inv.undeliverComment}</span>
+                                <span style={{ color: 'var(--warn)', fontSize: 13 }}>⚠️ {inv.undeliverComment}</span>
                               ) : (
                                 <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
                               )}
@@ -1844,6 +1888,72 @@ export default function Home() {
               </section>
             );
           })()}
+
+          {view === 'preferences' && (
+            <section className="pane">
+              <PaneHead title={T('nav_preferences')} />
+              <div className="prefGrid">
+
+                <div className="prefCard">
+                  <h3>{T('pref_theme')}</h3>
+                  <p className="prefHint">{T('pref_theme_hint')}</p>
+                  <div className="seg" role="group">
+                    <button type="button" className={theme === 'dark' ? 'on' : ''} onClick={() => { setTheme('dark'); setAppBg(''); }}>{T('pref_dark')}</button>
+                    <button type="button" className={theme === 'light' ? 'on' : ''} onClick={() => { setTheme('light'); setAppBg(''); }}>{T('pref_light')}</button>
+                  </div>
+                </div>
+
+                <div className="prefCard">
+                  <h3>{T('pref_bg')}</h3>
+                  <p className="prefHint">{T('pref_bg_hint')}</p>
+                  <div className="swatches">
+                    {BG_PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        title={p.label}
+                        className={`swatch${appBg === p.value ? ' on' : ''}`}
+                        style={{ background: p.value }}
+                        onClick={() => { setAppBg(p.value); setTheme(p.theme); }}
+                      />
+                    ))}
+                  </div>
+                  <div className="prefRow" style={{ marginTop: 14 }}>
+                    <span>{T('pref_bg_custom')}</span>
+                    <span className="colorPick">
+                      <input
+                        type="color"
+                        value={/^#[0-9a-f]{6}$/i.test(appBg) ? appBg : '#0b0e12'}
+                        onChange={(e) => { const c = e.target.value; setAppBg(c); setTheme(isLightColor(c) ? 'light' : 'dark'); }}
+                      />
+                      <button className="small" type="button" onClick={() => { setAppBg(''); setTheme('dark'); }}>{T('pref_reset')}</button>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="prefCard">
+                  <h3>{T('pref_density')}</h3>
+                  <p className="prefHint">{T('pref_density_hint')}</p>
+                  <div className="seg" role="group">
+                    <button type="button" className={density === 'compact' ? 'on' : ''} onClick={() => setDensity('compact')}>{T('pref_compact')}</button>
+                    <button type="button" className={density === 'cozy' ? 'on' : ''} onClick={() => setDensity('cozy')}>{T('pref_cozy')}</button>
+                    <button type="button" className={density === 'comfortable' ? 'on' : ''} onClick={() => setDensity('comfortable')}>{T('pref_comfortable')}</button>
+                  </div>
+                </div>
+
+                <div className="prefCard">
+                  <h3>{T('pref_lang')}</h3>
+                  <p className="prefHint">{T('pref_lang_hint')}</p>
+                  <div className="seg" role="group">
+                    <button type="button" className={lang === 'uz' ? 'on' : ''} onClick={() => { setLang('uz'); localStorage.setItem('lang', 'uz'); }}>O‘zbek</button>
+                    <button type="button" className={lang === 'ru' ? 'on' : ''} onClick={() => { setLang('ru'); localStorage.setItem('lang', 'ru'); }}>Русский</button>
+                    <button type="button" className={lang === 'en' ? 'on' : ''} onClick={() => { setLang('en'); localStorage.setItem('lang', 'en'); }}>English</button>
+                  </div>
+                </div>
+
+              </div>
+            </section>
+          )}
 
           {view === 'settings' && (
             <section className="pane">
@@ -2101,9 +2211,9 @@ export default function Home() {
                 <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Sana:</span>
                 <input type="date" value={manual.dateIso}
                   onChange={(e) => setManual({ ...manual, dateIso: e.target.value })}
-                  style={{ fontSize: 13, padding: '4px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'inherit', outline: 'none' }} />
+                  style={{ fontSize: 13, padding: '4px 10px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'inherit', outline: 'none' }} />
                 <button type="button" onClick={() => setManualStores([...manualStores, emptyStoreRow()])}
-                  style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'var(--muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 14px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'var(--muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   + Do&apos;kon qo&apos;shish
                 </button>
               </div>
@@ -2114,31 +2224,31 @@ export default function Home() {
                   <thead>
                     {/* Row 1: product label + store code/name */}
                     <tr>
-                      <th style={{ width: 180, minWidth: 180, padding: '6px 10px', fontSize: 11, color: 'var(--muted)', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'var(--card)', position: 'sticky', left: 0, zIndex: 2 }}>
+                      <th style={{ width: 180, minWidth: 180, padding: '6px 10px', fontSize: 11, color: 'var(--muted)', textAlign: 'left', borderBottom: '1px solid rgba(var(--hi-rgb),0.08)', background: 'var(--card)', position: 'sticky', left: 0, zIndex: 2 }}>
                         Mahsulot
                       </th>
                       {manualStores.map((col, ci) => (
-                        <th key={ci} style={{ width: 140, minWidth: 140, padding: '4px 6px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', verticalAlign: 'top' }}>
+                        <th key={ci} style={{ width: 140, minWidth: 140, padding: '4px 6px', borderBottom: '1px solid rgba(var(--hi-rgb),0.08)', background: 'rgba(var(--hi-rgb),0.03)', verticalAlign: 'top' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <div style={{ display: 'flex', gap: 3 }}>
                               <input placeholder="Kod"
                                 value={col.storeCode}
                                 onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeCode: e.target.value }; setManualStores(u); }}
-                                style={{ width: 52, fontSize: 11, padding: '4px 5px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
+                                style={{ width: 52, fontSize: 11, padding: '4px 5px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
                               <input placeholder="Nom"
                                 value={col.storeName}
                                 onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeName: e.target.value }; setManualStores(u); }}
-                                style={{ flex: 1, fontSize: 11, padding: '4px 5px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
+                                style={{ flex: 1, fontSize: 11, padding: '4px 5px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
                               <button type="button"
                                 onClick={() => setManualStores(manualStores.length > 1 ? manualStores.filter((_, i) => i !== ci) : [emptyStoreRow()])}
-                                style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 4, background: 'transparent', border: '1px solid rgba(255,80,80,0.3)', color: '#e53e3e', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>
+                                style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 4, background: 'transparent', border: '1px solid rgba(255,80,80,0.3)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>
                                 ×
                               </button>
                             </div>
                             <input placeholder="№ Zakaz"
                               value={col.order}
                               onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], order: e.target.value }; setManualStores(u); }}
-                              style={{ width: '100%', fontSize: 11, padding: '4px 5px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
+                              style={{ width: '100%', fontSize: 11, padding: '4px 5px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
                           </div>
                         </th>
                       ))}
@@ -2148,9 +2258,9 @@ export default function Home() {
                     {catalog.map((p) => {
                       const defaultPrice = Math.round(p.price * 1.12 * 100) / 100;
                       return (
-                        <tr key={p.sku} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <tr key={p.sku} style={{ borderBottom: '1px solid rgba(var(--hi-rgb),0.05)' }}>
                           {/* Product info — sticky left */}
-                          <td style={{ padding: '6px 10px', fontSize: 12, background: 'var(--card)', position: 'sticky', left: 0, zIndex: 1, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
+                          <td style={{ padding: '6px 10px', fontSize: 12, background: 'var(--card)', position: 'sticky', left: 0, zIndex: 1, borderRight: '1px solid rgba(var(--hi-rgb),0.08)' }}>
                             <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170 }}>{p.name}</div>
                             <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
                               {defaultPrice.toLocaleString('ru-RU')} so&apos;m · {p.unit}
@@ -2175,7 +2285,7 @@ export default function Home() {
                                     <input type="number" min={0} placeholder="0"
                                       value={qtyVal}
                                       onChange={(e) => updateCell('qty', e.target.value)}
-                                      style={{ flex: 1, fontSize: 13, padding: '3px 5px', textAlign: 'center', background: 'rgba(255,255,255,0.06)', border: hasQty ? '1px solid rgba(110,231,183,0.4)' : '1px solid rgba(255,255,255,0.12)', borderRadius: 6, color: 'inherit', outline: 'none', fontFamily: 'var(--mono)' }} />
+                                      style={{ flex: 1, fontSize: 13, padding: '3px 5px', textAlign: 'center', background: 'rgba(var(--hi-rgb),0.06)', border: hasQty ? '1px solid rgba(110,231,183,0.4)' : '1px solid rgba(var(--hi-rgb),0.12)', borderRadius: 6, color: 'inherit', outline: 'none', fontFamily: 'var(--mono)' }} />
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                     <span style={{ fontSize: 10, color: 'var(--muted)', width: 26, flexShrink: 0 }}>narx</span>
@@ -2183,7 +2293,7 @@ export default function Home() {
                                       placeholder={String(defaultPrice)}
                                       value={priceVal}
                                       onChange={(e) => updateCell('price', e.target.value)}
-                                      style={{ flex: 1, fontSize: 11, padding: '3px 5px', textAlign: 'right', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, color: priceVal && parseNum(priceVal) !== defaultPrice ? '#fbbf24' : 'var(--muted)', outline: 'none', fontFamily: 'var(--mono)' }} />
+                                      style={{ flex: 1, fontSize: 11, padding: '3px 5px', textAlign: 'right', background: 'rgba(var(--hi-rgb),0.04)', border: '1px solid rgba(var(--hi-rgb),0.08)', borderRadius: 6, color: priceVal && parseNum(priceVal) !== defaultPrice ? '#fbbf24' : 'var(--muted)', outline: 'none', fontFamily: 'var(--mono)' }} />
                                   </div>
                                 </div>
                               </td>
@@ -2365,17 +2475,10 @@ function Tab({
   badge?: number;
 }) {
   return (
-    <button className={active ? 'navitem active' : 'navitem'} type="button" onClick={onClick} style={{ position: 'relative' }}>
+    <button className={active ? 'navitem active' : 'navitem'} type="button" onClick={onClick}>
       <span className="navicon">{icon}</span>
       <span className="navlabel">{label}</span>
-      {badge ? (
-        <span style={{
-          position: 'absolute', top: 4, right: 4,
-          background: '#e53e3e', color: '#fff',
-          fontSize: 10, fontWeight: 700, lineHeight: 1,
-          borderRadius: 10, padding: '2px 5px', minWidth: 16, textAlign: 'center',
-        }}>{badge}</span>
-      ) : null}
+      {badge ? <span className="navbadge">{badge}</span> : null}
     </button>
   );
 }
@@ -2393,7 +2496,7 @@ function PaneHead({
     <div className="paneHead">
       <div>
         <h2>{title}</h2>
-        {meta && <span>{meta}</span>}
+        {meta && <span className="paneMeta">{meta}</span>}
       </div>
       {actions && <div className="paneActions">{actions}</div>}
     </div>
@@ -2600,17 +2703,17 @@ function AnalyticsPane({
   const DateControls = (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
       <input type="date" value={savdoFrom} onChange={(e) => setSavdoFrom(e.target.value)}
-        style={{ width: 130, fontSize: 13, padding: '5px 8px', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'inherit' }} />
+        style={{ width: 130, fontSize: 13, padding: '5px 8px', background: 'rgba(var(--hi-rgb),0.06)', border: '0.5px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'inherit' }} />
       <span style={{ color: 'var(--muted)', fontSize: 13 }}>—</span>
       <input type="date" value={savdoTo} onChange={(e) => setSavdoTo(e.target.value)}
-        style={{ width: 130, fontSize: 13, padding: '5px 8px', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'inherit' }} />
+        style={{ width: 130, fontSize: 13, padding: '5px 8px', background: 'rgba(var(--hi-rgb),0.06)', border: '0.5px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'inherit' }} />
       {tab === 'savdo' && (
         <>
           <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
-            style={{ fontSize: 12, padding: '5px 12px', background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'var(--ink)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            style={{ fontSize: 12, padding: '5px 12px', background: 'rgba(var(--hi-rgb),0.08)', border: '0.5px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'var(--ink)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <RefreshCcw size={12} /> {savdoBusy ? '…' : 'Yuklash'}
           </button>
-          <label style={{ fontSize: 12, padding: '5px 12px', background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'var(--muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, position: 'relative', overflow: 'hidden' }}>
+          <label style={{ fontSize: 12, padding: '5px 12px', background: 'rgba(var(--hi-rgb),0.08)', border: '0.5px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'var(--muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, position: 'relative', overflow: 'hidden' }}>
             <FileText size={12} /> {savdoUploading ? '…' : 'Vazvrat Excel'}
             <input type="file" accept=".xlsx,.xls" style={{ position: 'absolute', opacity: 0, inset: 0, cursor: 'pointer' }}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleVazvratExcel(f); e.target.value = ''; }} />
@@ -2659,7 +2762,7 @@ function AnalyticsPane({
             {filteredMarkets.map((m) => (
               <div key={m.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px,160px) 1fr 86px', gap: 8, alignItems: 'center', fontSize: 13 }}>
                 <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.label)}</span>
-                <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 14, overflow: 'hidden' }}>
+                <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 14, overflow: 'hidden' }}>
                   <div style={{ width: `${(m.sum / fMaxMarketSum) * 100}%`, height: '100%', background: 'var(--berry)', borderRadius: 4 }} />
                 </div>
                 <span className="mono" style={{ textAlign: 'right', fontSize: 12 }}>{fmt0(m.sum)}</span>
@@ -2691,7 +2794,7 @@ function AnalyticsPane({
                       <td className="right mono">{fmt0(row.givenQty)}</td>
                       <td className="right mono">{fmt0(row.givenSum)}</td>
                       <td style={{ minWidth: 80 }}>
-                        <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
+                        <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
                           <div style={{ width: `${(row.givenQty / fMaxProductQty) * 100}%`, height: '100%', background: 'var(--berry)', borderRadius: 4 }} />
                         </div>
                       </td>
@@ -2724,7 +2827,7 @@ function AnalyticsPane({
                       <td className="right mono">{fmt0(m.qty)}</td>
                       <td className="right mono">{fmt0(m.sum)}</td>
                       <td style={{ minWidth: 80 }}>
-                        <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
+                        <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
                           <div style={{ width: `${(m.sum / fMaxMarketSum) * 100}%`, height: '100%', background: 'var(--honey)', borderRadius: 4 }} />
                         </div>
                       </td>
@@ -2877,7 +2980,7 @@ function AnalyticsPane({
                   </tbody>
                   {dayRows.length > 0 && (
                     <tfoot>
-                      <tr style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                      <tr style={{ borderTop: '1px solid rgba(var(--hi-rgb),0.1)' }}>
                         <td style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 11, padding: '8px 12px' }}>JAMI</td>
                         <td className="right mono" style={{ fontWeight: 700 }}>{sessionsInRange.reduce((s,x)=>s+x.invoiceCount,0)}</td>
                         <td className="right mono" style={{ fontWeight: 700 }}>{fmt0(totBerilgan)}</td>
@@ -3059,13 +3162,6 @@ function StatsPane({
   );
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  new: 'var(--blue)',
-  in_production: 'var(--honey)',
-  delivered: 'var(--ok)',
-  cancelled: 'var(--muted)'
-};
-
 function StatusChip({ status, T = (k: string) => k }: { status: string; T?: (k: string) => string }) {
   const label: Record<string, string> = {
     new: T('ops_status_new'),
@@ -3074,7 +3170,7 @@ function StatusChip({ status, T = (k: string) => k }: { status: string; T?: (k: 
     cancelled: T('ops_status_can'),
   };
   return (
-    <span style={{ color: STATUS_COLORS[status] || 'var(--muted)', fontWeight: 900, fontSize: 12 }}>
+    <span className={`statuschip ${status}`}>
       {label[status] || status}
     </span>
   );
@@ -3231,6 +3327,10 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_docs:'Nakladnoylar', nav_dispatch:'Ekspeditsiya', nav_schedule:'Grafik',
     nav_stats:'Statistika', nav_ops:'Operatsiyalar', nav_clients:'Mijozlar',
     nav_analytics:'Analitika', nav_settings:'Sozlamalar',
+    nav_preferences:'Shaxsiy', pref_theme:'Mavzu', pref_theme_hint:'Yorug‘ yoki tungi ko‘rinish', pref_dark:'Tungi', pref_light:'Yorug‘',
+    pref_bg:'Orqa fon', pref_bg_hint:'Tayyor fon yoki o‘z rangingizni tanlang', pref_bg_custom:'O‘z rangim', pref_reset:'Tiklash',
+    pref_density:'Zichlik', pref_density_hint:'Element va matn o‘lchami', pref_compact:'Ixcham', pref_cozy:'O‘rtacha', pref_comfortable:'Keng',
+    pref_lang:'Til', pref_lang_hint:'Interfeys tili',
     // topbar
     lbl_invoices:'nakl.', lbl_pcs:'dona', lbl_sum:"so'm", lbl_unsaved:'saqlanmagan',
     lbl_logout:'Chiqish', lbl_store:"Do'kon", lbl_driver:'Haydovchi',
@@ -3280,6 +3380,10 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_docs:'Накладные', nav_dispatch:'Экспедиция', nav_schedule:'График',
     nav_stats:'Статистика', nav_ops:'Операции', nav_clients:'Клиенты',
     nav_analytics:'Аналитика', nav_settings:'Настройки',
+    nav_preferences:'Персонализация', pref_theme:'Тема', pref_theme_hint:'Светлый или тёмный режим', pref_dark:'Тёмная', pref_light:'Светлая',
+    pref_bg:'Фон', pref_bg_hint:'Готовый фон или свой цвет', pref_bg_custom:'Свой цвет', pref_reset:'Сбросить',
+    pref_density:'Плотность', pref_density_hint:'Размер элементов и текста', pref_compact:'Компактно', pref_cozy:'Обычно', pref_comfortable:'Просторно',
+    pref_lang:'Язык', pref_lang_hint:'Язык интерфейса',
     lbl_invoices:'накл.', lbl_pcs:'шт', lbl_sum:'сум', lbl_unsaved:'не сохранено',
     lbl_logout:'Выйти', lbl_store:'Магазин', lbl_driver:'Водитель',
     lbl_print:'Печать', lbl_save:'Сохранить', lbl_add:'Добавить',
@@ -3326,6 +3430,10 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_docs:'Invoices', nav_dispatch:'Dispatch', nav_schedule:'Schedule',
     nav_stats:'Statistics', nav_ops:'Operations', nav_clients:'Clients',
     nav_analytics:'Analytics', nav_settings:'Settings',
+    nav_preferences:'Preferences', pref_theme:'Theme', pref_theme_hint:'Light or dark appearance', pref_dark:'Dark', pref_light:'Light',
+    pref_bg:'Background', pref_bg_hint:'Pick a preset or your own color', pref_bg_custom:'Custom color', pref_reset:'Reset',
+    pref_density:'Density', pref_density_hint:'Size of elements and text', pref_compact:'Compact', pref_cozy:'Cozy', pref_comfortable:'Comfortable',
+    pref_lang:'Language', pref_lang_hint:'Interface language',
     lbl_invoices:'inv.', lbl_pcs:'pcs', lbl_sum:'UZS', lbl_unsaved:'unsaved',
     lbl_logout:'Logout', lbl_store:'Store', lbl_driver:'Driver',
     lbl_print:'Print', lbl_save:'Save', lbl_add:'Add',
@@ -3376,13 +3484,15 @@ function tDays(lang: Lang): string[] { return I18N[lang].days as string[]; }
 function tDaysFull(lang: Lang): string[] { return I18N[lang].days_full as string[]; }
 
 // ─── DISPATCH COLORS ──────────────────────────────────────────────────────────
+// Per-route color coding, aligned to the brand palette (blue/pistachio/indigo/
+// honey/berry + one teal) instead of a separate iOS-system palette.
 const DISPATCH_COLORS = [
-  { header:'rgba(10,132,255,0.22)',  text:'#6ab8ff', dot:'#0a84ff',  cell:'rgba(10,132,255,0.10)' },
-  { header:'rgba(48,209,88,0.22)',   text:'#6ee89a', dot:'#30d158',  cell:'rgba(48,209,88,0.10)'  },
-  { header:'rgba(191,90,242,0.22)',  text:'#d494f8', dot:'#bf5af2',  cell:'rgba(191,90,242,0.10)' },
-  { header:'rgba(255,159,10,0.22)',  text:'#ffc55c', dot:'#ff9f0a',  cell:'rgba(255,159,10,0.10)' },
-  { header:'rgba(255,69,58,0.22)',   text:'#ff857e', dot:'#ff453a',  cell:'rgba(255,69,58,0.10)'  },
-  { header:'rgba(94,204,244,0.22)',  text:'#7dd8f8', dot:'#5ac8fa',  cell:'rgba(94,204,244,0.10)' },
+  { header:'rgba(76,155,234,0.22)',  text:'#8fc1f2', dot:'#4c9bea',  cell:'rgba(76,155,234,0.10)' },
+  { header:'rgba(70,191,114,0.22)',  text:'#84d6a3', dot:'#46bf72',  cell:'rgba(70,191,114,0.10)' },
+  { header:'rgba(124,124,230,0.22)', text:'#aaaaf0', dot:'#7c7ce6',  cell:'rgba(124,124,230,0.10)' },
+  { header:'rgba(233,166,58,0.22)',  text:'#f1c074', dot:'#e9a63a',  cell:'rgba(233,166,58,0.10)' },
+  { header:'rgba(232,79,106,0.22)',  text:'#f2929f', dot:'#e84f6a',  cell:'rgba(232,79,106,0.10)' },
+  { header:'rgba(64,191,180,0.22)',  text:'#84d9d1', dot:'#40bfb4',  cell:'rgba(64,191,180,0.10)' },
 ];
 
 // ─── SCHEDULE PANE ───────────────────────────────────────────────────────────
@@ -3515,8 +3625,8 @@ function SchedulePane({
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
                 {notInSchedule.map((s) => (
                   <div key={s.storeCode} style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'rgba(255,255,255,0.4)', minWidth: 60 }}>{s.storeCode}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.75)' }}>{s.market}</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'rgba(var(--hi-rgb),0.4)', minWidth: 60 }}>{s.storeCode}</span>
+                    <span style={{ color: 'rgba(var(--hi-rgb),0.75)' }}>{s.market}</span>
                   </div>
                 ))}
               </div>
@@ -3592,15 +3702,6 @@ function DispatchPane({
   dateIso: string;
   T?: (k: string) => string;
 }) {
-  const DISPATCH_COLORS = [
-    { header:'rgba(10,132,255,0.22)', text:'#6ab8ff', dot:'#0a84ff', cell:'rgba(10,132,255,0.10)' },
-    { header:'rgba(48,209,88,0.22)',  text:'#6ee89a', dot:'#30d158', cell:'rgba(48,209,88,0.10)'  },
-    { header:'rgba(191,90,242,0.22)', text:'#d494f8', dot:'#bf5af2', cell:'rgba(191,90,242,0.10)' },
-    { header:'rgba(255,159,10,0.22)', text:'#ffc55c', dot:'#ff9f0a', cell:'rgba(255,159,10,0.10)' },
-    { header:'rgba(255,69,58,0.22)',  text:'#ff857e', dot:'#ff453a', cell:'rgba(255,69,58,0.10)'  },
-    { header:'rgba(94,204,244,0.22)', text:'#7dd8f8', dot:'#5ac8fa', cell:'rgba(94,204,244,0.10)' },
-  ];
-
   const DEFAULT_DRIVERS = [T('lbl_driver') + ' 1', T('lbl_driver') + ' 2'];
   const [extraDrivers, setExtraDrivers] = useState<string[]>([]);
   const baseDrivers = scheduleDrivers.length > 0 ? scheduleDrivers : DEFAULT_DRIVERS;
@@ -3724,7 +3825,7 @@ function DispatchPane({
             <table className="data dispatchTable">
               <thead>
                 <tr>
-                  <th style={{ minWidth: 220, position: 'sticky', left: 0, zIndex: 4, background: 'rgba(18,18,20,1)' }}>{T('lbl_store')}</th>
+                  <th style={{ minWidth: 220, position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface-hi)' }}>{T('lbl_store')}</th>
                   {drivers.map((d, di) => {
                     const partCount = driverPartCounts[di] ?? 1;
                     const clr = DISPATCH_COLORS[di % DISPATCH_COLORS.length];
@@ -3752,7 +3853,7 @@ function DispatchPane({
                   })}
                 </tr>
                 <tr>
-                  <th style={{ position: 'sticky', left: 0, zIndex: 4, background: 'rgba(18,18,20,1)' }} />
+                  <th style={{ position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface-hi)' }} />
                   {drivers.map((_, di) => {
                     const partCount = driverPartCounts[di] ?? 1;
                     const clr = DISPATCH_COLORS[di % DISPATCH_COLORS.length];
@@ -3780,7 +3881,7 @@ function DispatchPane({
                   return (
                     <tr key={mkt.storeCode}>
                       <td title={`${mkt.storeCode}-${mkt.market.replace(/\s*\/\d+$/, '')}${mkt.defaultDriver ? ' · ' + mkt.defaultDriver : ''}`}
-                        style={{ position: 'sticky', left: 0, zIndex: 2, background: 'rgba(18,18,20,1)', borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+                        style={{ position: 'sticky', left: 0, zIndex: 2, background: 'rgba(18,18,20,1)', borderRight: '1px solid rgba(var(--hi-rgb),0.07)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.2 }}>
                           <span style={{ fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap' }}>
                             {mkt.market.replace(/\s*\/\d+$/, '')}<span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 12 }}> ({mkt.storeCode})</span>
@@ -3810,7 +3911,7 @@ function DispatchPane({
                                 className="dispatch-dot"
                                 style={{
                                   width: 18, height: 18, borderRadius: '50%',
-                                  border: `1.5px solid ${checked ? clr.dot : 'rgba(255,255,255,0.20)'}`,
+                                  border: `1.5px solid ${checked ? clr.dot : 'rgba(var(--hi-rgb),0.20)'}`,
                                   background: checked ? clr.dot : 'transparent',
                                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                   color: '#fff', fontSize: 10, fontWeight: 700, lineHeight: 1,
