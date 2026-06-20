@@ -61,11 +61,15 @@ export class InvoicesController {
   }
 
   @Patch(':invNo/deliver')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   deliver(@Param('invNo') invNo: string, @CurrentUser() user: PublicUser) {
     return this.invoicesService.setStatus(Number(invNo), 'delivered', user);
   }
 
   @Patch(':invNo/undeliver')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   undeliver(
     @Param('invNo') invNo: string,
     @Body() dto: UndeliverDto,

@@ -38,3 +38,8 @@ export class Order {
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
+
+// Analytics/dashboard filter & sort on these fields on every request.
+OrderSchema.index({ createdAt: -1 });
+OrderSchema.index({ deliveryDate: 1 });
+OrderSchema.index({ status: 1, createdAt: -1 });

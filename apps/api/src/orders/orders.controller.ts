@@ -1,8 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+// ListOrdersDto validates/whitelists query params so they cannot carry Mongo operators.
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PublicUser } from '../users/users.types';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { ListOrdersDto } from './dto/list-orders.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrdersService } from './orders.service';
 
@@ -12,13 +14,8 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Get()
-  list(
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo') dateTo?: string,
-    @Query('customer') customer?: string,
-    @Query('status') status?: string
-  ) {
-    return this.ordersService.list({ dateFrom, dateTo, customer, status });
+  list(@Query() query: ListOrdersDto) {
+    return this.ordersService.list(query);
   }
 
   @Get(':id')

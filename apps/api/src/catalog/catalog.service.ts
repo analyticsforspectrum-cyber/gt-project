@@ -64,10 +64,12 @@ export class CatalogService implements OnModuleInit {
     for (const row of rows) {
       if (row.sku && row.price > 0) latest.set(row.sku, row.price);
     }
-    await Promise.all(
-      [...latest.entries()].map(([sku, price]) =>
-        this.productModel.updateOne({ sku }, { $set: { price } }).exec()
-      )
+    if (!latest.size) return;
+    // Single round-trip instead of one updateOne per SKU.
+    await this.productModel.bulkWrite(
+      [...latest.entries()].map(([sku, price]) => ({
+        updateOne: { filter: { sku }, update: { $set: { price } } }
+      }))
     );
   }
 

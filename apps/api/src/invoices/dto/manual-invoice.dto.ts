@@ -10,7 +10,6 @@ import {
   Min,
   ValidateNested
 } from 'class-validator';
-import { Invoice } from '../../common/types/invoice.types';
 
 class ManualQuantityDto {
   @IsString()
@@ -58,9 +57,6 @@ export class ManualInvoiceDto {
   @IsNumber()
   @Min(0)
   startId: number;
-
-  @IsOptional()
-  existingInvoices?: Invoice[];
 
   @IsArray()
   @ValidateNested({ each: true })

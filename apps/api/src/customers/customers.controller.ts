@@ -26,11 +26,15 @@ export class CustomersController {
   }
 
   @Post()
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   create(@Body() dto: CreateCustomerDto) {
     return this.customersService.create(dto);
   }
 
   @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
     return this.customersService.update(id, dto);
   }

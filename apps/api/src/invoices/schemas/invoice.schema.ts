@@ -84,3 +84,5 @@ export const InvoiceSchema = SchemaFactory.createForClass(Invoice);
 InvoiceSchema.index({ dateIso: 1, status: 1 });
 // Compound index for dispatch/schedule store lookups
 InvoiceSchema.index({ storeCode: 1, dateIso: 1 });
+// userAnalytics aggregates by createdAt + createdBy.
+InvoiceSchema.index({ createdAt: 1 });

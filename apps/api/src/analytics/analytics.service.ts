@@ -5,21 +5,40 @@ import { Order, OrderDocument } from '../orders/schemas/order.schema';
 import { Invoice, InvoiceDocument } from '../invoices/schemas/invoice.schema';
 import { InventoryMovement, InventoryMovementDocument } from '../inventory/schemas/movement.schema';
 
+// Business timezone (Asia/Tashkent, UTC+5). All day/week/month boundaries are
+// computed in this zone so they don't shift with the server's UTC offset.
+const TZ_OFFSET_MIN = 300;
+
+// `new Date()` shifted into the business zone, so UTC getters read wall-clock time there.
+function zonedNow(): Date {
+  return new Date(Date.now() + TZ_OFFSET_MIN * 60000);
+}
+
+function isoDay(zoned: Date): string {
+  return zoned.toISOString().slice(0, 10);
+}
+
+// The real UTC instant corresponding to local-midnight of a business-zone day string.
+// Used for createdAt/updatedAt (Date) comparisons.
+function zonedDayStart(isoDate: string): Date {
+  return new Date(new Date(`${isoDate}T00:00:00.000Z`).getTime() - TZ_OFFSET_MIN * 60000);
+}
+
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return isoDay(zonedNow());
 }
 
 function startOfWeek() {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  return d.toISOString().slice(0, 10);
+  const z = zonedNow();
+  const day = z.getUTCDay();
+  const diff = z.getUTCDate() - day + (day === 0 ? -6 : 1);
+  z.setUTCDate(diff);
+  return isoDay(z);
 }
 
 function startOfMonth() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  const z = zonedNow();
+  return `${z.getUTCFullYear()}-${String(z.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
 @Injectable()
@@ -40,12 +59,12 @@ export class AnalyticsService {
       ordersThisWeek, ordersThisMonth,
       revenueToday, revenueWeek, revenueMonth
     ] = await Promise.all([
-      this.orderModel.countDocuments({ createdAt: { $gte: new Date(today) } }),
+      this.orderModel.countDocuments({ createdAt: { $gte: zonedDayStart(today) } }),
       this.invoiceModel.countDocuments({ dateIso: today }),
-      this.orderModel.countDocuments({ status: 'delivered', updatedAt: { $gte: new Date(today) } }),
+      this.orderModel.countDocuments({ status: 'delivered', updatedAt: { $gte: zonedDayStart(today) } }),
       this.orderModel.countDocuments({ status: { $in: ['new', 'in_production'] } }),
-      this.orderModel.countDocuments({ createdAt: { $gte: new Date(weekStart) } }),
-      this.orderModel.countDocuments({ createdAt: { $gte: new Date(monthStart) } }),
+      this.orderModel.countDocuments({ createdAt: { $gte: zonedDayStart(weekStart) } }),
+      this.orderModel.countDocuments({ createdAt: { $gte: zonedDayStart(monthStart) } }),
       this.invoiceModel.aggregate([
         { $match: { dateIso: today } },
         { $group: { _id: null, total: { $sum: '$sumTotal' }, qty: { $sum: '$sumQty' } } }

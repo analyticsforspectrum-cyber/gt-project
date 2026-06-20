@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CatalogService } from '../catalog/catalog.service';
@@ -45,16 +45,13 @@ export class InvoicesService {
     }
     if (dto.manual !== undefined) invoice.manual = dto.manual;
     if (dto.lines !== undefined) {
-      invoice.lines = dto.lines.map((line) => ({
-        ...line,
-        cost: Math.round(line.qty * line.price * 100) / 100,
-        vat: Math.round(line.qty * line.price * 0.12 * 100) / 100,
-        total: Math.round(line.qty * line.price * 1.12 * 100) / 100
-      }));
-      invoice.sumCost = Math.round(invoice.lines.reduce((sum, line) => sum + line.cost, 0) * 100) / 100;
-      invoice.sumVat = Math.round(invoice.lines.reduce((sum, line) => sum + line.vat, 0) * 100) / 100;
-      invoice.sumTotal = Math.round((invoice.sumCost + invoice.sumVat) * 100) / 100;
-      invoice.sumQty = invoice.lines.reduce((sum, line) => sum + line.qty, 0);
+      // Route through the engine so edits round cost/vat/total identically to generation.
+      invoice.lines = dto.lines.map((line) => this.engine.buildLineFromInput(line));
+      const totals = this.engine.recompute({ lines: invoice.lines } as InvoiceType);
+      invoice.sumCost = totals.sumCost;
+      invoice.sumVat = totals.sumVat;
+      invoice.sumTotal = totals.sumTotal;
+      invoice.sumQty = totals.sumQty;
     }
     if (dto.status !== undefined) invoice.status = dto.status;
     invoice.updatedBy = user.id;
@@ -71,21 +68,36 @@ export class InvoicesService {
   }
 
   async persistInvoices(invoices: InvoiceType[], user: PublicUser) {
-    await Promise.all(
-      invoices.map((invoice) => {
+    if (!invoices.length) return;
+    // Never silently overwrite the financial data of an invoice that was
+    // explicitly cancelled — a re-generate must not resurrect its line totals.
+    const existing = await this.invoiceModel
+      .find({ invNo: { $in: invoices.map((i) => i.invNo) } }, { invNo: 1, status: 1 })
+      .lean()
+      .exec();
+    const cancelled = new Set(existing.filter((e) => e.status === 'cancelled').map((e) => e.invNo));
+
+    const ops = invoices
+      .filter((invoice) => !cancelled.has(invoice.invNo))
+      .map((invoice) => {
         const { invNo, order, storeCode, short, seq, market, label, address, dateIso, manual, lines, sumCost, sumVat, sumTotal, sumQty } = invoice;
-        return this.invoiceModel.updateOne(
-          { invNo },
-          {
-            // Data fields always refreshed so re-generate picks up SAP changes
-            $set: { order, storeCode, short, seq, market, label, address, dateIso, manual, lines, sumCost, sumVat, sumTotal, sumQty, updatedBy: user.id },
-            // Status and createdBy only written on first insert (preserves manual status changes)
-            $setOnInsert: { status: 'delivered', createdBy: user.id }
-          },
-          { upsert: true }
-        ).exec();
-      })
-    );
+        return {
+          updateOne: {
+            filter: { invNo },
+            update: {
+              // Data fields always refreshed so re-generate picks up SAP changes
+              $set: { order, storeCode, short, seq, market, label, address, dateIso, manual, lines, sumCost, sumVat, sumTotal, sumQty, updatedBy: user.id },
+              // Status and createdBy only written on first insert; new invoices
+              // start in the normal 'saved' workflow state, not 'delivered'.
+              $setOnInsert: { status: 'saved', createdBy: user.id }
+            },
+            upsert: true
+          }
+        };
+      });
+
+    // Single round-trip instead of one updateOne per invoice.
+    if (ops.length) await this.invoiceModel.bulkWrite(ops as never, { ordered: false });
   }
 
   async generate(dto: GenerateInvoicesDto, user: PublicUser) {
@@ -96,13 +108,14 @@ export class InvoicesService {
     await this.persistInvoices(invoices, user);
     // Re-fetch from DB so returned invoices have actual status (e.g., 'delivered')
     const savedInvoices = await this.invoiceModel
-      .find({ invNo: { $in: invoices.map((i) => i.invNo) } })
+      .find({ invNo: { $in: invoices.map((i) => i.invNo) } }, { invNo: 1, status: 1 })
       .lean()
       .exec();
-    const invoicesWithStatus = invoices.map((inv) => {
-      const db = savedInvoices.find((d) => d.invNo === inv.invNo);
-      return db ? { ...inv, status: db.status } : { ...inv, status: 'saved' as const };
-    });
+    const statusByInvNo = new Map(savedInvoices.map((d) => [d.invNo, d.status]));
+    const invoicesWithStatus = invoices.map((inv) => ({
+      ...inv,
+      status: statusByInvNo.get(inv.invNo) ?? ('saved' as const)
+    }));
     const snapshot = this.engine.snapshot({
       invoiceDate: dto.dateIso,
       startId: dto.startId,
@@ -164,18 +177,42 @@ export class InvoicesService {
 
   async manual(dto: ManualInvoiceDto, user: PublicUser) {
     const catalog = await this.catalogService.list();
-    // C2: compute maxNo and seq from DB — never trust client-provided existingInvoices
-    const [latestInvoice, sameStoreInvoices] = await Promise.all([
-      this.invoiceModel.findOne({}, { invNo: 1 }).sort({ invNo: -1 }).lean().exec(),
-      this.invoiceModel.find({ storeCode: dto.storeCode }, { invNo: 1, storeCode: 1 }).lean().exec(),
-    ]);
-    const safeStartId = Math.max(latestInvoice?.invNo ?? 0, dto.startId);
-    const invoice = this.engine.buildManualInvoice(catalog, {
-      ...dto,
-      startId: safeStartId,
-      existingInvoices: sameStoreInvoices as any, // only invNo+storeCode needed for seq
-    });
-    await this.persistInvoices([invoice], user);
-    return { invoice, catalog };
+    // Never trust client-provided existingInvoices — only invNo+storeCode are needed for seq.
+    const sameStoreInvoices = await this.invoiceModel
+      .find({ storeCode: dto.storeCode }, { invNo: 1, storeCode: 1 })
+      .lean()
+      .exec();
+
+    // Allocate the invoice number atomically: recompute the next number from the
+    // current DB max and insert. The unique index on invNo rejects a colliding
+    // concurrent insert, on which we retry with a freshly-read max. This prevents
+    // two concurrent requests from silently overwriting each other's invoice.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const latestInvoice = await this.invoiceModel
+        .findOne({}, { invNo: 1 })
+        .sort({ invNo: -1 })
+        .lean()
+        .exec();
+      const safeStartId = Math.max(latestInvoice?.invNo ?? 0, dto.startId);
+      const invoice = this.engine.buildManualInvoice(catalog, {
+        ...dto,
+        startId: safeStartId,
+        existingInvoices: sameStoreInvoices as any,
+      });
+      try {
+        await this.invoiceModel.create({
+          ...invoice,
+          status: 'saved',
+          createdBy: user.id,
+          updatedBy: user.id,
+        });
+        return { invoice, catalog };
+      } catch (err) {
+        // 11000 = duplicate key on invNo → another request took this number; retry.
+        if ((err as { code?: number }).code === 11000 && attempt < 4) continue;
+        throw err;
+      }
+    }
+    throw new ConflictException('Could not allocate a unique invoice number, please retry');
   }
 }

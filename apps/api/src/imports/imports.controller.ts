@@ -4,9 +4,12 @@ import * as multer from 'multer';
 import { Request } from 'express';
 import * as XLSX from 'xlsx';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PublicUser } from '../users/users.types';
 import { AuditService } from '../audit/audit.service';
+import { CreateImportDto } from './dto/create-import.dto';
 import { ImportsService } from './imports.service';
 
 @Controller('imports')
@@ -23,9 +26,11 @@ export class ImportsController {
   }
 
   @Post()
-  create(@Body() input: { fileName: string; importedRecords: number; errors: number; errorDetails?: Record<string, unknown>[] }, @CurrentUser() user: PublicUser) {
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  create(@Body() dto: CreateImportDto, @CurrentUser() user: PublicUser) {
     return this.importsService.create({
-      ...input,
+      ...dto,
       userId: user.id
     });
   }

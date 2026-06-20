@@ -175,19 +175,38 @@ export class InvoiceEngineService {
   }
 
   lineFrom(product: CatalogProduct, qty: number, init: number, price?: number): InvoiceLine {
-    const resolvedPrice = price && price > 0 ? price : product.price || 0;
-    const cost = this.round2(qty * resolvedPrice);
+    // Treat an explicit price of 0 as a real override (e.g. free/promo item);
+    // only fall back to the catalog price when no override was supplied.
+    const resolvedPrice = price != null && price >= 0 ? price : product.price || 0;
+    return {
+      ...this.buildLineFromInput({
+        sku: product.sku,
+        name: product.name,
+        unit: product.unit,
+        qty,
+        price: resolvedPrice
+      }),
+      init
+    };
+  }
+
+  /**
+   * Canonical per-line money computation. All code paths (generate, manual,
+   * edit) must go through this so cost/vat/total round identically.
+   */
+  buildLineFromInput(input: { sku: string; name: string; unit: string; qty: number; price: number }): InvoiceLine {
+    const cost = this.round2(input.qty * input.price);
     const vat = this.round2(cost * VAT);
     return {
-      sku: product.sku,
-      name: product.name,
-      unit: product.unit,
-      qty,
-      price: resolvedPrice,
+      sku: input.sku,
+      name: input.name,
+      unit: input.unit,
+      qty: input.qty,
+      price: input.price,
       cost,
       vat,
       total: this.round2(cost + vat),
-      init
+      init: input.qty
     };
   }
 

@@ -9,9 +9,14 @@ import { Order, OrderDocument, OrderStatus } from './schemas/order.schema';
 export class OrdersService {
   constructor(@InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>) {}
 
+  private static escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   async list(filters?: { dateFrom?: string; dateTo?: string; customer?: string; status?: string }): Promise<Order[]> {
     const query: Record<string, unknown> = {};
-    if (filters?.customer) query.customer = { $regex: filters.customer, $options: 'i' };
+    // Escape regex metacharacters so user input can't inject a pattern (ReDoS / `.*` enumeration).
+    if (filters?.customer) query.customer = { $regex: OrdersService.escapeRegex(filters.customer), $options: 'i' };
     if (filters?.status) query.status = filters.status;
     if (filters?.dateFrom || filters?.dateTo) {
       query.deliveryDate = {};

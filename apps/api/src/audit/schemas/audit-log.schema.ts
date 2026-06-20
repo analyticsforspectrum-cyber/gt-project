@@ -41,3 +41,9 @@ export class AuditLog {
 }
 
 export const AuditLogSchema = SchemaFactory.createForClass(AuditLog);
+
+// Audit history is browsed newest-first and filtered by user/action; without
+// these the unbounded log forces a full collection scan on every read.
+AuditLogSchema.index({ createdAt: -1 });
+AuditLogSchema.index({ userId: 1, createdAt: -1 });
+AuditLogSchema.index({ action: 1, createdAt: -1 });
