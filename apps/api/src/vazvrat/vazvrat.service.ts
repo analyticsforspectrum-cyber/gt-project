@@ -108,4 +108,14 @@ export class VazvratService {
 
     return Object.values(map).sort((a, b) => (b.berilganSum - b.vazvratSum) - (a.berilganSum - a.vazvratSum));
   }
+
+  async deleteByDate(date: string) {
+    const result = await this.vazvratModel.deleteMany({ date }).exec();
+    return { ok: true, deleted: result.deletedCount };
+  }
+
+  async deleteAll() {
+    const result = await this.vazvratModel.deleteMany({}).exec();
+    return { ok: true, deleted: result.deletedCount };
+  }
 }

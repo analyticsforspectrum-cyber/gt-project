@@ -87,9 +87,8 @@ export class InvoicesService {
             update: {
               // Data fields always refreshed so re-generate picks up SAP changes
               $set: { order, storeCode, short, seq, market, label, address, dateIso, manual, lines, sumCost, sumVat, sumTotal, sumQty, updatedBy: user.id },
-              // Status and createdBy only written on first insert; new invoices
-              // start in the normal 'saved' workflow state, not 'delivered'.
-              $setOnInsert: { status: 'saved', createdBy: user.id }
+              // New invoices start as 'delivered' — user turns OFF if needed.
+              $setOnInsert: { status: 'delivered', createdBy: user.id }
             },
             upsert: true
           }
@@ -202,7 +201,7 @@ export class InvoicesService {
       try {
         await this.invoiceModel.create({
           ...invoice,
-          status: 'saved',
+          status: 'delivered',
           createdBy: user.id,
           updatedBy: user.id,
         });

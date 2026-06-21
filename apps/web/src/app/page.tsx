@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
@@ -9,11 +9,13 @@ import {
   FileText,
   Grid3x3,
   LogOut,
-  Map,
+  Map as MapIcon,
   Plus,
   Printer,
+  QrCode,
   RefreshCcw,
   Save,
+  ScrollText,
   Search,
   Settings,
   Palette,
@@ -26,6 +28,7 @@ import {
   Users
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { downloadBarcodePdf } from '@/lib/barcodePdf';
 import {
   amountWords,
   buildSnapshot,
@@ -58,7 +61,7 @@ import {
 } from '@/types/domain';
 
 type View = 'register' | 'matrix' | 'documents' | 'stats' | 'settings' | 'operations' | 'customers' | 'analytics' | 'orders' | 'schedule' | 'dispatch' | 'undelivered' | 'preferences';
-type SettingsView = 'catalog' | 'requisites' | 'sessions' | 'users' | 'exceptions';
+type SettingsView = 'catalog' | 'requisites' | 'sessions' | 'users' | 'exceptions' | 'doverennost';
 type Theme = 'dark' | 'light';
 type Density = 'compact' | 'cozy' | 'comfortable';
 
@@ -105,15 +108,23 @@ export default function Home() {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [sapRaw, setSapRaw] = useState('');
-  const [startId, setStartId] = useState(16300);
+  const [startId, setStartId] = useState(() => {
+    if (typeof window === 'undefined') return 16300;
+    const saved = localStorage.getItem('gdetort_last_inv_no');
+    return saved ? Number(saved) + 1 : 16300;
+  });
   const [dateIso, setDateIso] = useState(todayIso());
+  const [filterDate, setFilterDate] = useState('');
   const [sessionSuffix, setSessionSuffix] = useState('');
+  const [ordersTab, setOrdersTab] = useState<'import' | 'history'>('import');
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [catalogDraft, setCatalogDraft] = useState<CatalogProduct[]>([]);
   const [requisites, setRequisites] = useState<Requisites>(DEFAULT_REQUISITES);
   const [requisitesDraft, setRequisitesDraft] = useState<Requisites>(DEFAULT_REQUISITES);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [allDbInvoices, setAllDbInvoices] = useState<Invoice[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [vazvratAllRows, setVazvratAllRows] = useState<import('@/types/domain').VazvratRecord[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [imports, setImports] = useState<ImportRecord[]>([]);
@@ -141,6 +152,7 @@ export default function Home() {
   const [xlsWorkbook, setXlsWorkbook] = useState<any>(null);
   const [invoiceDetail, setInvoiceDetail] = useState<Invoice | null>(null);
   const [undeliverModal, setUndeliverModal] = useState<{ invNo: number; comment: string } | null>(null);
+  const [undeliveredFilter, setUndeliveredFilter] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [restoreModal, setRestoreModal] = useState<{
     invNo: number;
     date: string;
@@ -173,7 +185,7 @@ export default function Home() {
     typeof window !== 'undefined' ? ((localStorage.getItem('lang') as 'uz' | 'ru' | 'en') || 'uz') : 'uz'
   );
   const [theme, setTheme] = useState<Theme>(() =>
-    typeof window !== 'undefined' ? ((localStorage.getItem('pref_theme') as Theme) || 'dark') : 'dark'
+    typeof window !== 'undefined' ? ((localStorage.getItem('pref_theme') as Theme) || 'light') : 'light'
   );
   const [density, setDensity] = useState<Density>(() =>
     typeof window !== 'undefined' ? ((localStorage.getItem('pref_density') as Density) || 'cozy') : 'cozy'
@@ -181,6 +193,64 @@ export default function Home() {
   const [appBg, setAppBg] = useState<string>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('pref_bg') || '') : ''
   );
+
+  // Ishonchnoma (power of attorney) fields
+  const [dovFields, setDovFields] = useState(() => {
+    if (typeof window === 'undefined') return { driver: '', prava: '', car: '', plate: '', validUntil: '', director: '', company: '', address: '' };
+    const s = localStorage.getItem('dov_fields');
+    return s ? JSON.parse(s) : { driver: '', prava: '', car: '', plate: '', validUntil: '', director: '', company: '', address: '' };
+  });
+  const setDov = (key: string, val: string) => {
+    setDovFields((prev: typeof dovFields) => {
+      const next = { ...prev, [key]: val };
+      localStorage.setItem('dov_fields', JSON.stringify(next));
+      return next;
+    });
+  };
+  const [dovHistory, setDovHistory] = useState<any[]>(() =>
+    typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('dov_history') || '[]') : []
+  );
+  const [histTab, setHistTab] = useState<'nakl' | 'dov'>('nakl');
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const toggleDateGroup = (key: string) => setExpandedDates(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  const printDov = () => {
+    const entry = { ...dovFields, printedAt: new Date().toISOString() };
+    const hist = [entry, ...dovHistory].slice(0, 20);
+    setDovHistory(hist);
+    localStorage.setItem('dov_history', JSON.stringify(hist));
+
+    const w = window.open('', '_blank', 'width=794,height=1123');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      body{font-family:'Times New Roman',serif;font-size:14pt;margin:0;padding:40px 60px;line-height:1.6;color:#000}
+      .center{text-align:center}.bold{font-weight:bold}.right{text-align:right}
+      .title{font-size:18pt;font-weight:bold;letter-spacing:4px;margin:30px 0 10px}
+      .field{border-bottom:1px solid #000;display:inline-block;min-width:200px;padding:0 4px}
+      p{margin:8px 0}
+      .sign{margin-top:60px;display:flex;justify-content:space-between}
+      @media print{body{padding:20px 40px}@page{size:A4;margin:20mm}}
+    </style></head><body>
+    <div class="right"><b>${dovFields.company || 'MCHJ «_________»'}</b><br>
+    ${dovFields.address || ''}<br>
+    Ish. №____<br>
+    ${dovFields.validUntil ? `от ${new Date(dovFields.validUntil).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' })} г.` : 'от __________ г.'} г. Ташкент</div>
+    <div class="center title">Д О В Е Р Е Н Н О С Т Ь</div>
+    <p>Настоящей доверенностью руководство <b>${dovFields.company || '___________'}</b> уполномочивает водителя
+    <b>${dovFields.driver || '______________________________'}</b> экспедитора
+    владельцу прав <b>${dovFields.prava || '__________'}</b>
+    направо пользования автомобилем <b>«${dovFields.car || '_____'}»</b>
+    гос. номер <b>${dovFields.plate || '____________'}</b></p>
+    <p>Доверенность действительна до <b>${dovFields.validUntil ? new Date(dovFields.validUntil).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' }) : '__________'}</b> года.</p>
+    <div class="sign">
+      <div>Генеральный директор</div>
+      <div>${dovFields.director || '_________________________'}</div>
+    </div>
+    </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 400);
+  };
   // Apply visual preferences to <html> so all token-based styling reacts.
   useEffect(() => {
     const root = document.documentElement;
@@ -214,21 +284,31 @@ export default function Home() {
     role: 'user' as 'admin' | 'user'
   });
 
+  // Available dates from all invoices (for the date filter pill bar)
+  const availableDates = useMemo(() =>
+    [...new Set(invoices.map((i) => i.dateIso))].sort().reverse(),
+  [invoices]);
+
+  // Invoices filtered by selected date (empty = show all)
+  const filteredInvoices = useMemo(() =>
+    filterDate ? invoices.filter((i) => i.dateIso === filterDate) : invoices,
+  [invoices, filterDate]);
+
   const selectedInvoices = useMemo(() => {
-    if (!selected.size) return invoices;
-    return invoices.filter((invoice) => selected.has(invoice.invNo));
-  }, [invoices, selected]);
+    if (!selected.size) return filteredInvoices;
+    return filteredInvoices.filter((invoice) => selected.has(invoice.invNo));
+  }, [filteredInvoices, selected]);
 
   const totals = useMemo(
     () => {
-      const active = invoices.filter((inv) => inv.status === 'delivered');
+      const active = filteredInvoices.filter((inv) => inv.status === 'delivered');
       return {
-        count: invoices.filter((inv) => inv.status !== 'cancelled').length,
+        count: filteredInvoices.filter((inv) => inv.status !== 'cancelled').length,
         qty: active.reduce((sum, inv) => sum + inv.sumQty, 0),
         sum: active.reduce((sum, inv) => sum + inv.sumTotal, 0),
       };
     },
-    [invoices]
+    [filteredInvoices]
   );
 
   const showToast = useCallback((kind: NonNullable<Toast>['kind'], text: string) => {
@@ -238,7 +318,7 @@ export default function Home() {
 
   const loadCore = useCallback(
     async (authToken: string, role?: string) => {
-      const [catalogResult, requisitesResult, sessionsResult, ordersResult, inventoryResult, importsResult, auditResult, customersResult, statsResult] = await Promise.all([
+      const [catalogResult, requisitesResult, sessionsResult, ordersResult, inventoryResult, importsResult, auditResult, customersResult, statsResult, vazvratAll] = await Promise.all([
         api.catalog(authToken),
         api.requisites(authToken),
         api.sessions(authToken),
@@ -248,12 +328,14 @@ export default function Home() {
         role === 'admin' ? api.auditLogs(authToken) : Promise.resolve([] as AuditLog[]),
         api.customers(authToken),
         api.dashboardStats(authToken).catch(() => null),
+        api.queryVazvrat(authToken, '2020-01-01', new Date().toISOString().slice(0, 10)).catch(() => [] as import('@/types/domain').VazvratRecord[]),
       ]);
       setCatalog(catalogResult);
       setCatalogDraft(catalogResult);
       setRequisites(requisitesResult || DEFAULT_REQUISITES);
       setRequisitesDraft(requisitesResult || DEFAULT_REQUISITES);
       setSessions(sessionsResult);
+      setVazvratAllRows(vazvratAll);
       setOrders(ordersResult);
       setInventoryMovements(inventoryResult);
       setImports(importsResult);
@@ -276,6 +358,7 @@ export default function Home() {
             // Sync DB statuses on top of snapshot
             try {
               const dbInvoices = await api.invoices(authToken);
+              setAllDbInvoices(dbInvoices);
               const statusMap: Record<number, Invoice['status']> = {};
               for (const d of dbInvoices) statusMap[d.invNo] = d.status;
               setInvoices((prev) => prev.map((inv) => ({ ...inv, status: statusMap[inv.invNo] ?? inv.status ?? 'saved' })));
@@ -345,8 +428,12 @@ export default function Home() {
 
   async function refreshSessions(authToken = token) {
     if (!authToken) return;
-    const result = await api.sessions(authToken);
-    setSessions(result);
+    try {
+      const result = await api.sessions(authToken);
+      setSessions(result);
+    } catch {
+      // ignore auth errors (token expired etc.)
+    }
   }
 
   async function generateInvoices(overrideSap?: string) {
@@ -393,6 +480,12 @@ export default function Home() {
         name: sessionName
       });
       setUnsaved(false);
+      // Track last used invNo for auto-increment
+      if (nextInvoices.length) {
+        const maxInvNo = Math.max(...nextInvoices.map(i => i.invNo));
+        localStorage.setItem('gdetort_last_inv_no', String(maxInvNo));
+        setStartId(maxInvNo + 1);
+      }
       await refreshSessions();
       if (!silent) showToast('ok', 'Сессия сохранена');
     } catch (error) {
@@ -470,7 +563,7 @@ export default function Home() {
       await saveCurrentSession(currentInvoices, lastCatalog, true);
       showToast('ok', addedNos.length === 1
         ? `Накладная № ${addedNos[0]} добавлена`
-        : `${addedNos.length} ta nakladnoy qo'shildi: №${addedNos.join(', №')}`);
+        : `${addedNos.length} ta hujjat qo'shildi: №${addedNos.join(', №')}`);
     } catch (error) {
       showToast('err', getError(error));
     } finally {
@@ -495,15 +588,22 @@ export default function Home() {
     try {
       const session = await api.session(token, invoiceDate);
       restoreSnapshot(session.snapshot);
-      // Sync delivered status from DB
+      // Sync status + undeliverComment + undeliveredAt from DB
       try {
         const dbInvoices = await api.invoices(token);
-        const statusByInvNo: Record<number, Invoice['status']> = {};
-        for (const dbInv of dbInvoices) { statusByInvNo[dbInv.invNo] = dbInv.status; }
-        setInvoices((prev) => prev.map((inv) => ({
-          ...inv,
-          status: statusByInvNo[inv.invNo] ?? inv.status ?? 'saved'
-        })));
+        setAllDbInvoices(dbInvoices);
+        const dbByInvNo: Record<number, Invoice> = {};
+        for (const dbInv of dbInvoices) { dbByInvNo[dbInv.invNo] = dbInv; }
+        setInvoices((prev) => prev.map((inv) => {
+          const db = dbByInvNo[inv.invNo];
+          if (!db) return inv;
+          return {
+            ...inv,
+            status: db.status ?? inv.status ?? 'saved',
+            undeliverComment: db.undeliverComment ?? inv.undeliverComment,
+            undeliveredAt: db.undeliveredAt ?? inv.undeliveredAt,
+          };
+        }));
       } catch {
         // ignore — snapshot status is fine
       }
@@ -682,10 +782,10 @@ export default function Home() {
     const { invNo, comment } = undeliverModal;
     if (!comment.trim()) { showToast('err', 'Izoh kiritish majburiy!'); return; }
     setUndeliverModal(null);
-    setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'saved' } : inv));
+    setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'saved', undeliverComment: comment.trim(), undeliveredAt: new Date().toISOString() } : inv));
     try {
       const updated = await api.undeliverInvoice(token, invNo, comment.trim());
-      setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, ...updated } : inv));
+      setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, ...updated, undeliverComment: updated.undeliverComment ?? comment.trim() } : inv));
       showToast('ok', 'Yetkazib berish bekor qilindi');
     } catch (error) {
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'delivered' } : inv));
@@ -697,15 +797,11 @@ export default function Home() {
     if (!token || !restoreModal) return;
     const { invNo, date, lines } = restoreModal;
     setRestoreModal(null);
-    // Build updated lines with recalculated totals
+    // Only send fields accepted by backend DTO: sku, name, unit, qty, price
     const updatedLines = lines.map((l) => ({
       sku: l.sku, name: l.name, unit: l.unit, price: l.price, qty: l.qty,
-      init: l.initQty,
-      cost:  Math.round(l.qty * l.price * 100) / 100,
-      vat:   Math.round(l.qty * l.price * 0.12 * 100) / 100,
-      total: Math.round(l.qty * l.price * 1.12 * 100) / 100,
     }));
-    setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'delivered', dateIso: date, lines: updatedLines } : inv));
+    setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'delivered', dateIso: date } : inv));
     try {
       const updated = await api.updateInvoice(token, invNo, { status: 'delivered', dateIso: date, lines: updatedLines } as any);
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, ...updated } : inv));
@@ -813,6 +909,28 @@ export default function Home() {
       setProductStats(pStats);
       setInventoryStats(iStats);
       setCustomerStats(cStats);
+
+      // Merge all sessions' invoices for analytics
+      if (sessions.length > 1) {
+        try {
+          const allSnaps = await Promise.all(
+            sessions.map(s => api.session(token, s.invoiceDate).catch(() => null))
+          );
+          const merged: Invoice[] = [];
+          const seen = new Set<number>();
+          for (const rec of allSnaps) {
+            if (!rec?.snapshot?.invoices) continue;
+            for (const inv of rec.snapshot.invoices as Invoice[]) {
+              if (!seen.has(inv.invNo)) { seen.add(inv.invNo); merged.push(inv); }
+            }
+          }
+          // Sync statuses from DB
+          const dbInvs = allDbInvoices.length > 0 ? allDbInvoices : await api.invoices(token).catch(() => []);
+          const statusMap: Record<number, Invoice['status']> = {};
+          for (const d of dbInvs) statusMap[d.invNo] = d.status;
+          setAllDbInvoices(merged.map(inv => ({ ...inv, status: statusMap[inv.invNo] ?? inv.status })));
+        } catch { /* ignore */ }
+      }
     } catch (error) {
       showToast('err', getError(error));
     }
@@ -904,7 +1022,7 @@ export default function Home() {
       const q = pivotSearch.trim().toLowerCase();
       if (q && !product.name.toLowerCase().includes(q) && !product.sku.toLowerCase().includes(q)) return false;
       if (hideZero) {
-        const total = invoices.reduce((sum, invoice) => sum + (invoice.lines[index]?.qty || 0), 0);
+        const total = filteredInvoices.reduce((sum, invoice) => sum + (invoice.lines[index]?.qty || 0), 0);
         if (total === 0) return false;
       }
       return true;
@@ -924,23 +1042,16 @@ export default function Home() {
           <div className="topstats">
             {/* Session date switcher */}
             {sessions.length > 0 && (
-              <select
-                className="sessionSelect"
-                value={dateIso}
-                onChange={(e) => { if (e.target.value) void loadSession(e.target.value); }}
-                title="Sessiyani tanlang"
-              >
-                {sessions.map((s) => (
-                  <option key={s.invoiceDate} value={s.invoiceDate}>
-                    {fmtDateRu(s.invoiceDate)} · {s.invoiceCount} nakl
-                  </option>
-                ))}
-              </select>
+              <SessionPicker
+                sessions={sessions}
+                currentDate={dateIso}
+                onSelect={(d) => void loadSession(d)}
+              />
             )}
-            <span>{totals.count} {T('lbl_invoices')}</span>
-            <span>{fmt0(totals.qty)} {T('lbl_pcs')}</span>
-            <span>{fmt0(totals.sum)} {T('lbl_sum')}</span>
-            {unsaved && <b>{T('lbl_unsaved')}</b>}
+            <div className="topstat-chip" title="Hujjat soni"><span className="topstat-val">{totals.count}</span></div>
+            <div className="topstat-chip"><span className="topstat-val">{fmt0(totals.qty)}</span><span className="topstat-lbl">{T('lbl_pcs')}</span></div>
+            <div className="topstat-chip accent"><span className="topstat-val">{fmt0(totals.sum)}</span><span className="topstat-lbl">{T('lbl_sum')}</span></div>
+            {unsaved && <span className="topstat-unsaved">{T('lbl_unsaved')}</span>}
           </div>
           <div className="userbar">
             <select
@@ -967,7 +1078,7 @@ export default function Home() {
           {!isAdmin && <Tab active={view === 'matrix'}     icon={<Grid3x3 size={18} />}       label={T('nav_matrix')}    onClick={() => setView('matrix')} />}
           {!isAdmin && <Tab active={view === 'documents'}  icon={<Printer size={18} />}       label={T('nav_docs')}      onClick={() => setView('documents')} />}
           {!isAdmin && <Tab active={view === 'dispatch'}   icon={<Truck size={18} />}         label={T('nav_dispatch')}  onClick={() => setView('dispatch')} />}
-          <Tab             active={view === 'schedule'}    icon={<Map size={18} />}            label={T('nav_schedule')}  onClick={() => setView('schedule')} />
+          <Tab             active={view === 'schedule'}    icon={<MapIcon size={18} />}            label={T('nav_schedule')}  onClick={() => setView('schedule')} />
           {!isAdmin && <Tab active={view === 'stats'}      icon={<TrendingUp size={18} />}    label={T('nav_stats')}     onClick={() => setView('stats')} />}
           {!isAdmin && <Tab active={view === 'customers'}  icon={<Users size={18} />}         label={T('nav_clients')}   onClick={() => setView('customers')} />}
           {isAdmin  && <Tab active={view === 'analytics'}  icon={<BarChart3 size={18} />}     label={T('nav_analytics')} onClick={() => { setView('analytics'); void loadAnalytics(); }} />}
@@ -984,50 +1095,54 @@ export default function Home() {
             <section className="pane">
               <PaneHead
                 title={T('reg_title')}
-                meta={invoices.length ? `${invoices.length} ${T('reg_meta_docs')} · ${fmt0(totals.sum)} ${T('lbl_sum')}` : '—'}
+                meta={filteredInvoices.length ? `${filteredInvoices.length} ${T('reg_meta_docs')} · ${fmt0(totals.sum)} ${T('lbl_sum')}` : '—'}
                 actions={
                   <>
+                    <SessionPicker
+                      sessions={sessions}
+                      currentDate={dateIso}
+                      onSelect={(d) => loadSession(d)}
+                    />
                     <button className="small dark" type="button" onClick={() => setManualOpen(true)}>
                       <Plus size={15} /> {T('reg_manual')}
                     </button>
-                    <button className="small" type="button" disabled={!invoices.length} onClick={exportXlsx}>
+                    <button className="small" type="button" disabled={!filteredInvoices.length} onClick={exportXlsx}>
                       <Download size={15} /> Excel
                     </button>
                   </>
                 }
               />
-              {!invoices.length ? (
+              {!filteredInvoices.length ? (
                 <Empty title={T('reg_empty')} />
               ) : (
-                <div className="tablewrap">
+                <div className="tablewrap" style={{ maxHeight: 'calc(100dvh - 240px)', overflowY: 'auto' }}>
                   <table className="data">
                     <thead>
                       <tr>
-                        <th className="check" title="Faol/bekor">●</th>
-                        <th className="check" title={T('lbl_delivered')}>✓</th>
+                        <th title={T('lbl_delivered')}>Status</th>
+                        <th className="check" title="Chop etish uchun tanlash">
+                          <input type="checkbox"
+                            style={{ accentColor: '#46bf72', cursor: 'pointer' }}
+                            checked={filteredInvoices.length > 0 && filteredInvoices.every(i => selected.has(i.invNo))}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelected(new Set(filteredInvoices.map(i => i.invNo)));
+                              else setSelected(new Set());
+                            }} />
+                        </th>
                         <th>№</th>
                         <th>{T('lbl_order')}</th>
                         <th>{T('lbl_store')}</th>
                         <th className="right">{T('lbl_pcs')}</th>
                         <th className="right">{T('lbl_total')}</th>
-                        <th />
                       </tr>
                     </thead>
                     <tbody>
-                      {invoices.map((invoice) => (
+                      {filteredInvoices.map((invoice) => (
                         <tr
                           key={invoice.invNo}
-                          className={[selected.has(invoice.invNo) ? 'picked' : '', invoice.status !== 'delivered' ? 'cancelled-row' : ''].join(' ')}
-                          style={invoice.status !== 'delivered' ? { opacity: 0.45 } : undefined}
+                          className={[selected.has(invoice.invNo) ? 'picked' : '', invoice.status === 'cancelled' ? 'cancelled-row' : ''].join(' ')}
+                          style={invoice.status === 'cancelled' ? { opacity: 0.4 } : undefined}
                         >
-                          <td className="check">
-                            <input
-                              type="checkbox"
-                              checked={invoice.status !== 'cancelled'}
-                              style={{ cursor: 'pointer' }}
-                              onChange={() => toggleActive(invoice.invNo, invoice.status === 'cancelled')}
-                            />
-                          </td>
                           <td className="check" title={invoice.status === 'saved' && invoice.undeliverComment ? `⚠️ ${invoice.undeliverComment}` : undefined}>
                             <input
                               type="checkbox"
@@ -1036,13 +1151,26 @@ export default function Home() {
                               onChange={() => toggleDelivered(invoice.invNo, invoice.status === 'delivered')}
                             />
                           </td>
+                          <td className="check">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(invoice.invNo)}
+                              style={{ accentColor: '#46bf72', cursor: 'pointer' }}
+                              title="Chop uchun tanlash"
+                              onChange={() => setSelected(prev => {
+                                const n = new Set(prev);
+                                n.has(invoice.invNo) ? n.delete(invoice.invNo) : n.add(invoice.invNo);
+                                return n;
+                              })}
+                            />
+                          </td>
                           <td>
                             <button className="linklike" type="button" onClick={() => setInvoiceDetail(invoice)}>
                               <span className="invoiceNo">{invoice.invNo}</span>
                             </button>
                             {invoice.originalDateIso && invoice.originalDateIso !== invoice.dateIso && (
                               <span title={`Ko'chirilgan: ${fmtDateRu(invoice.originalDateIso)} → ${fmtDateRu(invoice.dateIso)}`}
-                                style={{ marginLeft: 5, fontSize: 10, background: 'rgba(99,179,237,0.18)', color: '#63b3ed', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle', cursor: 'default' }}>
+                                style={{ marginLeft: 5, fontSize: 10, background: 'rgba(70,191,114,0.18)', color: 'var(--ok)', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle', cursor: 'default' }}>
                                 📅 {fmtDateRu(invoice.dateIso)}
                               </span>
                             )}
@@ -1053,15 +1181,10 @@ export default function Home() {
                             <span className="muted"> {invoice.storeCode}</span>
                           </td>
                           <td className="right mono" style={invoice.status !== 'delivered' ? { color: 'var(--muted)' } : undefined}>
-                            {invoice.status !== 'delivered' ? '0' : fmt0(invoice.sumQty)}
+                            {fmt0(invoice.sumQty)}
                           </td>
                           <td className="right mono" style={invoice.status !== 'delivered' ? { color: 'var(--muted)' } : undefined}>
-                            {invoice.status !== 'delivered' ? '0' : fmt(invoice.sumTotal)}
-                          </td>
-                          <td className="actions">
-                            <button className="mini" type="button" onClick={() => print([invoice])}>
-                              <Printer size={14} /> {T('lbl_print')}
-                            </button>
+                            {fmt(invoice.sumTotal)}
                           </td>
                         </tr>
                       ))}
@@ -1130,12 +1253,7 @@ export default function Home() {
                       autoFocus
                       value={restoreModal.date}
                       onChange={(e) => setRestoreModal({ ...restoreModal, date: e.target.value })}
-                      style={{
-                        width: '100%', boxSizing: 'border-box',
-                        background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)',
-                        borderRadius: 8, color: 'inherit', fontSize: 14, padding: '8px 12px',
-                        fontFamily: 'inherit', outline: 'none',
-                      }}
+                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 14, height: 40 }}
                     />
                   </div>
                   {/* Editable product lines */}
@@ -1289,7 +1407,7 @@ export default function Home() {
                   </>
                 }
               />
-              {!invoices.length ? (
+              {!filteredInvoices.length ? (
                 <Empty title={T('docs_empty')} />
               ) : (
                 <div className="matrixwrap">
@@ -1298,10 +1416,10 @@ export default function Home() {
                       <tr>
                         <th className="productcol">{T('matrix_product')}</th>
                         <th className="totcol">{T('matrix_total')}</th>
-                        {invoices.map((invoice) => (
+                        {filteredInvoices.map((invoice) => (
                           <th key={invoice.invNo}>
                             <span>№ {invoice.invNo}</span>
-                            <small>{invoice.market}</small>
+                            <small style={{ whiteSpace: 'nowrap' }}>{invoice.storeCode} · {shortMkt(invoice.market)} <b style={{ color: 'var(--honey)', fontFamily: 'var(--mono)', fontWeight: 900 }}>/{invoice.seq}</b></small>
                             <em>{invoice.order}</em>
                           </th>
                         ))}
@@ -1309,21 +1427,21 @@ export default function Home() {
                     </thead>
                     <tbody>
                       {matrixIndices.map(({ product, index }, rowIdx) => {
-                        const rowTotal = invoices.reduce((acc, inv) => acc + (inv.lines[index]?.qty || 0), 0);
-                        const initTotal = invoices.reduce((acc, inv) => acc + (inv.lines[index]?.init || 0), 0);
+                        const rowTotal = filteredInvoices.reduce((acc, inv) => acc + (inv.lines[index]?.qty || 0), 0);
+                        const initTotal = filteredInvoices.reduce((acc, inv) => acc + (inv.lines[index]?.init || 0), 0);
                         return (
                           <tr key={`${product.sku}-${index}`} className={rowIdx % 2 === 0 ? 'row-even' : 'row-odd'} style={rowTotal === 0 ? { opacity: 0.4 } : undefined}>
                             <td className="productcol">
                               <b>{product.name}</b>
-                              <span>{product.sku}</span>
+                              <span className="sku-hidden">{product.sku}</span>
                             </td>
                             <td className="totcol">
                               <b>{rowTotal > 0 ? fmt0(rowTotal) : <span className="muted">—</span>}</b>
                               {initTotal > 0 && rowTotal < initTotal && (
-                                <span style={{ color: 'var(--danger)', fontSize: 10, display: 'block' }}>/{fmt0(initTotal)}</span>
+                                <span style={{ color: 'var(--danger)', fontSize: 10 }}>/{fmt0(initTotal)}</span>
                               )}
                             </td>
-                            {invoices.map((invoice, colIdx) => {
+                            {filteredInvoices.map((invoice, colIdx) => {
                               const line = invoice.lines[index];
                               const locked = !line || line.init === 0;
                               const changed = !!line && line.qty !== line.init && line.qty > 0;
@@ -1353,7 +1471,7 @@ export default function Home() {
                                         const r = Number(event.currentTarget.getAttribute('data-row'));
                                         const c = Number(event.currentTarget.getAttribute('data-col'));
                                         const nRows = matrixIndices.length;
-                                        const nCols = invoices.length;
+                                        const nCols = filteredInvoices.length;
                                         let nr = r + dr, nc = c + dc;
                                         for (let attempt = 0; attempt < nRows * nCols; attempt++) {
                                           if (nc < 0) { nc = nCols - 1; nr--; }
@@ -1394,110 +1512,137 @@ export default function Home() {
 
           {view === 'orders' && (
             <section className="pane">
-              <PaneHead
-                title={T('sap_title')}
-                meta={sapRaw ? `${invoices.length} ${T('sap_meta_ready')}` : T('sap_meta_empty')}
-                actions={null}
-              />
-
-              {/* Upload card */}
-              <div className="importCard">
-                <div className="importUploadArea">
-                  <label className="uploadZone">
-                    <input
-                      type="file"
-                      accept=".xls,.xlsx"
-                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) { setSapRaw(''); setXlsSheets([]); setXlsSelectedSheet(''); setXlsWorkbook(null); return; }
-                        try {
-                          const XLSX = await import('xlsx');
-                          const buf = await file.arrayBuffer();
-                          const wb = XLSX.read(buf, { type: 'array' });
-                          setXlsWorkbook(wb);
-                          setXlsSheets(wb.SheetNames as string[]);
-                          const defaultSheet = wb.SheetNames[1] ?? wb.SheetNames[0];
-                          setXlsSelectedSheet(defaultSheet as string);
-                          const ws = wb.Sheets[defaultSheet];
-                          const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
-                          setSapRaw(rows.map((r) => r.join('\t')).join('\n'));
-                          showToast('ok', `Fayl yuklandi: ${rows.length} qator (list: ${defaultSheet})`);
-                        } catch {
-                          showToast('err', 'Faylni o\'qishda xatolik');
-                        }
-                      }}
-                    />
-                    <div className="uploadZoneInner">
-                      <FileText size={32} strokeWidth={1.5} style={{ color: 'var(--berry)', marginBottom: 8 }} />
-                      <span className="uploadZoneTitle">{sapRaw ? '✓ Fayl yuklandi' : 'Excel faylni tanlang'}</span>
-                      <span className="uploadZoneSub">.xls yoki .xlsx formatda</span>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="importFields">
-                  {xlsSheets.length > 1 && (
-                    <label className="field">
-                      <span>Varaq (list)</span>
-                      <select
-                        value={xlsSelectedSheet}
-                        onChange={async (e) => {
-                          const sheetName = e.target.value;
-                          setXlsSelectedSheet(sheetName);
-                          if (!xlsWorkbook) return;
-                          const XLSX = await import('xlsx');
-                          const ws = xlsWorkbook.Sheets[sheetName];
-                          const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
-                          setSapRaw(rows.map((r) => r.join('\t')).join('\n'));
-                          showToast('info', `List o'zgartirildi: ${sheetName}`);
-                        }}
-                      >
-                        {xlsSheets.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  <label className="field">
-                    <span>Sana</span>
-                    <input type="date" value={dateIso} onChange={(e) => setDateIso(e.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>{T('lbl_order')} №</span>
-                    <input type="number" value={startId} onChange={(e) => setStartId(Number(e.target.value))} />
-                  </label>
-                  <label className="field">
-                    <span>Sessiya nomi</span>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <span style={{ color: 'var(--muted)', fontFamily: 'var(--mono)', fontSize: 13, whiteSpace: 'nowrap' }}>{dateIso}</span>
-                      <input
-                        type="text"
-                        placeholder="qo'shimcha (ixtiyoriy)"
-                        value={sessionSuffix}
-                        onChange={(e) => setSessionSuffix(e.target.value)}
-                        style={{ flex: 1, minWidth: 0 }}
-                      />
-                    </div>
-                  </label>
-                </div>
+              <div className="subtabs" style={{ position: 'static', marginTop: 0, paddingTop: 0, background: 'transparent' }}>
+                <button className={ordersTab === 'import' ? 'active' : ''} type="button" onClick={() => setOrdersTab('import')}>
+                  <FileText size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> SAP import
+                </button>
+                <button className={ordersTab === 'history' ? 'active' : ''} type="button" onClick={() => setOrdersTab('history')}>
+                  <ClipboardList size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Buyurtma tarixi
+                  <span style={{ fontSize: 11, background: 'rgba(var(--ink-rgb),0.08)', borderRadius: 10, padding: '1px 7px', marginLeft: 4 }}>{sessions.length}</span>
+                </button>
               </div>
 
-              {/* Action buttons */}
-              <div className="importActions">
-                <button className="command primary" type="button" disabled={busy || !sapRaw} onClick={() => generateInvoices()}>
-                  <FileText size={17} /> {T('sap_title')}
-                </button>
-                <button className="command ghost" type="button" disabled={busy || !invoices.length} onClick={() => saveCurrentSession()}>
-                  <Save size={17} /> {T('lbl_save')}
-                </button>
+              {ordersTab === 'import' && (<>
+
+              {/* ── Trendy import layout ── */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+
+                {/* LEFT: Upload zone */}
+                <label style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 200, border: `2px dashed ${sapRaw ? '#46bf72' : 'rgba(var(--ink-rgb),0.15)'}`, borderRadius: 16, background: sapRaw ? 'rgba(70,191,114,0.06)' : 'rgba(var(--ink-rgb),0.02)', cursor: 'pointer', transition: 'all 0.2s' }}>
+                  <input type="file" accept=".xls,.xlsx" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) { setSapRaw(''); setXlsSheets([]); setXlsSelectedSheet(''); setXlsWorkbook(null); return; }
+                      try {
+                        const XLSX = await import('xlsx');
+                        const buf = await file.arrayBuffer();
+                        const wb = XLSX.read(buf, { type: 'array' });
+                        setXlsWorkbook(wb);
+                        setXlsSheets(wb.SheetNames as string[]);
+                        const defaultSheet = wb.SheetNames[1] ?? wb.SheetNames[0];
+                        setXlsSelectedSheet(defaultSheet as string);
+                        const ws = wb.Sheets[defaultSheet];
+                        const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
+                        setSapRaw(rows.map((r) => r.join('\t')).join('\n'));
+                        showToast('ok', `Fayl yuklandi: ${rows.length} qator`);
+                      } catch { showToast('err', "Faylni o'qishda xatolik"); }
+                    }}
+                  />
+                  <div style={{ width: 56, height: 56, borderRadius: 16, background: sapRaw ? 'rgba(70,191,114,0.15)' : 'rgba(var(--ink-rgb),0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <FileText size={26} style={{ color: sapRaw ? '#46bf72' : 'var(--muted)' }} />
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: sapRaw ? '#46bf72' : 'var(--ink)' }}>{sapRaw ? '✓ Fayl yuklandi' : 'Excel faylni tanlang'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>.xls yoki .xlsx formatda</div>
+                  </div>
+                  {xlsSheets.length > 1 && (
+                    <select value={xlsSelectedSheet} style={{ fontSize: 12, borderRadius: 8, padding: '4px 8px', position: 'relative', zIndex: 1 }}
+                      onClick={e => e.stopPropagation()}
+                      onChange={async (e) => {
+                        e.stopPropagation();
+                        const sheetName = e.target.value;
+                        setXlsSelectedSheet(sheetName);
+                        if (!xlsWorkbook) return;
+                        const XLSX = await import('xlsx');
+                        const ws = xlsWorkbook.Sheets[sheetName];
+                        const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
+                        setSapRaw(rows.map((r) => r.join('\t')).join('\n'));
+                      }}>
+                      {xlsSheets.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  )}
+                </label>
+
+                {/* RIGHT: Settings */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 6 }}>Sana</div>
+                      <input type="date" value={dateIso} onChange={(e) => setDateIso(e.target.value)} style={{ width: '100%' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 6 }}>Hujjat № dan</div>
+                      <input type="number" value={startId} onChange={(e) => setStartId(Number(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 6 }}>Sessiya nomi</div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(var(--ink-rgb),0.04)', border: '1px solid rgba(var(--ink-rgb),0.09)', borderRadius: 10, padding: '2px 10px 2px 4px' }}>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--muted)', background: 'rgba(var(--ink-rgb),0.06)', borderRadius: 6, padding: '4px 8px', whiteSpace: 'nowrap' }}>{dateIso}</span>
+                      <input type="text" placeholder="qo'shimcha (ixtiyoriy)" value={sessionSuffix} onChange={(e) => setSessionSuffix(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13 }} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 'auto' }}>
+                    <button type="button" disabled={busy || !sapRaw} onClick={() => generateInvoices()}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 0', borderRadius: 12, fontWeight: 700, fontSize: 14, border: 'none', cursor: busy || !sapRaw ? 'not-allowed' : 'pointer', opacity: busy || !sapRaw ? 0.45 : 1, background: 'linear-gradient(135deg, #46bf72 0%, #2ea855 100%)', color: '#fff', boxShadow: sapRaw ? '0 4px 16px rgba(70,191,114,0.35)' : 'none', transition: 'all 0.2s' }}>
+                      <FileText size={16} /> SAP import
+                    </button>
+                    <button type="button" disabled={busy || !invoices.length} onClick={() => saveCurrentSession()}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 0', borderRadius: 12, fontWeight: 700, fontSize: 14, border: '1.5px solid rgba(var(--ink-rgb),0.15)', cursor: busy || !invoices.length ? 'not-allowed' : 'pointer', opacity: busy || !invoices.length ? 0.4 : 1, background: 'rgba(var(--ink-rgb),0.04)', color: 'var(--ink)', transition: 'all 0.2s' }}>
+                      <Save size={16} /> Saqlash
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Summary */}
               {invoices.length > 0 && (
-                <div className="ledger">
-                  <div><span>№</span><b>{invoices[0].invNo}–{invoices[invoices.length - 1].invNo}</b></div>
-                  <div><span>{T('stats_invoices')}</span><b>{invoices.length}</b></div>
-                  <div><span>{T('lbl_total')}</span><b>{fmt0(totals.sum)} {T('lbl_sum')}</b></div>
-                  <div><span>{T('lbl_selected')}</span><b>{selected.size || invoices.length}</b></div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                  {[
+                    { label: 'Nakladnoylar', value: `${invoices[0].invNo}–${invoices[invoices.length-1].invNo}` },
+                    { label: 'Jami dona', value: invoices.length },
+                    { label: 'Summa', value: `${fmt0(totals.sum)} so'm` },
+                    { label: 'Tanlangan', value: selected.size || invoices.length },
+                  ].map(item => (
+                    <div key={item.label} style={{ background: 'rgba(var(--ink-rgb),0.03)', border: '1px solid rgba(var(--ink-rgb),0.08)', borderRadius: 12, padding: '12px 16px' }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{item.label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--mono)' }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              </>)}
+
+              {ordersTab === 'history' && (
+                <div className="sessionList" style={{ marginTop: 8 }}>
+                  {sessions.length === 0 ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Buyurtma tarixi yo'q</div>
+                  ) : sessions.map((session) => (
+                    <div className="sessionRow" key={session.invoiceDate}>
+                      <b>{session.invoiceDate}</b>
+                      <span className="sess-badge">{session.invoiceCount} накл.</span>
+                      <span className="sess-sum">{fmt0(session.sumTotal)} сум</span>
+                      <span className="sess-badge">{session.versions?.length || 0} версий</span>
+                      <button className="mini" type="button" onClick={() => loadSession(session.invoiceDate)}>
+                        {T('lbl_restore')}
+                      </button>
+                      {isAdmin && (
+                        <button className="iconbtn danger" type="button" onClick={() => deleteSession(session.invoiceDate)}>
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </section>
@@ -1508,8 +1653,8 @@ export default function Home() {
               scheduleRows={scheduleRows}
               setScheduleRows={setScheduleRows}
               setScheduleDrivers={setScheduleDrivers}
-              invoices={invoices}
-              dateIso={dateIso}
+              invoices={filteredInvoices}
+              dateIso={filterDate || dateIso}
               exceptionDates={exceptionDates}
               showToast={showToast}
               dayNames={dayNames}
@@ -1521,7 +1666,7 @@ export default function Home() {
 
           {view === 'dispatch' && (
             <DispatchPane
-              invoices={invoices}
+              invoices={filteredInvoices}
               catalog={catalog}
               scheduleRows={scheduleRows}
               scheduleDrivers={scheduleDrivers}
@@ -1795,7 +1940,7 @@ export default function Home() {
 
           {view === 'analytics' && (
             <AnalyticsPane
-              invoices={invoices}
+              invoices={allDbInvoices.length > invoices.length ? allDbInvoices : invoices}
               catalog={catalog}
               sessions={sessions}
               dashboardStats={dashboardStats}
@@ -1808,88 +1953,19 @@ export default function Home() {
             />
           )}
 
-          {view === 'undelivered' && (() => {
-            const undeliveredList = invoices.filter(i => i.status === 'saved');
-            return (
-              <section className="pane">
-                <div className="paneHead">
-                  <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <AlertTriangle size={18} style={{ color: 'var(--danger)' }} />
-                    Yetkazilmagan nakladnoylar
-                    {undeliveredList.length > 0 && (
-                      <span style={{ background: 'var(--danger)', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>
-                        {undeliveredList.length}
-                      </span>
-                    )}
-                  </h2>
-                </div>
-                {undeliveredList.length === 0 ? (
-                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
-                    ✓ Barcha nakladnoylar yetkazilgan
-                  </div>
-                ) : (
-                  <div className="tablewrap">
-                    <table className="data">
-                      <thead>
-                        <tr>
-                          <th>№</th>
-                          <th>Buyurtma</th>
-                          <th>Do&apos;kon</th>
-                          <th className="right">Summa</th>
-                          <th>Bekor qilish sababi</th>
-                          <th>Vaqt</th>
-                          <th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {undeliveredList.map(inv => (
-                          <tr key={inv.invNo}>
-                            <td>
-                              <button className="linklike" type="button" onClick={() => setInvoiceDetail(inv)}>
-                                <span className="invoiceNo">{inv.invNo}</span>
-                              </button>
-                            </td>
-                            <td className="mono">{inv.order}</td>
-                            <td>{inv.market} <span className="muted">{inv.storeCode}</span></td>
-                            <td className="right mono">{fmt(inv.sumTotal)}</td>
-                            <td>
-                              {inv.undeliverComment ? (
-                                <span style={{ color: 'var(--warn)', fontSize: 13 }}>⚠️ {inv.undeliverComment}</span>
-                              ) : (
-                                <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
-                              )}
-                            </td>
-                            <td style={{ color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
-                              {inv.undeliveredAt ? new Date(inv.undeliveredAt).toLocaleString('uz-UZ') : '—'}
-                            </td>
-                            <td>
-                              <button
-                                className="mini"
-                                type="button"
-                                style={{ color: 'var(--ok)', borderColor: 'rgba(47,209,88,0.3)' }}
-                                onClick={() => setRestoreModal({
-                                  invNo: inv.invNo,
-                                  date: inv.dateIso || todayIso(),
-                                  lines: (inv.lines || []).filter(l => (l.init ?? 0) > 0 || l.qty > 0).map(l => ({
-                                    sku: l.sku, name: l.name, unit: l.unit, price: l.price,
-                                    qty: l.qty, initQty: l.init ?? l.qty,
-                                  })),
-                                })}
-                              >
-                                ↩ Tiklash
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-            );
-          })()}
+          {view === 'undelivered' && <UndeliveredPane
+            invoices={invoices}
+            undeliveredFilter={undeliveredFilter}
+            setUndeliveredFilter={setUndeliveredFilter}
+            setInvoiceDetail={setInvoiceDetail}
+            setRestoreModal={setRestoreModal}
+            fmt={fmt}
+            todayIso={todayIso}
+          />}
+
 
           {view === 'preferences' && (
+
             <section className="pane">
               <PaneHead title={T('nav_preferences')} />
               <div className="prefGrid">
@@ -1963,13 +2039,14 @@ export default function Home() {
                 <button className={(settingsView as string) === 'exceptions' ? 'active' : ''} type="button" onClick={() => setSettingsView('exceptions')}>{T('settings_exc')}</button>
                 <button className={settingsView === 'sessions' ? 'active' : ''} type="button" onClick={() => setSettingsView('sessions')}>{T('settings_hist')}</button>
                 {isAdmin && <button className={settingsView === 'users' ? 'active' : ''} type="button" onClick={() => setSettingsView('users')}>{T('settings_access')}</button>}
+                <button className={(settingsView as string) === 'doverennost' ? 'active' : ''} type="button" onClick={() => setSettingsView('doverennost' as any)}>Ishonchnoma</button>
               </div>
 
               {settingsView === 'catalog' && (
                 <>
                   <PaneHead
-                    title={T('settings_cat_title')}
-                    meta={`${catalogDraft.length}`}
+                    title=""
+                    meta={`${catalogDraft.length} ta mahsulot`}
                     actions={
                       isAdmin ? (
                         <>
@@ -1987,14 +2064,14 @@ export default function Home() {
                     }
                   />
                   <div className="tablewrap">
-                    <table className="data editable">
+                    <table className="data editable" style={{ tableLayout: 'auto', width: '100%' }}>
                       <thead>
                         <tr>
-                          <th>SKU</th>
+                          <th style={{ width: '180px' }}>SKU</th>
                           <th>{T('lbl_product')}</th>
-                          <th>{T('lbl_unit')}</th>
-                          <th className="right">{T('lbl_price')}</th>
-                          {isAdmin && <th />}
+                          <th style={{ width: '60px' }}>{T('lbl_unit')}</th>
+                          <th className="right" style={{ width: '120px' }}>{T('lbl_price')}</th>
+                          {isAdmin && <th style={{ width: '40px' }} />}
                         </tr>
                       </thead>
                       <tbody>
@@ -2010,7 +2087,7 @@ export default function Home() {
                               <input disabled={!isAdmin} value={product.unit} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { unit: event.target.value }))} />
                             </td>
                             <td>
-                              <input className="right" disabled={!isAdmin} value={product.price} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { price: parseNum(event.target.value) }))} />
+                              <input className="right" disabled={!isAdmin} value={fmt0(product.price)} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { price: parseNum(event.target.value) }))} />
                             </td>
                             {isAdmin && (
                               <td className="actions">
@@ -2030,8 +2107,8 @@ export default function Home() {
               {settingsView === 'requisites' && (
                 <>
                   <PaneHead
-                    title={T('settings_req_title')}
-                    meta={T('settings_req')}
+                    title=""
+                    meta=""
                     actions={
                       isAdmin ? (
                         <>
@@ -2076,44 +2153,30 @@ export default function Home() {
               )}
 
               {settingsView === 'sessions' && (
-                <>
-                  <PaneHead
-                    title={T('settings_hist_title')}
-                    meta={`${sessions.length}`}
-                    actions={
-                      <button className="small" type="button" onClick={() => refreshSessions()}>
-                        <RefreshCcw size={15} />
-                      </button>
-                    }
-                  />
-                  <div className="sessionList">
-                    {sessions.length ? (
-                      sessions.map((session) => (
-                        <div className="sessionRow" key={session.invoiceDate}>
-                          <b>{session.name || fmtDateRu(session.invoiceDate)}</b>
-                          <span>{session.invoiceCount} накл.</span>
-                          <span>{fmt0(session.sumTotal)} сум</span>
-                          <span>{session.versions?.length || 0} версий</span>
-                          <button className="mini" type="button" onClick={() => loadSession(session.invoiceDate)}>
-                            {T('lbl_restore')}
-                          </button>
-                          {isAdmin && (
-                            <button className="iconbtn danger" type="button" onClick={() => deleteSession(session.invoiceDate)}>
-                              <Trash2 size={15} />
-                            </button>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <Empty title={T('ops_empty_audit')} />
-                    )}
-                  </div>
-                </>
+                <TarixPane
+                  sessions={sessions}
+                  dovHistory={dovHistory}
+                  qaytganInvoices={invoices.filter(i => i.status === 'saved' && !!i.undeliverComment)}
+                  vazvratRows={vazvratAllRows}
+                  setVazvratAllRows={setVazvratAllRows}
+                  orders={orders}
+                  token={token!}
+                  expandedDates={expandedDates}
+                  toggleDateGroup={toggleDateGroup}
+                  loadSession={loadSession}
+                  deleteSession={deleteSession}
+                  setDovFields={setDovFields}
+                  setSettingsView={setSettingsView}
+                  refreshSessions={refreshSessions}
+                  isAdmin={isAdmin}
+                  fmtDateRu={fmtDateRu}
+                  fmt0={fmt0}
+                  T={T}
+                />
               )}
 
               {settingsView === 'exceptions' && (
                 <>
-                  <PaneHead title={T('settings_exc')} meta="" actions={null} />
                   <div className="panel">
                     <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
                       Қуйидаги саналарда график бузилишлари ҳисобланмайди (байрам, махсус кун).
@@ -2193,6 +2256,49 @@ export default function Home() {
                   </div>
                 </>
               )}
+
+              {(settingsView as string) === 'doverennost' && (
+                <>
+                  {/* Word-like document preview */}
+                  <div className="dov-page-wrap" style={{ position: 'relative' }}>
+                    <button className="small dark" type="button" onClick={printDov} style={{ position: 'absolute', top: 16, right: 16, fontSize: 12, padding: '6px 16px', zIndex: 2 }}>
+                      <Printer size={13} /> Chop etish
+                    </button>
+                    <div className="dov-page">
+
+                      {/* Top-right block */}
+                      <div className="dov-topright">
+                        <div><input className="dov-inp dov-inp-right bold" value={dovFields.company} onChange={e => setDov('company', e.target.value)} placeholder='MCHJ «Druzya»' /></div>
+                        <div><input className="dov-inp dov-inp-right" value={dovFields.address} onChange={e => setDov('address', e.target.value)} placeholder='Toshkent shahar, Yunusobod tumani, ...' /></div>
+                        <div className="dov-tr-meta">Исх. №18</div>
+                        <div className="dov-tr-meta">
+                          от <input className="dov-inp dov-inp-sm" type="date" value={dovFields.validUntil} onChange={e => setDov('validUntil', e.target.value)} /> г.&nbsp;&nbsp;г. Ташкент
+                        </div>
+                      </div>
+
+                      {/* Title */}
+                      <div className="dov-title">Д О В Е Р Е Н Н О С Т Ь</div>
+
+                      {/* Body — single paragraph, inputs inline */}
+                      <p className="dov-body">
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Настоящей доверенностью руководство <input className="dov-inp dov-inp-md bold" value={dovFields.company} onChange={e => setDov('company', e.target.value)} placeholder='MCHJ «Druzya»' /> уполномочивает водителя <input className="dov-inp dov-inp-lg bold" value={dovFields.driver} onChange={e => setDov('driver', e.target.value)} placeholder="FAMILIYA ISMI SHARIFI" /> экспедитора владельцу правы <input className="dov-inp dov-inp-md" value={dovFields.prava} onChange={e => setDov('prava', e.target.value)} placeholder='AF 0006178' /> направо пользования автомобилем «<input className="dov-inp dov-inp-sm" value={dovFields.car} onChange={e => setDov('car', e.target.value)} placeholder='LB2' />» гос. номер <input className="dov-inp dov-inp-md" value={dovFields.plate} onChange={e => setDov('plate', e.target.value)} placeholder='01 W 851 SC' />
+                      </p>
+
+                      <p className="dov-body">
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Доверенность действительна до <strong>{dovFields.validUntil ? new Date(dovFields.validUntil).toLocaleDateString('ru-RU', {day:'2-digit',month:'2-digit',year:'numeric'}) : '__________'}</strong> года.
+                      </p>
+
+                      {/* Signature */}
+                      <div className="dov-sign">
+                        <span>Генеральный директор</span>
+                        <input className="dov-inp dov-inp-md" value={dovFields.director} onChange={e => setDov('director', e.target.value)} placeholder='Бойматова Д.А.' />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Doverennost history moved to Tarix tab */}
+                </>
+              )}
             </section>
           )}
         </main>
@@ -2200,102 +2306,73 @@ export default function Home() {
 
       {manualOpen && (
         <div className="modalBackdrop">
-          <div className="modal" style={{ maxWidth: '92vw', width: '92vw' }}>
+          <div className="modal manual-modal">
             <div className="modalHead">
-              <h3>Qo&apos;lda nakladnoy</h3>
+              <h3>Qo&apos;lda hujjat</h3>
               <button className="iconbtn" type="button" onClick={() => { setManualOpen(false); setManualStores([emptyStoreRow()]); }}>✕</button>
             </div>
-            <div className="modalBody" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* Shared date */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Sana:</span>
-                <input type="date" value={manual.dateIso}
-                  onChange={(e) => setManual({ ...manual, dateIso: e.target.value })}
-                  style={{ fontSize: 13, padding: '4px 10px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'inherit', outline: 'none' }} />
-                <button type="button" onClick={() => setManualStores([...manualStores, emptyStoreRow()])}
-                  style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 14px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'var(--muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  + Do&apos;kon qo&apos;shish
+            <div className="modalBody manual-modal-body">
+              {/* Top bar: date + add store */}
+              <div className="manual-topbar">
+                <label className="manual-date-field">
+                  <span>Sana</span>
+                  <input type="date" value={manual.dateIso} onChange={(e) => setManual({ ...manual, dateIso: e.target.value })} />
+                </label>
+                <button type="button" className="small" onClick={() => setManualStores([...manualStores, emptyStoreRow()])}>
+                  + Do&apos;kon
                 </button>
               </div>
 
               {/* Transposed table: products = rows, stores = columns */}
-              <div style={{ overflowX: 'auto', maxHeight: '60vh', overflowY: 'auto' }}>
-                <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%', tableLayout: 'fixed' }}>
+              <div className="manual-tablewrap">
+                <table className="manual-table">
                   <thead>
-                    {/* Row 1: product label + store code/name */}
                     <tr>
-                      <th style={{ width: 180, minWidth: 180, padding: '6px 10px', fontSize: 11, color: 'var(--muted)', textAlign: 'left', borderBottom: '1px solid rgba(var(--hi-rgb),0.08)', background: 'var(--card)', position: 'sticky', left: 0, zIndex: 2 }}>
-                        Mahsulot
-                      </th>
+                      <th className="manual-prodcol">Mahsulot</th>
                       {manualStores.map((col, ci) => (
-                        <th key={ci} style={{ width: 140, minWidth: 140, padding: '4px 6px', borderBottom: '1px solid rgba(var(--hi-rgb),0.08)', background: 'rgba(var(--hi-rgb),0.03)', verticalAlign: 'top' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            <div style={{ display: 'flex', gap: 3 }}>
-                              <input placeholder="Kod"
-                                value={col.storeCode}
-                                onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeCode: e.target.value }; setManualStores(u); }}
-                                style={{ width: 52, fontSize: 11, padding: '4px 5px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
-                              <input placeholder="Nom"
-                                value={col.storeName}
-                                onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeName: e.target.value }; setManualStores(u); }}
-                                style={{ flex: 1, fontSize: 11, padding: '4px 5px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
-                              <button type="button"
-                                onClick={() => setManualStores(manualStores.length > 1 ? manualStores.filter((_, i) => i !== ci) : [emptyStoreRow()])}
-                                style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 4, background: 'transparent', border: '1px solid rgba(255,80,80,0.3)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>
-                                ×
-                              </button>
-                            </div>
-                            <input placeholder="№ Zakaz"
-                              value={col.order}
-                              onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], order: e.target.value }; setManualStores(u); }}
-                              style={{ width: '100%', fontSize: 11, padding: '4px 5px', background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)', borderRadius: 6, color: 'inherit', outline: 'none' }} />
+                        <th key={ci} className="manual-storecol">
+                          <div className="manual-store-header">
+                            <input className="manual-inp" placeholder="Kod" value={col.storeCode}
+                              onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeCode: e.target.value }; setManualStores(u); }} />
+                            <input className="manual-inp manual-inp-grow" placeholder="Market nomi" value={col.storeName}
+                              onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeName: e.target.value }; setManualStores(u); }} />
+                            <button type="button" className="manual-del"
+                              onClick={() => setManualStores(manualStores.length > 1 ? manualStores.filter((_, i) => i !== ci) : [emptyStoreRow()])}>×</button>
                           </div>
+                          <input className="manual-inp manual-inp-full" placeholder="№ Zakaz" value={col.order}
+                            onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], order: e.target.value }; setManualStores(u); }} />
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {catalog.map((p) => {
+                    {catalog.map((p, ri) => {
                       const defaultPrice = Math.round(p.price * 1.12 * 100) / 100;
+                      const rowHasAny = manualStores.some(col => parseNum(col.cells[p.sku]?.qty ?? '') > 0);
                       return (
-                        <tr key={p.sku} style={{ borderBottom: '1px solid rgba(var(--hi-rgb),0.05)' }}>
-                          {/* Product info — sticky left */}
-                          <td style={{ padding: '6px 10px', fontSize: 12, background: 'var(--card)', position: 'sticky', left: 0, zIndex: 1, borderRight: '1px solid rgba(var(--hi-rgb),0.08)' }}>
-                            <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170 }}>{p.name}</div>
-                            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
-                              {defaultPrice.toLocaleString('ru-RU')} so&apos;m · {p.unit}
-                            </div>
+                        <tr key={p.sku} className={ri % 2 === 0 ? '' : 'manual-row-even'}>
+                          <td className="manual-prodcol manual-prodname">
+                            <span className="manual-name">{p.name}</span>
+                            <span className="manual-meta">{defaultPrice.toLocaleString('ru-RU')} · {p.unit}</span>
                           </td>
-                          {/* Cell per store: qty + price */}
                           {manualStores.map((col, ci) => {
                             const cell = col.cells[p.sku];
                             const qtyVal = cell?.qty ?? '';
                             const priceVal = cell?.price ?? '';
-                            const updateCell = (field: 'qty' | 'price', val: string) => {
+                            const hasQty = parseNum(qtyVal) > 0;
+                            const update = (field: 'qty' | 'price', val: string) => {
                               const u = [...manualStores];
                               u[ci] = { ...u[ci], cells: { ...u[ci].cells, [p.sku]: { qty: qtyVal, price: priceVal, [field]: val } } };
                               setManualStores(u);
                             };
-                            const hasQty = parseNum(qtyVal) > 0;
                             return (
-                              <td key={ci} style={{ padding: '4px 6px', verticalAlign: 'middle', background: hasQty ? 'rgba(110,231,183,0.04)' : 'transparent' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <span style={{ fontSize: 10, color: 'var(--muted)', width: 26, flexShrink: 0 }}>dona</span>
-                                    <input type="number" min={0} placeholder="0"
-                                      value={qtyVal}
-                                      onChange={(e) => updateCell('qty', e.target.value)}
-                                      style={{ flex: 1, fontSize: 13, padding: '3px 5px', textAlign: 'center', background: 'rgba(var(--hi-rgb),0.06)', border: hasQty ? '1px solid rgba(110,231,183,0.4)' : '1px solid rgba(var(--hi-rgb),0.12)', borderRadius: 6, color: 'inherit', outline: 'none', fontFamily: 'var(--mono)' }} />
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <span style={{ fontSize: 10, color: 'var(--muted)', width: 26, flexShrink: 0 }}>narx</span>
-                                    <input type="number" min={0}
-                                      placeholder={String(defaultPrice)}
-                                      value={priceVal}
-                                      onChange={(e) => updateCell('price', e.target.value)}
-                                      style={{ flex: 1, fontSize: 11, padding: '3px 5px', textAlign: 'right', background: 'rgba(var(--hi-rgb),0.04)', border: '1px solid rgba(var(--hi-rgb),0.08)', borderRadius: 6, color: priceVal && parseNum(priceVal) !== defaultPrice ? '#fbbf24' : 'var(--muted)', outline: 'none', fontFamily: 'var(--mono)' }} />
-                                  </div>
-                                </div>
+                              <td key={ci} className={`manual-cell${hasQty ? ' manual-cell-active' : ''}`}>
+                                <input type="number" min={0} placeholder="0"
+                                  value={qtyVal} onChange={(e) => update('qty', e.target.value)}
+                                  className={`manual-qty${hasQty ? ' active' : ''}`} />
+                                <input type="number" min={0} placeholder={String(defaultPrice)}
+                                  value={priceVal} onChange={(e) => update('price', e.target.value)}
+                                  className="manual-price" style={{ color: priceVal && parseNum(priceVal) !== defaultPrice ? 'var(--honey)' : undefined }} />
                               </td>
                             );
                           })}
@@ -2430,32 +2507,153 @@ function LoginScreen({
   const [password, setPassword] = useState('');
 
   return (
-    <main className="login">
-      <section className="loginPanel">
-        <div className="loginBrand">
-          <span>GT</span>
-          <h1>ГДЕ ТОРТ?</h1>
-          <p>Накладные · счёт-фактура · реестр</p>
+    <main style={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
+      {/* LEFT: form */}
+      <section className="login-split-form" style={{ flex: '0 0 420px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 52px', background: 'var(--surface)' }}>
+        {/* Logo */}
+        <div style={{ marginBottom: 36, textAlign: 'center' }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #46bf72, #2ea855)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 auto 12px', boxShadow: '0 8px 24px rgba(70,191,114,0.35)' }}>GT</div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Добро пожаловать</h1>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Введите свои учётные данные</p>
         </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onLogin(email, password);
-          }}
-        >
-          <label className="field">
-            <span>Email</span>
-            <input value={email} onChange={(event) => setEmail(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>Пароль</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-          </label>
-          <button className="command primary" disabled={busy} type="submit">
-            <Shield size={18} /> Войти
+
+        <form style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}
+          onSubmit={(event) => { event.preventDefault(); void onLogin(email, password); }}>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Email</div>
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="email@example.com"
+              style={{ width: '100%', borderRadius: 10, padding: '10px 14px', fontSize: 14, border: '1.5px solid rgba(var(--ink-rgb),0.12)', background: 'rgba(var(--ink-rgb),0.03)', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Пароль</div>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••"
+              style={{ width: '100%', borderRadius: 10, padding: '10px 14px', fontSize: 14, border: '1.5px solid rgba(var(--ink-rgb),0.12)', background: 'rgba(var(--ink-rgb),0.03)', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <button type="submit" disabled={busy}
+            style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 15, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1, background: 'linear-gradient(135deg, #46bf72 0%, #2ea855 100%)', color: '#fff', boxShadow: '0 4px 16px rgba(70,191,114,0.35)', transition: 'all 0.2s', width: '100%' }}>
+            <Shield size={17} /> Войти
           </button>
         </form>
-        {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+
+        {toast && <div className={`toast ${toast.kind}`} style={{ marginTop: 20, width: '100%' }}>{toast.text}</div>}
+      </section>
+
+      {/* RIGHT: brand panel */}
+      <section className="login-split-brand" style={{ flex: 1, background: 'linear-gradient(160deg, #0f5c30 0%, #1a8c44 60%, #25b857 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 48px', position: 'relative', overflow: 'hidden', gap: 28 }}>
+        {/* Deco blobs */}
+        <div style={{ position: 'absolute', top: -120, right: -120, width: 400, height: 400, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
+        <div style={{ position: 'absolute', bottom: -100, left: -100, width: 320, height: 320, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
+
+        {/* Title */}
+        <div style={{ textAlign: 'center', zIndex: 1 }}>
+          <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: '0 0 6px', letterSpacing: '-0.02em' }}>ГДЕ ТОРТ? — система управления</h2>
+          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, margin: 0 }}>Накладные · аналитика · экспедиция · реестр</p>
+        </div>
+
+        {/* Stacked mockup screenshots */}
+        <div style={{ position: 'relative', width: '100%', maxWidth: 460, height: 340, zIndex: 1 }}>
+
+          {/* Back card — Statistika */}
+          <div style={{ position: 'absolute', top: 40, left: 30, width: 380, height: 240, background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', transform: 'rotate(-4deg)', overflow: 'hidden', opacity: 0.85 }}>
+            <div style={{ background: '#f8f8fa', borderBottom: '1px solid #eee', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#666', marginLeft: 6 }}>Statistika</div>
+            </div>
+            <div style={{ padding: '10px 12px' }}>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                {['970', '0', '970', '24 765 261'].map((v, i) => (
+                  <div key={i} style={{ flex: 1, background: i === 3 ? '#e8f5ee' : '#f5f5f5', borderRadius: 8, padding: '6px 8px' }}>
+                    <div style={{ fontSize: 7, color: '#999', marginBottom: 2 }}>{['KELDI','KAMAYDI','BERILDI','SUMMA'][i]}</div>
+                    <div style={{ fontSize: i === 3 ? 8 : 11, fontWeight: 800, color: i === 3 ? '#1a8c44' : '#111' }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              {[['Где торт? "Орешки" 350г', '120', '2 904 000'],['Баурсак 365 kun, 350г','110','2 798 400'],['Где торт? Рогалик 300г','100','2 365 000'],['Чак-чак 365 kun, 300г','90','2 332 800']].map(([n,q,s]) => (
+                <div key={n} style={{ display: 'flex', gap: 6, padding: '4px 0', borderBottom: '1px solid #f0f0f0', alignItems: 'center' }}>
+                  <div style={{ flex: 1, fontSize: 8, color: '#333', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{n}</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: '#1a8c44', width: 24, textAlign: 'right' }}>{q}</div>
+                  <div style={{ fontSize: 8, color: '#666', width: 52, textAlign: 'right' }}>{s}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Middle card — Ro'yxat */}
+          <div style={{ position: 'absolute', top: 20, left: 10, width: 390, height: 250, background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', transform: 'rotate(2deg)', overflow: 'hidden', opacity: 0.92 }}>
+            <div style={{ background: '#f8f8fa', borderBottom: '1px solid #eee', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#666', marginLeft: 6 }}>Nakladnoylar ro'yxati — 75 hujjat</div>
+            </div>
+            <div style={{ padding: '8px 12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '32px 40px 1fr 60px 60px', gap: 4, fontSize: 7, fontWeight: 800, color: '#aaa', textTransform: 'uppercase', marginBottom: 6, paddingBottom: 4, borderBottom: '2px solid #eee' }}>
+                <span>St.</span><span>№</span><span>Market</span><span style={{ textAlign:'right' }}>Dona</span><span style={{ textAlign:'right' }}>Jami</span>
+              </div>
+              {[['16301','Mercato /1','20','478 500'],['16302','Mercato /2','15','326 880'],['16303','Alayskiy /1','40','1 055 999'],['16304','Uchtepa /1','40','1 160 500'],['16305','Shedevr /1','10','241 999']].map(([no,m,d,s]) => (
+                <div key={no} style={{ display: 'grid', gridTemplateColumns: '32px 40px 1fr 60px 60px', gap: 4, padding: '4px 0', borderBottom: '1px solid #f5f5f5', alignItems: 'center' }}>
+                  <div style={{ width: 14, height: 14, borderRadius: 7, background: '#28c840' }} />
+                  <div style={{ fontSize: 8, fontWeight: 800, color: '#e07b00' }}>{no}</div>
+                  <div style={{ fontSize: 8, color: '#333' }}>{m}</div>
+                  <div style={{ fontSize: 8, color: '#999', textAlign: 'right' }}>{d}</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: '#111', textAlign: 'right' }}>{s}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Front card — Savdo analytics */}
+          <div style={{ position: 'absolute', top: 0, left: 0, width: 400, height: 260, background: '#fff', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+            <div style={{ background: '#f8f8fa', borderBottom: '1px solid #eee', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#666', marginLeft: 6 }}>Analitika · Savdo</div>
+              <div style={{ marginLeft: 'auto', fontSize: 9, background: '#e8f5ee', color: '#1a8c44', borderRadius: 6, padding: '2px 8px', fontWeight: 700 }}>14.06 — 20.06.2026</div>
+            </div>
+            <div style={{ padding: '10px 12px' }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 10, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 8, color: '#999', marginBottom: 3 }}>BERILGAN</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#111' }}>24 472 661</div>
+                </div>
+                <div style={{ flex: 1, background: '#fff4f4', borderRadius: 10, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 8, color: '#999', marginBottom: 3 }}>VAZVRAT</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#e84a5f' }}>24 756 671</div>
+                </div>
+                <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 10, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 8, color: '#999', marginBottom: 3 }}>SAVDO</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#111' }}>−284 011</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 70px 70px', gap: 4, fontSize: 7, fontWeight: 800, color: '#aaa', textTransform: 'uppercase', marginBottom: 4, paddingBottom: 4, borderBottom: '2px solid #eee' }}>
+                <span>SANA</span><span style={{textAlign:'right'}}>NAKL.</span><span style={{textAlign:'right'}}>BERILGAN</span><span style={{textAlign:'right'}}>VAZVRAT</span><span style={{textAlign:'right'}}>SAVDO</span>
+              </div>
+              {[['16.06.2026','–','–','8 903 454','−8 903 454'],['17.06.2026','–','–','5 254 479','−5 254 479'],['20.06.2026','75','24 472 661','–','24 472 661']].map(([d,n,b,v,s]) => (
+                <div key={d} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 70px 70px', gap: 4, padding: '4px 0', borderBottom: '1px solid #f5f5f5' }}>
+                  <span style={{ fontSize: 8, color: '#555' }}>{d}</span>
+                  <span style={{ fontSize: 8, color: '#999', textAlign: 'right' }}>{n}</span>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: '#111', textAlign: 'right' }}>{b}</span>
+                  <span style={{ fontSize: 8, color: '#e84a5f', textAlign: 'right' }}>{v}</span>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: s.startsWith('−') ? '#e84a5f' : '#1a8c44', textAlign: 'right' }}>{s}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom tagline */}
+        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, margin: 0, zIndex: 1, textAlign: 'center' }}>
+          Barcha ma'lumotlar real vaqtda · MongoDB · Next.js · NestJS
+        </p>
       </section>
     </main>
   );
@@ -2480,6 +2678,126 @@ function Tab({
       <span className="navlabel">{label}</span>
       {badge ? <span className="navbadge">{badge}</span> : null}
     </button>
+  );
+}
+
+// ── SessionPicker: searchable session dropdown ─────────────────────────────
+function SessionPicker({
+  sessions,
+  currentDate,
+  onSelect,
+}: {
+  sessions: SessionSummary[];
+  currentDate: string;
+  onSelect: (invoiceDate: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState('');
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // Show raw invoiceDate (file name)
+  const label = (s: SessionSummary) => s.invoiceDate;
+
+  const filtered = sessions.filter((s) =>
+    label(s).toLowerCase().includes(query.toLowerCase()) ||
+    s.invoiceDate.includes(query)
+  );
+
+  const currentLabel = (() => {
+    const s = sessions.find((s) => s.invoiceDate === currentDate);
+    return s ? label(s) : currentDate.slice(0, 10);
+  })();
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        onClick={() => { setOpen((o) => !o); setQuery(''); }}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          height: 32, padding: '0 10px 0 12px', borderRadius: 10,
+          border: '1.5px solid rgba(var(--ink-rgb),0.12)',
+          background: 'rgba(var(--ink-rgb),0.04)',
+          color: 'var(--ink)', fontSize: 12, fontWeight: 600,
+          cursor: 'pointer', whiteSpace: 'nowrap',
+          transition: 'border-color 0.15s',
+        }}
+        onMouseOver={(e) => (e.currentTarget.style.borderColor = 'rgba(70,191,114,0.55)')}
+        onMouseOut={(e) => (e.currentTarget.style.borderColor = 'rgba(var(--ink-rgb),0.12)')}
+      >
+        <span style={{ fontSize: 13 }}>📅</span>
+        {currentLabel}
+        <span style={{ opacity: 0.5, fontSize: 10, marginLeft: 2 }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 36, left: 0, zIndex: 999,
+          background: 'var(--surface)', border: '1.5px solid rgba(var(--ink-rgb),0.12)',
+          borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+          minWidth: 240, overflow: 'hidden',
+        }}>
+          <div style={{ padding: '8px 8px 6px' }}>
+            <input
+              autoFocus
+              type="text"
+              placeholder="Qidirish..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                height: 30, padding: '0 10px', borderRadius: 7,
+                border: '1px solid rgba(var(--ink-rgb),0.12)',
+                background: 'rgba(var(--ink-rgb),0.06)',
+                color: 'var(--ink)', fontSize: 12, outline: 'none',
+                fontFamily: 'inherit',
+              }}
+            />
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {filtered.length === 0 && (
+              <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--muted)' }}>Topilmadi</div>
+            )}
+            {filtered.map((s) => {
+              const active = s.invoiceDate === currentDate;
+              return (
+                <button
+                  key={s.invoiceDate}
+                  type="button"
+                  onClick={() => { onSelect(s.invoiceDate); setOpen(false); setQuery(''); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    width: '100%', padding: '7px 14px', border: 'none', textAlign: 'left',
+                    background: active ? 'rgba(70,191,114,0.12)' : 'transparent',
+                    color: active ? 'var(--ok)' : 'var(--ink)',
+                    fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                    borderBottom: '1px solid rgba(var(--ink-rgb),0.05)',
+                  }}
+                  onMouseOver={(e) => { if (!active) e.currentTarget.style.background = 'rgba(var(--ink-rgb),0.06)'; }}
+                  onMouseOut={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span>{label(s)}</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{s.invoiceCount} nakl</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2512,6 +2830,497 @@ function Empty({ title }: { title: string }) {
   );
 }
 
+function groupByDateKey<T>(items: T[], getDate: (item: T) => string): { dateKey: string; items: T[] }[] {
+  const map: Record<string, T[]> = {};
+  for (const item of items) {
+    const d = getDate(item);
+    if (!map[d]) map[d] = [];
+    map[d].push(item);
+  }
+  return Object.keys(map)
+    .sort((a, b) => b.localeCompare(a))
+    .map(dateKey => ({ dateKey, items: map[dateKey] }));
+}
+
+function DateGroupHeader({ dateKey, count, expanded, onToggle }: { dateKey: string; count: number; expanded: boolean; onToggle: () => void }) {
+  const dayLabel = new Date(dateKey + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 6px', marginBottom: 2 }}>
+      <div style={{ height: 1, flex: 1, background: 'rgba(0,0,0,0.08)' }} />
+      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{dayLabel}</span>
+      {count > 1 && (
+        <button type="button" onClick={onToggle}
+          style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'rgba(70,191,114,0.1)', border: 'none', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
+          <span style={{ display: 'inline-block', transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.18s' }}>›</span> {count} ta
+        </button>
+      )}
+      <div style={{ height: 1, width: 20, background: 'rgba(0,0,0,0.08)' }} />
+    </div>
+  );
+}
+
+function NaklHistory({ sessions, expandedDates, toggleDateGroup, loadSession, deleteSession, isAdmin, fmtDateRu, fmt0, T }: {
+  sessions: any[]; expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
+  loadSession: (d: string) => void; deleteSession: (d: string) => void;
+  isAdmin: boolean; fmtDateRu: (d: string) => string; fmt0: (n: number) => string; T: (k: string) => string;
+}) {
+  const groups = groupByDateKey(sessions, s => s.invoiceDate.slice(0, 10));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {groups.map(({ dateKey, items }) => {
+        const multi = items.length > 1;
+        const open = expandedDates.has('nakl-' + dateKey);
+        const visible = multi && !open ? [items[0]] : items;
+        return (
+          <div key={dateKey}>
+            <DateGroupHeader dateKey={dateKey} count={items.length} expanded={open} onToggle={() => toggleDateGroup('nakl-' + dateKey)} />
+            {visible.map((session: any) => (
+              <div className="sessionRow" key={session.invoiceDate} style={{ marginBottom: 6, marginLeft: multi ? 12 : 0 }}>
+                {multi && <span style={{ color: 'var(--muted)', fontWeight: 700 }}>›</span>}
+                <b>{session.invoiceDate}</b>
+                <span className="sess-badge">{session.invoiceCount} накл.</span>
+                <span className="sess-sum">{fmt0(session.sumTotal)} сум</span>
+                <span className="sess-badge">{session.versions?.length || 0} версий</span>
+                <button className="mini" type="button" onClick={() => loadSession(session.invoiceDate)}>{T('lbl_restore')}</button>
+                {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(session.invoiceDate)}><Trash2 size={15} /></button>}
+              </div>
+            ))}
+            {multi && !open && (
+              <div onClick={() => toggleDateGroup('nakl-' + dateKey)} style={{ fontSize: 12, color: 'var(--muted)', padding: '2px 0 6px 20px', cursor: 'pointer' }}>
+                › yana {items.length - 1} ta ko&apos;rish...
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DovHistory({ dovHistory, expandedDates, toggleDateGroup, setDovFields, setSettingsView }: {
+  dovHistory: any[]; expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
+  setDovFields: (h: any) => void; setSettingsView: (v: any) => void;
+}) {
+  const groups = groupByDateKey(dovHistory, h => new Date(h.printedAt).toISOString().slice(0, 10));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {groups.map(({ dateKey, items }) => {
+        const multi = items.length > 1;
+        const open = expandedDates.has('dov-' + dateKey);
+        const visible = multi && !open ? [items[0]] : items;
+        return (
+          <div key={dateKey}>
+            <DateGroupHeader dateKey={dateKey} count={items.length} expanded={open} onToggle={() => toggleDateGroup('dov-' + dateKey)} />
+            {visible.map((h: any, i: number) => (
+              <div className="sessionRow" key={i} style={{ marginBottom: 6, marginLeft: multi ? 12 : 0 }}>
+                {multi && <span style={{ color: 'var(--muted)', fontWeight: 700 }}>›</span>}
+                <b>{new Date(h.printedAt).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</b>
+                <span className="sess-badge">{h.driver || '—'}</span>
+                <span className="sess-badge">{h.plate || '—'} · {h.car || '—'}</span>
+                <button className="mini" type="button" onClick={() => { setDovFields(h); setSettingsView('doverennost'); }}>Yuklash</button>
+              </div>
+            ))}
+            {multi && !open && (
+              <div onClick={() => toggleDateGroup('dov-' + dateKey)} style={{ fontSize: 12, color: 'var(--muted)', padding: '2px 0 6px 20px', cursor: 'pointer' }}>
+                › yana {items.length - 1} ta ko&apos;rish...
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+type HistoryEvent =
+  | { kind: 'nakl'; dateKey: string; data: any }
+  | { kind: 'dov';  dateKey: string; data: any }
+  | { kind: 'qayt'; dateKey: string; data: any }
+  | { kind: 'vazt'; dateKey: string; data: any };
+
+const KIND_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  nakl: { label: 'Hujjat',    color: '#2563eb', bg: 'rgba(37,99,235,0.09)' },
+  dov:  { label: 'Ishonchnoma', color: '#7c3aed', bg: 'rgba(124,58,237,0.09)' },
+  qayt: { label: 'Qaytgan',   color: '#dc2626', bg: 'rgba(220,38,38,0.09)' },
+  vazt: { label: 'Qaytarma',  color: '#d97706', bg: 'rgba(217,119,6,0.09)' },
+};
+
+// ─── TarixPane: tabbed history ────────────────────────────────────────────────
+type TarixTab = 'nakl' | 'vazvrat' | 'zakas' | 'dov';
+
+function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazvratAllRows, orders, token,
+  expandedDates, toggleDateGroup, loadSession, deleteSession, setDovFields, setSettingsView,
+  refreshSessions, isAdmin, fmtDateRu, fmt0, T }: {
+  sessions: any[]; dovHistory: any[]; qaytganInvoices: any[]; vazvratRows: any[];
+  setVazvratAllRows: (rows: any[]) => void; orders: any[]; token: string;
+  expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
+  loadSession: (d: string) => void; deleteSession: (d: string) => void;
+  setDovFields: (h: any) => void; setSettingsView: (v: any) => void;
+  refreshSessions: () => void;
+  isAdmin: boolean; fmtDateRu: (d: string) => string; fmt0: (n: number) => string; T: (k: string) => string;
+}) {
+  const [vazvratBusy, setVazvratBusy] = React.useState(false);
+
+  const deleteVazvratDate = async (date: string) => {
+    if (!confirm(`${date} sanasidagi barcha vazvratlarni o'chirish?`)) return;
+    setVazvratBusy(true);
+    try {
+      await api.deleteVazvratByDate(token, date);
+      setVazvratAllRows(vazvratRows.filter(v => v.date !== date));
+    } finally { setVazvratBusy(false); }
+  };
+
+  const deleteAllVazvrat = async () => {
+    if (!confirm('Barcha vazvrat yozuvlarini o\'chirish?')) return;
+    setVazvratBusy(true);
+    try {
+      await api.deleteAllVazvrat(token);
+      setVazvratAllRows([]);
+    } finally { setVazvratBusy(false); }
+  };
+
+  const uploadVazvratExcel = async (file: File) => {
+    setVazvratBusy(true);
+    try {
+      const XLSX = await import('xlsx');
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      let maxR = 0, maxC = 0;
+      Object.keys(ws).filter((k) => !k.startsWith('!')).forEach((addr) => {
+        const cell = XLSX.utils.decode_cell(addr);
+        if (cell.r > maxR) maxR = cell.r;
+        if (cell.c > maxC) maxC = cell.c;
+      });
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
+      const records: import('@/types/domain').VazvratUploadItem[] = [];
+      let lastOrderNo = '', lastDate = '', lastMarketCode = '', lastMarketName = '';
+      for (let i = 3; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r || r.every((c) => !c)) continue;
+        const orderNo    = String(r[0] || lastOrderNo);
+        const dateRaw    = r[1];
+        const marketName = String(r[4] || lastMarketName);
+        const marketCode = String(r[5] || lastMarketCode);
+        const sapCode    = String(r[17] || '');
+        const productName = String(r[15] || '');
+        const qty        = Number(r[19]) || 0;
+        const price      = Number(r[20]) || 0;
+        const totalWithVat = Number(r[24]) || 0;
+        if (!sapCode && !productName) continue;
+        let date = lastDate;
+        if (dateRaw) {
+          if (typeof dateRaw === 'number') {
+            const d = new Date(Math.round((dateRaw - 25569) * 86400 * 1000));
+            date = d.toISOString().slice(0, 10);
+          } else { date = String(dateRaw).slice(0, 10); }
+        }
+        if (orderNo) lastOrderNo = orderNo;
+        if (date)    lastDate = date;
+        if (marketCode) lastMarketCode = marketCode;
+        if (marketName) lastMarketName = marketName;
+        if (!lastDate || !sapCode) continue;
+        // Ensure ISO date format YYYY-MM-DD
+        const isoDate = lastDate.match(/^\d{4}-\d{2}-\d{2}$/) ? lastDate : null;
+        if (!isoDate) continue;
+        records.push({ orderNo: lastOrderNo || '-', date: isoDate, marketCode: lastMarketCode || '-', marketName: lastMarketName || '-', sapCode, productName: productName || sapCode, qty: qty || 0, pricePerUnit: price || 0, totalWithVat: totalWithVat || 0 });
+      }
+      if (!records.length) { alert('Hech qanday yozuv topilmadi'); return; }
+      await api.uploadVazvrat(token, records);
+      const fresh = await api.queryVazvrat(token, '2020-01-01', new Date().toISOString().slice(0, 10));
+      setVazvratAllRows(fresh);
+    } catch (e) { alert('Xato: ' + String(e)); }
+    finally { setVazvratBusy(false); }
+  };
+
+  const [tab, setTab] = React.useState<TarixTab>('nakl');
+
+  const TABS: { key: TarixTab; label: string; count: number; color: string }[] = [
+    { key: 'nakl',    label: 'Hujjat',    count: sessions.length,     color: '#2563eb' },
+    { key: 'vazvrat', label: 'Qaytarma',    count: vazvratRows.length,  color: '#d97706' },
+    { key: 'zakas',   label: 'Buyurtma',    count: sessions.length,     color: '#7c3aed' },
+    { key: 'dov',     label: 'Ishonchnoma', count: dovHistory.length,   color: '#059669' },
+  ];
+
+  return (
+    <>
+      {/* Tab bar + refresh */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div className="tarix-tabs">
+          {TABS.map(t => (
+            <button key={t.key} type="button" onClick={() => setTab(t.key)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: tab === t.key ? t.color : 'var(--surface)',
+                color: tab === t.key ? '#fff' : 'var(--ink)',
+                boxShadow: tab === t.key ? `0 2px 8px ${t.color}44` : '0 1px 3px rgba(0,0,0,0.06)',
+              }}>
+              {t.label}
+              <span style={{ fontSize: 11, fontWeight: 800, background: tab === t.key ? 'rgba(255,255,255,0.25)' : 'rgba(var(--ink-rgb),0.08)', borderRadius: 6, padding: '1px 6px' }}>{t.count}</span>
+            </button>
+          ))}
+        </div>
+        <button type="button" onClick={refreshSessions}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: '1px solid rgba(var(--ink-rgb),0.15)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: 'var(--ink)', cursor: 'pointer' }}>
+          <RefreshCcw size={13} /> Yangilash
+        </button>
+      </div>
+
+      {/* Nakladnoy tab */}
+      {tab === 'nakl' && (
+        sessions.length === 0 ? <Empty title="Hujjat tarixi yo'q" /> :
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {sessions.map(s => {
+            const key = 'nakl-' + s.invoiceDate;
+            return (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #2563eb', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{s.invoiceDate}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{s.invoiceCount} ta nakl</div>
+                </div>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{fmt0(s.sumTotal)} so&apos;m</span>
+                <button className="mini" type="button" onClick={() => loadSession(s.invoiceDate)}>{T('lbl_restore')}</button>
+                {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(s.invoiceDate)}><Trash2 size={14} /></button>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Vazvrat tab */}
+      {tab === 'vazvrat' && (() => {
+        const sorted = [...vazvratRows].sort((a, b) => b.date.localeCompare(a.date));
+        const byDate: Record<string, typeof sorted> = {};
+        for (const v of sorted) { if (!byDate[v.date]) byDate[v.date] = []; byDate[v.date].push(v); }
+        const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+        return (
+          <>
+            {/* Toolbar */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '6px 12px', border: '1px solid rgba(var(--ink-rgb),0.15)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
+                <FileText size={13} /> Excel yuklash
+                <input type="file" accept=".xlsx,.xls" style={{ position: 'absolute', opacity: 0, inset: 0, cursor: 'pointer' }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadVazvratExcel(f); e.target.value = ''; }} />
+              </label>
+              {vazvratRows.length > 0 && (
+                <button type="button" disabled={vazvratBusy} onClick={deleteAllVazvrat}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '6px 12px', border: '1px solid #dc2626', borderRadius: 8, background: 'rgba(220,38,38,0.06)', color: '#dc2626', cursor: 'pointer' }}>
+                  <Trash2 size={13} /> Hammasini o&apos;chir
+                </button>
+              )}
+            </div>
+            {dates.length === 0 ? <Empty title="Vazvrat tarixi yo'q" /> :
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {dates.map(date => {
+                  const rows = byDate[date];
+                  const total = rows.reduce((s, v) => s + v.totalWithVat, 0);
+                  const open = expandedDates.has('vazt-' + date);
+                  return (
+                    <div key={date} style={{ background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.08)', borderRadius: 12, overflow: 'hidden' }}>
+                      {/* Date header — clickable */}
+                      <div onClick={() => toggleDateGroup('vazt-' + date)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: open ? 'rgba(217,119,6,0.07)' : 'transparent' }}>
+                        <span style={{ color: '#d97706', fontWeight: 800, fontSize: 15, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>›</span>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>{fmtDateRu(date)}</span>
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{rows.length} ta yozuv</span>
+                        <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: '#d97706', marginLeft: 'auto' }}>{fmt0(total)} so&apos;m</span>
+                        <button type="button" disabled={vazvratBusy} onClick={(e) => { e.stopPropagation(); void deleteVazvratDate(date); }}
+                          className="iconbtn danger" title="Shu sanani o'chir"><Trash2 size={14} /></button>
+                      </div>
+                      {/* Rows — only when open */}
+                      {open && rows.map((v, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px 8px 38px', borderTop: '1px solid rgba(var(--ink-rgb),0.05)' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{v.marketName || v.marketCode}</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{v.productName}</div>
+                          </div>
+                          <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>×{v.qty} dona</span>
+                          <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: '#d97706', whiteSpace: 'nowrap' }}>{fmt0(v.totalWithVat)} so&apos;m</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            }
+          </>
+        );
+      })()}
+
+      {/* Zakas tab — grouped by base date (YYYY-MM-DD) */}
+      {tab === 'zakas' && (() => {
+        // Group sessions by base date (first 10 chars of invoiceDate)
+        const dateMap = new Map<string, { dateKey: string; items: any[]; totalNakl: number; totalSum: number }>();
+        for (const s of sessions) {
+          const dk = (s.invoiceDate || '').slice(0, 10);
+          if (!dateMap.has(dk)) dateMap.set(dk, { dateKey: dk, items: [], totalNakl: 0, totalSum: 0 });
+          const g = dateMap.get(dk)!;
+          g.items.push(s);
+          g.totalNakl += s.invoiceCount || 0;
+          g.totalSum  += s.sumTotal || 0;
+        }
+        const groups = [...dateMap.values()].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+        return groups.length === 0 ? <Empty title="Buyurtma tarixi yo'q" /> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {groups.map(g => {
+              const open = expandedDates.has('zakas-' + g.dateKey);
+              const multi = g.items.length > 1;
+              return (
+                <div key={g.dateKey}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #7c3aed', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)', cursor: multi ? 'pointer' : 'default' }}
+                    onClick={() => { if (multi) toggleDateGroup('zakas-' + g.dateKey); else loadSession(g.items[0].invoiceDate); }}>
+                    {multi && <span style={{ color: '#7c3aed', fontWeight: 800, fontSize: 15, transform: open ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>›</span>}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{fmtDateRu(g.dateKey)}</div>
+                      {multi && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.items.length} ta versiya</div>}
+                    </div>
+                    <span style={{ fontSize: 12, color: 'var(--ok)', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt0(g.totalNakl)} nakl.</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{fmt0(g.totalSum)} so&apos;m</span>
+                  </div>
+                  {open && multi && (
+                    <div style={{ marginLeft: 16, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {g.items.map((s: any) => (
+                        <div key={s.invoiceDate} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.05)', borderLeft: '2px solid #c4b5fd', borderRadius: 8, cursor: 'pointer' }}
+                          onClick={() => loadSession(s.invoiceDate)}>
+                          <div style={{ flex: 1, fontSize: 12, color: 'var(--muted)' }}>{s.invoiceDate}</div>
+                          <span style={{ fontSize: 11, color: 'var(--ok)', fontWeight: 700 }}>{fmt0(s.invoiceCount)} nakl.</span>
+                          <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(s.sumTotal)} so&apos;m</span>
+                          {isAdmin && <button className="iconbtn danger" type="button" onClick={e => { e.stopPropagation(); deleteSession(s.invoiceDate); }}><Trash2 size={13} /></button>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* Ishonchnoma tab */}
+      {tab === 'dov' && (
+        dovHistory.length === 0 ? <Empty title="Ishonchnoma tarixi yo'q" /> :
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {dovHistory.map((h, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #059669', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{h.driver || '—'}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{h.plate} · {h.car}</div>
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{new Date(h.printedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              <button className="mini" type="button" onClick={() => { setDovFields(h); setSettingsView('doverennost'); }}>Yuklash</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Legacy UnifiedHistory (kept for reference, not used) ────────────────────
+function UnifiedHistory({ sessions, dovHistory, qaytganInvoices, vazvratRows, expandedDates, toggleDateGroup,
+  loadSession, deleteSession, setDovFields, setSettingsView, isAdmin, fmtDateRu, fmt0, T }: {
+  sessions: any[]; dovHistory: any[]; qaytganInvoices: any[]; vazvratRows: any[];
+  expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
+  loadSession: (d: string) => void; deleteSession: (d: string) => void;
+  setDovFields: (h: any) => void; setSettingsView: (v: any) => void;
+  isAdmin: boolean; fmtDateRu: (d: string) => string; fmt0: (n: number) => string; T: (k: string) => string;
+}) {
+  // Build flat event list
+  const events: HistoryEvent[] = [
+    ...sessions.map(s => ({ kind: 'nakl' as const, dateKey: s.invoiceDate.slice(0, 10), data: s })),
+    ...dovHistory.map(h => ({ kind: 'dov' as const, dateKey: new Date(h.printedAt).toISOString().slice(0, 10), data: h })),
+    ...qaytganInvoices.map(i => ({ kind: 'qayt' as const, dateKey: (i.undeliveredAt ? new Date(i.undeliveredAt).toISOString() : i.dateIso).slice(0, 10), data: i })),
+    ...vazvratRows.map(v => ({ kind: 'vazt' as const, dateKey: v.date.slice(0, 10), data: v })),
+  ];
+
+  // Group by dateKey
+  const map: Record<string, HistoryEvent[]> = {};
+  for (const ev of events) {
+    if (!map[ev.dateKey]) map[ev.dateKey] = [];
+    map[ev.dateKey].push(ev);
+  }
+  const dateKeys = Object.keys(map).sort((a, b) => b.localeCompare(a));
+
+  if (!dateKeys.length) return <Empty title="Hali tarix yo'q" />;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {dateKeys.map(dateKey => {
+        const items = map[dateKey];
+        const multi = items.length > 1;
+        const open = expandedDates.has('uni-' + dateKey);
+        const visible = multi && !open ? [items[0]] : items;
+        const dayLabel = new Date(dateKey + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        return (
+          <div key={dateKey} style={{ marginBottom: 4 }}>
+            {/* Date header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 6px' }}>
+              <div style={{ height: 1, flex: 1, background: 'rgba(0,0,0,0.08)' }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{dayLabel}</span>
+              {multi && (
+                <button type="button" onClick={() => toggleDateGroup('uni-' + dateKey)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'rgba(70,191,114,0.1)', border: 'none', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
+                  <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.18s' }}>›</span> {items.length} ta
+                </button>
+              )}
+              <div style={{ height: 1, width: 20, background: 'rgba(0,0,0,0.08)' }} />
+            </div>
+
+            {/* Events */}
+            {visible.map((ev, idx) => {
+              const ks = KIND_STYLE[ev.kind];
+              return (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 5, marginLeft: multi ? 12 : 0, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                  {multi && <span style={{ color: 'var(--muted)', fontWeight: 700, flexShrink: 0 }}>›</span>}
+                  {/* Type badge */}
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: ks.color, background: ks.bg, borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>{ks.label}</span>
+
+                  {/* Content per kind */}
+                  {ev.kind === 'nakl' && (<>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{ev.data.invoiceDate}</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{ev.data.invoiceCount} nakl.</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto' }}>{fmt0(ev.data.sumTotal)} so&apos;m</span>
+                    <button className="mini" type="button" onClick={() => loadSession(ev.data.invoiceDate)}>{T('lbl_restore')}</button>
+                    {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(ev.data.invoiceDate)}><Trash2 size={14} /></button>}
+                  </>)}
+
+                  {ev.kind === 'dov' && (<>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{ev.data.driver || '—'}</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{ev.data.plate} · {ev.data.car}</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 'auto' }}>{new Date(ev.data.printedAt).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <button className="mini" type="button" onClick={() => { setDovFields(ev.data); setSettingsView('doverennost'); }}>Yuklash</button>
+                  </>)}
+
+                  {ev.kind === 'qayt' && (<>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>№{ev.data.invNo} — {ev.data.market}</span>
+                    <span style={{ fontSize: 12, color: '#dc2626', flex: 1 }}>{ev.data.undeliverComment}</span>
+                    <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                      {ev.data.undeliveredAt ? new Date(ev.data.undeliveredAt).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                  </>)}
+
+                  {ev.kind === 'vazt' && (<>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{ev.data.marketName || ev.data.marketCode}</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{ev.data.productName}</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>×{ev.data.qty}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', color: '#d97706' }}>{fmt0(ev.data.totalWithVat)} so&apos;m</span>
+                  </>)}
+                </div>
+              );
+            })}
+            {multi && !open && (
+              <div onClick={() => toggleDateGroup('uni-' + dateKey)} style={{ fontSize: 12, color: 'var(--muted)', padding: '2px 0 4px 20px', cursor: 'pointer' }}>
+                › yana {items.length - 1} ta ko&apos;rish...
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function AnalyticsPane({
   invoices,
   catalog,
@@ -2536,6 +3345,8 @@ function AnalyticsPane({
   T?: (k: string) => string;
 }) {
   const [tab, setTab] = useState<'overview' | 'products' | 'markets' | 'clients' | 'savdo'>('overview');
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const toggleItem = (key: string) => setExpandedItems(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   // ─── Shared date range for ALL tabs ───────────────────────────────────────
   const today = todayIso();
@@ -2676,9 +3487,9 @@ function AnalyticsPane({
   ), [invoices, savdoFrom, savdoTo]);
 
   const filteredMarkets = useMemo(() => {
-    const map: Record<string, { label: string; qty: number; sum: number; count: number }> = {};
+    const map: Record<string, { storeCode: string; label: string; qty: number; sum: number; count: number }> = {};
     for (const inv of filteredInvoices) {
-      if (!map[inv.storeCode]) map[inv.storeCode] = { label: inv.market, qty: 0, sum: 0, count: 0 };
+      if (!map[inv.storeCode]) map[inv.storeCode] = { storeCode: inv.storeCode, label: inv.market, qty: 0, sum: 0, count: 0 };
       map[inv.storeCode].qty += inv.sumQty;
       map[inv.storeCode].sum += inv.sumTotal;
       map[inv.storeCode].count += 1;
@@ -2699,75 +3510,106 @@ function AnalyticsPane({
   const fMaxMarketSum = filteredMarkets[0]?.sum || 1;
   const fMaxProductQty = filteredProductRows[0]?.givenQty || 1;
 
-  // Date range controls component (shared across all tabs)
-  const DateControls = (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-      <input type="date" value={savdoFrom} onChange={(e) => setSavdoFrom(e.target.value)}
-        style={{ width: 130, fontSize: 13, padding: '5px 8px', background: 'rgba(var(--hi-rgb),0.06)', border: '0.5px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'inherit' }} />
-      <span style={{ color: 'var(--muted)', fontSize: 13 }}>—</span>
-      <input type="date" value={savdoTo} onChange={(e) => setSavdoTo(e.target.value)}
-        style={{ width: 130, fontSize: 13, padding: '5px 8px', background: 'rgba(var(--hi-rgb),0.06)', border: '0.5px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'inherit' }} />
-      {tab === 'savdo' && (
-        <>
-          <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
-            style={{ fontSize: 12, padding: '5px 12px', background: 'rgba(var(--hi-rgb),0.08)', border: '0.5px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'var(--ink)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <RefreshCcw size={12} /> {savdoBusy ? '…' : 'Yuklash'}
-          </button>
-          <label style={{ fontSize: 12, padding: '5px 12px', background: 'rgba(var(--hi-rgb),0.08)', border: '0.5px solid rgba(var(--hi-rgb),0.14)', borderRadius: 8, color: 'var(--muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, position: 'relative', overflow: 'hidden' }}>
-            <FileText size={12} /> {savdoUploading ? '…' : 'Vazvrat Excel'}
-            <input type="file" accept=".xlsx,.xls" style={{ position: 'absolute', opacity: 0, inset: 0, cursor: 'pointer' }}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleVazvratExcel(f); e.target.value = ''; }} />
-          </label>
-        </>
-      )}
-    </div>
-  );
+  const aInit    = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.lines.reduce((ls, l) => ls + (l.init || 0), 0), 0), [filteredInvoices]);
+  const aGiven   = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumQty, 0), [filteredInvoices]);
+  const aReduced = aInit - aGiven;
+  const aSum     = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumTotal, 0), [filteredInvoices]);
 
   return (
     <section className="pane">
-      <PaneHead
-        title={T('analytics_title')}
-        actions={<button className="small" type="button" onClick={onRefresh}><RefreshCcw size={15} /></button>}
-      />
-      <div className="subtabs">
-        <button className={tab === 'overview' ? 'active' : ''} type="button" onClick={() => setTab('overview')}>{T('analytics_title')}</button>
-        <button className={tab === 'products' ? 'active' : ''} type="button" onClick={() => setTab('products')}>{T('lbl_product')}</button>
-        <button className={tab === 'markets' ? 'active' : ''} type="button" onClick={() => setTab('markets')}>{T('lbl_store')}</button>
-        <button className={tab === 'clients' ? 'active' : ''} type="button" onClick={() => setTab('clients')}>{T('clients_title')}</button>
-        <button className={tab === 'savdo' ? 'active' : ''} type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}>Savdo</button>
+      {/* ── Top bar: tabs + date range + refresh ── */}
+      <div className="analytics-topbar" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div className="analytics-tabs subtabs" style={{ position: 'static', margin: 0, padding: 0, background: 'transparent', flex: '1 1 auto' }}>
+          <button className={tab === 'overview' ? 'active' : ''} type="button" onClick={() => setTab('overview')}>{T('analytics_title')}</button>
+          <button className={tab === 'products' ? 'active' : ''} type="button" onClick={() => setTab('products')}>{T('lbl_product')}</button>
+          <button className={tab === 'markets' ? 'active' : ''} type="button" onClick={() => setTab('markets')}>{T('lbl_store')}</button>
+          <button className={tab === 'clients' ? 'active' : ''} type="button" onClick={() => setTab('clients')}>{T('clients_title')}</button>
+          <button className={tab === 'savdo' ? 'active' : ''} type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}>Savdo</button>
+        </div>
+        <div className="analytics-daterow" style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+          <input type="date" value={savdoFrom} onChange={(e) => setSavdoFrom(e.target.value)} style={{ width: 130 }} />
+          <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
+          <input type="date" value={savdoTo} onChange={(e) => setSavdoTo(e.target.value)} style={{ width: 130 }} />
+          {tab === 'savdo'
+            ? <>
+                <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
+                  <RefreshCcw size={12} /> {savdoBusy ? '…' : 'Yuklash'}
+                </button>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
+                  <FileText size={12} /> {savdoUploading ? '…' : 'Vazvrat Excel'}
+                  <input type="file" accept=".xlsx,.xls" style={{ position: 'absolute', opacity: 0, inset: 0, cursor: 'pointer' }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleVazvratExcel(f); e.target.value = ''; }} />
+                </label>
+              </>
+            : <button type="button" onClick={onRefresh}
+                style={{ display: 'inline-flex', alignItems: 'center', padding: '5px 8px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
+                <RefreshCcw size={13} />
+              </button>
+          }
+        </div>
       </div>
-
-      {/* ─── Shared date range controls ─── */}
-      {DateControls}
 
       {tab === 'overview' && (
         <>
-          {(() => {
-            const aInit    = filteredInvoices.reduce((s, inv) => s + inv.lines.reduce((ls, l) => ls + (l.init || 0), 0), 0);
-            const aGiven   = filteredInvoices.reduce((s, inv) => s + inv.sumQty, 0);
-            const aReduced = aInit - aGiven;
-            const aSum     = filteredInvoices.reduce((s, inv) => s + inv.sumTotal, 0);
-            return (
-              <div className="kpis" style={{ marginBottom: 20 }}>
-                <Kpi label="KELDI"   value={fmt0(aInit)} />
-                <Kpi label="KAMAYDI" value={fmt0(aReduced)} valueStyle={aReduced > 0 ? { color: 'var(--danger)' } : undefined} />
-                <Kpi label="BERILDI" value={fmt0(aGiven)} />
-                <Kpi label="SUMMA"   value={fmt0(aSum)} accent />
-              </div>
-            );
-          })()}
-          <h3 style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--muted)', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{T('lbl_store')}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxWidth: 560 }}>
-            {filteredMarkets.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13 }}>Sana oralig'ida ma'lumot yo'q</div>}
-            {filteredMarkets.map((m) => (
-              <div key={m.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px,160px) 1fr 86px', gap: 8, alignItems: 'center', fontSize: 13 }}>
-                <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.label)}</span>
-                <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 14, overflow: 'hidden' }}>
-                  <div style={{ width: `${(m.sum / fMaxMarketSum) * 100}%`, height: '100%', background: 'var(--berry)', borderRadius: 4 }} />
-                </div>
-                <span className="mono" style={{ textAlign: 'right', fontSize: 12 }}>{fmt0(m.sum)}</span>
+          {/* ── KPI cards ── */}
+          <div className="kpi-4-grid">
+            {[
+              { label: 'Keldi',   val: fmt0(aInit),    sub: 'Jami zakaz dona', color: 'var(--ink)', accent: false },
+              { label: 'Kamaydi', val: fmt0(aReduced), sub: 'Yetkazilmagan',   color: aReduced > 0 ? '#dc2626' : 'var(--ok)', accent: false },
+              { label: 'Berildi', val: fmt0(aGiven),   sub: 'Yetkazilgan dona', color: 'var(--ok)', accent: false },
+              { label: 'Summa',   val: fmt0(aSum) + ' so\'m', sub: 'Jami aylanma', color: 'var(--ink)', accent: true },
+            ].map(k => (
+              <div key={k.label} style={{ padding: '14px 16px', borderRadius: 14, background: k.accent ? 'linear-gradient(135deg, #46bf72, #2ea855)' : 'var(--surface)', border: k.accent ? 'none' : '1px solid rgba(var(--ink-rgb),0.08)', boxShadow: k.accent ? '0 4px 16px rgba(70,191,114,0.25)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: k.accent ? 'rgba(255,255,255,0.75)' : 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: k.accent ? '#fff' : k.color, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{k.val}</div>
+                <div style={{ fontSize: 11, color: k.accent ? 'rgba(255,255,255,0.65)' : 'var(--muted)', marginTop: 4 }}>{k.sub}</div>
               </div>
             ))}
+          </div>
+          <h3 style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--muted)', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{T('lbl_store')}</h3>
+          <div className="market-overview" style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 620 }}>
+            {filteredMarkets.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13 }}>Sana oralig'ida ma'lumot yo'q</div>}
+            {filteredMarkets.map((m) => {
+              const mKey = 'ov-mkt-' + m.label;
+              const open = expandedItems.has(mKey);
+              const mInvoices = filteredInvoices.filter(inv => inv.storeCode === m.storeCode);
+              return (
+                <div key={m.label}>
+                  <div onClick={() => toggleItem(mKey)} style={{ display: 'grid', gridTemplateColumns: '18px minmax(120px,200px) 1fr 90px', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 8, background: open ? 'rgba(var(--ink-rgb),0.04)' : 'transparent' }}>
+                    <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 14, transition: 'transform 0.15s', display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
+                    <div style={{ overflow: 'hidden' }}>
+                      <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.label)}</span>
+                      <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{m.count} ta nakl</span>
+                    </div>
+                    <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden' }}>
+                      <div style={{ width: `${(m.sum / fMaxMarketSum) * 100}%`, height: '100%', background: '#46bf72', borderRadius: 4 }} />
+                    </div>
+                    <span className="mono" style={{ textAlign: 'right', fontSize: 12 }}>{fmt0(m.sum)}</span>
+                  </div>
+                  {open && (
+                    <div style={{ marginLeft: 26, marginBottom: 4, borderLeft: '2px solid rgba(var(--ink-rgb),0.08)', paddingLeft: 10 }}>
+                      {mInvoices.map(inv => (
+                        <div key={inv.invNo} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 80px 90px', gap: 8, fontSize: 12, padding: '3px 4px', borderRadius: 6, alignItems: 'center' }}>
+                          <span style={{ color: 'var(--muted)', fontFamily: 'var(--mono)' }}>#{inv.invNo}</span>
+                          <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.dateIso}</span>
+                          <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(inv.sumQty)} dona</span>
+                          <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600 }}>{fmt0(inv.sumTotal)}</span>
+                        </div>
+                      ))}
+                      {mInvoices.length > 1 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 80px 90px', gap: 8, fontSize: 12, padding: '4px 4px 2px', borderTop: '1px solid rgba(var(--ink-rgb),0.08)', marginTop: 2 }}>
+                          <span />
+                          <span style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 11 }}>Jami</span>
+                          <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 700 }}>{fmt0(m.qty)} dona</span>
+                          <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{fmt0(m.sum)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </>
       )}
@@ -2779,6 +3621,7 @@ function AnalyticsPane({
               <table className="data">
                 <thead>
                   <tr>
+                    <th style={{ width: 24 }}></th>
                     <th>{T('lbl_product')}</th>
                     <th className="right">Zakaz</th>
                     <th className="right">Berildi</th>
@@ -2787,19 +3630,49 @@ function AnalyticsPane({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredProductRows.map((row) => (
-                    <tr key={row.product.sku}>
-                      <td><b>{row.product.name}</b></td>
-                      <td className="right mono">{fmt0(row.initTotal)}</td>
-                      <td className="right mono">{fmt0(row.givenQty)}</td>
-                      <td className="right mono">{fmt0(row.givenSum)}</td>
-                      <td style={{ minWidth: 80 }}>
-                        <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
-                          <div style={{ width: `${(row.givenQty / fMaxProductQty) * 100}%`, height: '100%', background: 'var(--berry)', borderRadius: 4 }} />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredProductRows.map((row) => {
+                    const pKey = 'prod-' + row.product.sku;
+                    const open = expandedItems.has(pKey);
+                    // per-market breakdown for this product
+                    const byMarket: Record<string, { market: string; qty: number; sum: number; invNos: number[] }> = {};
+                    for (const inv of filteredInvoices) {
+                      const line = inv.lines.find(l => l.sku === row.product.sku);
+                      if (!line || !line.qty) continue;
+                      if (!byMarket[inv.storeCode]) byMarket[inv.storeCode] = { market: inv.market, qty: 0, sum: 0, invNos: [] };
+                      byMarket[inv.storeCode].qty += line.qty;
+                      byMarket[inv.storeCode].sum += line.total;
+                      byMarket[inv.storeCode].invNos.push(inv.invNo);
+                    }
+                    const marketRows = Object.values(byMarket).sort((a,b) => b.qty - a.qty);
+                    return (
+                      <React.Fragment key={row.product.sku}>
+                        <tr onClick={() => toggleItem(pKey)} style={{ cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : undefined }}>
+                          <td style={{ textAlign: 'center', color: 'var(--accent)', fontWeight: 800, fontSize: 15, transition: 'transform 0.15s', paddingRight: 0 }}>
+                            <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>›</span>
+                          </td>
+                          <td><b>{row.product.name}</b></td>
+                          <td className="right mono">{fmt0(row.initTotal)}</td>
+                          <td className="right mono">{fmt0(row.givenQty)}</td>
+                          <td className="right mono">{fmt0(row.givenSum)}</td>
+                          <td style={{ minWidth: 80 }}>
+                            <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
+                              <div style={{ width: `${(row.givenQty / fMaxProductQty) * 100}%`, height: '100%', background: '#46bf72', borderRadius: 4 }} />
+                            </div>
+                          </td>
+                        </tr>
+                        {open && marketRows.map(mr => (
+                          <tr key={mr.market} style={{ background: 'rgba(var(--ink-rgb),0.02)', fontSize: 12 }}>
+                            <td></td>
+                            <td style={{ paddingLeft: 24, color: 'var(--muted)' }}>› {shortMkt(mr.market)}</td>
+                            <td></td>
+                            <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(mr.qty)}</td>
+                            <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(mr.sum)}</td>
+                            <td style={{ color: 'var(--muted)', fontSize: 11 }}>{mr.invNos.length} nakl.</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -2812,27 +3685,67 @@ function AnalyticsPane({
               <table className="data">
                 <thead>
                   <tr>
+                    <th style={{ width: 24 }}></th>
                     <th>{T('lbl_store')}</th>
-                    <th className="right">Nakladnoy</th>
+                    <th className="right">Hujjat</th>
                     <th className="right">{T('lbl_pcs')}</th>
                     <th className="right">{T('lbl_sum')}</th>
                     <th>График</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMarkets.map((m) => (
-                    <tr key={m.label}>
-                      <td><b>{shortMkt(m.label)}</b> <span className="muted">{m.count} nakl.</span></td>
-                      <td className="right mono">{m.count}</td>
-                      <td className="right mono">{fmt0(m.qty)}</td>
-                      <td className="right mono">{fmt0(m.sum)}</td>
-                      <td style={{ minWidth: 80 }}>
-                        <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
-                          <div style={{ width: `${(m.sum / fMaxMarketSum) * 100}%`, height: '100%', background: 'var(--honey)', borderRadius: 4 }} />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredMarkets.map((m) => {
+                    const mKey = 'mkt-' + m.label;
+                    const open = expandedItems.has(mKey);
+                    const mInvoices = filteredInvoices.filter(inv => inv.market === m.label).sort((a,b) => a.invNo - b.invNo);
+                    return (
+                      <React.Fragment key={m.label}>
+                        <tr onClick={() => toggleItem(mKey)} style={{ cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : undefined }}>
+                          <td style={{ textAlign: 'center', color: 'var(--accent)', fontWeight: 800, fontSize: 15, paddingRight: 0 }}>
+                            <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>›</span>
+                          </td>
+                          <td><b>{shortMkt(m.label)}</b></td>
+                          <td className="right mono">{m.count}</td>
+                          <td className="right mono">{fmt0(m.qty)}</td>
+                          <td className="right mono">{fmt0(m.sum)}</td>
+                          <td style={{ minWidth: 80 }}>
+                            <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
+                              <div style={{ width: `${(m.sum / fMaxMarketSum) * 100}%`, height: '100%', background: 'var(--honey)', borderRadius: 4 }} />
+                            </div>
+                          </td>
+                        </tr>
+                        {open && mInvoices.map(inv => {
+                          const iKey = 'inv-' + inv.invNo;
+                          const iOpen = expandedItems.has(iKey);
+                          return (
+                            <React.Fragment key={inv.invNo}>
+                              <tr onClick={(e) => { e.stopPropagation(); toggleItem(iKey); }} style={{ background: 'rgba(var(--ink-rgb),0.02)', cursor: 'pointer', fontSize: 12 }}>
+                                <td></td>
+                                <td style={{ paddingLeft: 20, color: 'var(--muted)' }}>
+                                  <span style={{ display: 'inline-block', transform: iOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', marginRight: 4, color: 'var(--accent)' }}>›</span>
+                                  Nakl. #{inv.invNo} <span style={{ color: 'var(--muted)', fontSize: 11 }}>· {inv.dateIso}</span>
+                                </td>
+                                <td></td>
+                                <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(inv.sumQty)}</td>
+                                <td className="right mono" style={{ fontWeight: 600 }}>{fmt0(inv.sumTotal)}</td>
+                                <td></td>
+                              </tr>
+                              {iOpen && inv.lines.filter(l => l.qty > 0).map((l, li) => (
+                                <tr key={li} style={{ background: 'rgba(70,191,114,0.03)', fontSize: 11 }}>
+                                  <td></td>
+                                  <td style={{ paddingLeft: 36, color: 'var(--muted)' }}>{l.name}</td>
+                                  <td></td>
+                                  <td className="right mono" style={{ color: 'var(--muted)' }}>{l.qty}</td>
+                                  <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(l.total)}</td>
+                                  <td style={{ color: 'var(--muted)', fontSize: 11 }}>{fmt0(l.price)} × {l.qty}</td>
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -2866,190 +3779,228 @@ function AnalyticsPane({
       )}
 
       {/* ─── SAVDO TAB ─────────────────────────────────────────────── */}
-      {tab === 'savdo' && (() => {
-        // ─── BERILGAN source: sessions (always correct, even for old sessions not in DB) ───
-        // Sessions API: { invoiceDate, invoiceCount, sumTotal } — one record per date
-        const sessionsInRange = sessions.filter(
-          (s) => s.invoiceDate >= savdoFrom && s.invoiceDate <= savdoTo
-        );
+      {tab === 'savdo' && <SavdoTab
+        sessions={sessions} vazvratRows={vazvratRows} invoices={invoices}
+        savdoFrom={savdoFrom} savdoTo={savdoTo} savdoInvoices={savdoInvoices}
+        savdoAnalytics={savdoAnalytics} savdoTab={savdoTab} setSavdoTab={setSavdoTab}
+        fmtDateRu={fmtDateRu} fmt0={fmt0}
+      />}
 
-        // Build daily data: berilgan from SESSIONS, vazvrat from DB
-        const dayMap: Record<string, { berilgan: number; vazvrat: number; count: number }> = {};
-        for (const s of sessionsInRange) {
-          if (!dayMap[s.invoiceDate]) dayMap[s.invoiceDate] = { berilgan: 0, vazvrat: 0, count: 0 };
-          dayMap[s.invoiceDate].berilgan += s.sumTotal;
-          dayMap[s.invoiceDate].count += s.invoiceCount;
-        }
-        for (const vr of vazvratRows) {
-          if (!dayMap[vr.date]) dayMap[vr.date] = { berilgan: 0, vazvrat: 0, count: 0 };
-          dayMap[vr.date].vazvrat += vr.totalWithVat;
-        }
+    </section>
+  );
+}
 
-        // ── Rescheduled invoices adjustment ──────────────────────────────────
-        // Invoices that were undelivered then restored with a NEW date have originalDateIso set.
-        // Remove their sumTotal from the original session date and add to the new date.
-        const rescheduled = invoices.filter(
-          (inv) => inv.status === 'delivered' && inv.originalDateIso && inv.originalDateIso !== inv.dateIso
-        );
-        for (const inv of rescheduled) {
-          // Remove from original date (was already counted in that session's sumTotal)
-          const orig = inv.originalDateIso!;
-          if (orig >= savdoFrom && orig <= savdoTo && dayMap[orig]) {
-            dayMap[orig].berilgan -= inv.sumTotal;
-            dayMap[orig].count = Math.max(0, dayMap[orig].count - 1);
-          }
-          // Add to new date
-          const newD = inv.dateIso;
-          if (newD >= savdoFrom && newD <= savdoTo) {
-            if (!dayMap[newD]) dayMap[newD] = { berilgan: 0, vazvrat: 0, count: 0 };
-            dayMap[newD].berilgan += inv.sumTotal;
-            dayMap[newD].count += 1;
-          }
-        }
-        // ─────────────────────────────────────────────────────────────────────
-
-        const dayRows = Object.entries(dayMap).sort(([a],[b]) => a.localeCompare(b));
-
-        // KPI totals (rescheduled don't change the overall total, just shift between days)
-        const totBerilgan = sessionsInRange.reduce((s, sess) => s + sess.sumTotal, 0);
-        const totVazvrat  = vazvratRows.reduce((s, vr) => s + vr.totalWithVat, 0);
-        const totSavdo    = totBerilgan - totVazvrat;
-
-        // Do'konlar: from DB invoices (savdoInvoices) — best available, may be incomplete for old sessions
-        type MarketRow = { code: string; name: string; berilgan: number; vazvrat: number };
-        const mktMap: Record<string, MarketRow> = {};
-        for (const inv of savdoInvoices) {
-          if (!mktMap[inv.storeCode]) mktMap[inv.storeCode] = { code: inv.storeCode, name: shortMkt(inv.market), berilgan: 0, vazvrat: 0 };
-          mktMap[inv.storeCode].berilgan += inv.sumTotal;
-        }
-        for (const vr of vazvratRows) {
-          if (!mktMap[vr.marketCode]) mktMap[vr.marketCode] = { code: vr.marketCode, name: shortMkt(vr.marketName), berilgan: 0, vazvrat: 0 };
-          mktMap[vr.marketCode].vazvrat += vr.totalWithVat;
-        }
-        const mktRows = Object.values(mktMap).sort((a, b) => (b.berilgan - b.vazvrat) - (a.berilgan - a.vazvrat));
-
-        // Product rows from server-side aggregation (DB invoices + vazvrat)
-        const prodRows = savdoAnalytics;
-
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* KPIs */}
-            <div className="kpis">
-              <Kpi label="BERILGAN" value={fmt0(totBerilgan)} />
-              <Kpi label="VAZVRAT"  value={fmt0(totVazvrat)} valueStyle={totVazvrat > 0 ? { color: 'var(--danger)' } : undefined} />
-              <Kpi label="SAVDO"    value={fmt0(totSavdo)} accent />
-            </div>
-
-            {/* Inner sub-tabs */}
-            <div className="subtabs" style={{ marginBottom: 12 }}>
-              {(['kunlik', 'dokonlar', 'mahsulotlar'] as const).map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => setSavdoTab(st)}
-                  className={savdoTab === st ? 'active' : ''}
-                  style={{ fontWeight: savdoTab === st ? 700 : 400 }}
-                >
-                  {st === 'kunlik' ? 'Kunlik' : st === 'dokonlar' ? "Do'konlar" : 'Mahsulotlar'}
-                </button>
-              ))}
-            </div>
-
-            {/* Kunlik sub-tab */}
-            {savdoTab === 'kunlik' && (
-              <div className="tablewrap">
-                <table className="data">
-                  <thead><tr>
-                    <th>Sana</th>
-                    <th className="right">Nakl.</th>
-                    <th className="right">Berilgan</th>
-                    <th className="right">Vazvrat</th>
-                    <th className="right">Savdo</th>
-                  </tr></thead>
-                  <tbody>
-                    {dayRows.map(([date, d]) => (
-                      <tr key={date}>
-                        <td className="mono">{fmtDateRu(date)}</td>
-                        <td className="right mono muted">{d.count || '—'}</td>
-                        <td className="right mono">{d.berilgan ? fmt0(d.berilgan) : <span className="muted">—</span>}</td>
-                        <td className="right mono" style={d.vazvrat > 0 ? { color: 'var(--danger)' } : undefined}>{d.vazvrat ? fmt0(d.vazvrat) : <span className="muted">—</span>}</td>
-                        <td className="right mono" style={{ color: (d.berilgan - d.vazvrat) < 0 ? 'var(--danger)' : 'var(--ok)', fontWeight: 600 }}>{fmt0(d.berilgan - d.vazvrat)}</td>
-                      </tr>
-                    ))}
-                    {dayRows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Ma'lumot yo'q</td></tr>}
-                  </tbody>
-                  {dayRows.length > 0 && (
-                    <tfoot>
-                      <tr style={{ borderTop: '1px solid rgba(var(--hi-rgb),0.1)' }}>
-                        <td style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 11, padding: '8px 12px' }}>JAMI</td>
-                        <td className="right mono" style={{ fontWeight: 700 }}>{sessionsInRange.reduce((s,x)=>s+x.invoiceCount,0)}</td>
-                        <td className="right mono" style={{ fontWeight: 700 }}>{fmt0(totBerilgan)}</td>
-                        <td className="right mono" style={{ fontWeight: 700, color: totVazvrat > 0 ? 'var(--danger)' : undefined }}>{fmt0(totVazvrat)}</td>
-                        <td className="right mono" style={{ fontWeight: 800, color: totSavdo < 0 ? 'var(--danger)' : 'var(--ok)' }}>{fmt0(totSavdo)}</td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            )}
-
-            {/* Do'konlar sub-tab */}
-            {savdoTab === 'dokonlar' && (
-              <div className="tablewrap">
-                <table className="data">
-                  <thead><tr>
-                    <th>Do'kon</th>
-                    <th className="right">Berilgan</th>
-                    <th className="right">Vazvrat</th>
-                    <th className="right">Savdo</th>
-                  </tr></thead>
-                  <tbody>
-                    {mktRows.map((r) => (
-                      <tr key={r.code}>
-                        <td><b>{r.name}</b> <span className="muted">{r.code}</span></td>
-                        <td className="right mono">{fmt0(r.berilgan)}</td>
-                        <td className="right mono" style={r.vazvrat > 0 ? { color: 'var(--danger)' } : undefined}>{fmt0(r.vazvrat)}</td>
-                        <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(r.berilgan - r.vazvrat)}</td>
-                      </tr>
-                    ))}
-                    {mktRows.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)' }}>Ma'lumot yo'q</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Mahsulotlar sub-tab */}
-            {savdoTab === 'mahsulotlar' && (
-              <div className="tablewrap">
-                <table className="data">
-                  <thead><tr>
-                    <th>Mahsulot</th>
-                    <th className="right">B.dona</th>
-                    <th className="right">Berilgan</th>
-                    <th className="right">V.dona</th>
-                    <th className="right">Vazvrat</th>
-                    <th className="right">Savdo</th>
-                  </tr></thead>
-                  <tbody>
-                    {prodRows.map((r) => (
-                      <tr key={r.sku}>
-                        <td title={r.sku}>{r.name}</td>
-                        <td className="right mono">{r.berilganQty || '—'}</td>
-                        <td className="right mono">{fmt0(r.berilganSum)}</td>
-                        <td className="right mono" style={r.vazvratQty > 0 ? { color: 'var(--danger)' } : undefined}>{r.vazvratQty || '—'}</td>
-                        <td className="right mono" style={r.vazvratSum > 0 ? { color: 'var(--danger)' } : undefined}>{fmt0(r.vazvratSum)}</td>
-                        <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(r.berilganSum - r.vazvratSum)}</td>
-                      </tr>
-                    ))}
-                    {prodRows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)' }}>Ma'lumot yo'q</td></tr>}
-                  </tbody>
-                </table>
-              </div>
+function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, setInvoiceDetail, setRestoreModal, fmt, todayIso }: {
+  invoices: Invoice[];
+  undeliveredFilter: { from: string; to: string };
+  setUndeliveredFilter: (v: { from: string; to: string }) => void;
+  setInvoiceDetail: (inv: Invoice) => void;
+  setRestoreModal: (v: any) => void;
+  fmt: (n: number) => string;
+  todayIso: () => string;
+}) {
+  const all = invoices.filter(i => i.status === 'saved');
+  const undeliveredList = all.filter(i => {
+    const d = i.dateIso || '';
+    if (undeliveredFilter.from && d < undeliveredFilter.from) return false;
+    if (undeliveredFilter.to && d > undeliveredFilter.to) return false;
+    return true;
+  });
+  return (
+    <section className="pane">
+      <PaneHead
+        title="Yetkazilmagan hujjatlar"
+        meta={`${undeliveredList.length} / ${all.length} ta`}
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>dan:</span>
+            <input type="date" value={undeliveredFilter.from} onChange={e => setUndeliveredFilter({ ...undeliveredFilter, from: e.target.value })} style={{ width: 140 }} />
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>gacha:</span>
+            <input type="date" value={undeliveredFilter.to} onChange={e => setUndeliveredFilter({ ...undeliveredFilter, to: e.target.value })} style={{ width: 140 }} />
+            {(undeliveredFilter.from || undeliveredFilter.to) && (
+              <button className="iconbtn" type="button" onClick={() => setUndeliveredFilter({ from: '', to: '' })} title="Tozalash">✕</button>
             )}
           </div>
-        );
-      })()}
+        }
+      />
+      {undeliveredList.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>✓ Barcha hujjatlar yetkazilgan</div>
+      ) : (
+        <div className="tablewrap">
+          <table className="data">
+            <thead>
+              <tr>
+                <th>№</th><th>Buyurtma</th><th>Do&apos;kon</th>
+                <th className="right">Summa</th><th>Bekor qilish sababi</th><th>Vaqt</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {undeliveredList.map(inv => (
+                <tr key={inv.invNo}>
+                  <td>
+                    <button className="linklike" type="button" onClick={() => setInvoiceDetail(inv)}>
+                      <span className="invoiceNo">{inv.invNo}</span>
+                    </button>
+                  </td>
+                  <td className="mono">{inv.order}</td>
+                  <td>{inv.market} <span className="muted">{inv.storeCode}</span></td>
+                  <td className="right mono">{fmt(inv.sumTotal)}</td>
+                  <td>
+                    {inv.undeliverComment
+                      ? <span style={{ color: 'var(--warn)', fontSize: 13 }}>⚠️ {inv.undeliverComment}</span>
+                      : <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>}
+                  </td>
+                  <td style={{ color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
+                    {inv.undeliveredAt ? new Date(inv.undeliveredAt).toLocaleString('uz-UZ') : '—'}
+                  </td>
+                  <td>
+                    <button className="mini" type="button" style={{ color: 'var(--ok)', borderColor: 'rgba(47,209,88,0.3)' }}
+                      onClick={() => setRestoreModal({
+                        invNo: inv.invNo,
+                        date: todayIso(),
+                        lines: (inv.lines || []).filter(l => (l.name || l.sku) && Math.max(l.init ?? 0, l.qty ?? 0) > 0).map(l => {
+                          const initQty = Math.max(l.init ?? 0, l.qty ?? 0);
+                          return { sku: l.sku, name: l.name, unit: l.unit, price: l.price, qty: initQty, initQty };
+                        }),
+                      })}>
+                      ↩ Tiklash
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
+  );
+}
+
+function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoInvoices, savdoAnalytics, savdoTab, setSavdoTab, fmtDateRu, fmt0 }: {
+  sessions: any[]; vazvratRows: any[]; invoices: Invoice[]; savdoFrom: string; savdoTo: string;
+  savdoInvoices: Invoice[]; savdoAnalytics: any[]; savdoTab: string; setSavdoTab: (t: any) => void;
+  fmtDateRu: (d: string) => string; fmt0: (n: number) => string;
+}) {
+  const sessionsInRange = sessions.filter(s => s.invoiceDate >= savdoFrom && s.invoiceDate <= savdoTo);
+  const dayMap: Record<string, { berilgan: number; vazvrat: number; count: number }> = {};
+  for (const s of sessionsInRange) {
+    if (!dayMap[s.invoiceDate]) dayMap[s.invoiceDate] = { berilgan: 0, vazvrat: 0, count: 0 };
+    dayMap[s.invoiceDate].berilgan += s.sumTotal;
+    dayMap[s.invoiceDate].count += s.invoiceCount;
+  }
+  for (const vr of vazvratRows) {
+    if (!dayMap[vr.date]) dayMap[vr.date] = { berilgan: 0, vazvrat: 0, count: 0 };
+    dayMap[vr.date].vazvrat += vr.totalWithVat;
+  }
+  const rescheduled = invoices.filter(inv => inv.status === 'delivered' && inv.originalDateIso && inv.originalDateIso !== inv.dateIso);
+  for (const inv of rescheduled) {
+    const orig = inv.originalDateIso!;
+    if (orig >= savdoFrom && orig <= savdoTo && dayMap[orig]) {
+      dayMap[orig].berilgan -= inv.sumTotal;
+      dayMap[orig].count = Math.max(0, dayMap[orig].count - 1);
+    }
+    const newD = inv.dateIso;
+    if (newD >= savdoFrom && newD <= savdoTo) {
+      if (!dayMap[newD]) dayMap[newD] = { berilgan: 0, vazvrat: 0, count: 0 };
+      dayMap[newD].berilgan += inv.sumTotal;
+      dayMap[newD].count += 1;
+    }
+  }
+  const dayRows = Object.entries(dayMap).sort(([a],[b]) => a.localeCompare(b));
+  const totBerilgan = sessionsInRange.reduce((s, sess) => s + sess.sumTotal, 0);
+  const totVazvrat  = vazvratRows.reduce((s, vr) => s + vr.totalWithVat, 0);
+  const totSavdo    = totBerilgan - totVazvrat;
+  const mktMap: Record<string, { code: string; name: string; berilgan: number; vazvrat: number }> = {};
+  for (const inv of savdoInvoices) {
+    if (!mktMap[inv.storeCode]) mktMap[inv.storeCode] = { code: inv.storeCode, name: shortMkt(inv.market), berilgan: 0, vazvrat: 0 };
+    mktMap[inv.storeCode].berilgan += inv.sumTotal;
+  }
+  for (const vr of vazvratRows) {
+    if (!mktMap[vr.marketCode]) mktMap[vr.marketCode] = { code: vr.marketCode, name: shortMkt(vr.marketName), berilgan: 0, vazvrat: 0 };
+    mktMap[vr.marketCode].vazvrat += vr.totalWithVat;
+  }
+  const mktRows = Object.values(mktMap).sort((a,b) => (b.berilgan-b.vazvrat)-(a.berilgan-a.vazvrat));
+  const prodRows = savdoAnalytics;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="kpis kpis-3">
+        <Kpi label="BERILGAN" value={fmt0(totBerilgan)} />
+        <Kpi label="VAZVRAT"  value={fmt0(totVazvrat)} valueStyle={totVazvrat > 0 ? { color: 'var(--danger)' } : undefined} />
+        <Kpi label="SAVDO"    value={fmt0(totSavdo)} accent />
+      </div>
+      <div className="subtabs" style={{ marginBottom: 12 }}>
+        {(['kunlik', 'dokonlar', 'mahsulotlar'] as const).map(st => (
+          <button key={st} type="button" onClick={() => setSavdoTab(st)} className={savdoTab === st ? 'active' : ''}>
+            {st === 'kunlik' ? 'Kunlik' : st === 'dokonlar' ? "Do'konlar" : 'Mahsulotlar'}
+          </button>
+        ))}
+      </div>
+      {savdoTab === 'kunlik' && (
+        <div className="tablewrap">
+          <table className="data">
+            <thead><tr><th>Sana</th><th className="right">Nakl.</th><th className="right">Berilgan</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
+            <tbody>
+              {dayRows.map(([date, d]) => (
+                <tr key={date}>
+                  <td className="mono">{fmtDateRu(date)}</td>
+                  <td className="right mono muted">{d.count || '—'}</td>
+                  <td className="right mono">{d.berilgan ? fmt0(d.berilgan) : <span className="muted">—</span>}</td>
+                  <td className="right mono" style={d.vazvrat > 0 ? { color: 'var(--danger)' } : undefined}>{d.vazvrat ? fmt0(d.vazvrat) : <span className="muted">—</span>}</td>
+                  <td className="right mono" style={{ color: (d.berilgan-d.vazvrat) < 0 ? 'var(--danger)' : 'var(--ok)', fontWeight: 600 }}>{fmt0(d.berilgan-d.vazvrat)}</td>
+                </tr>
+              ))}
+              {dayRows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Ma'lumot yo'q</td></tr>}
+            </tbody>
+            {dayRows.length > 0 && <tfoot><tr>
+              <td style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 11, padding: '8px 12px' }}>JAMI</td>
+              <td className="right mono" style={{ fontWeight: 700 }}>{sessionsInRange.reduce((s,x)=>s+x.invoiceCount,0)}</td>
+              <td className="right mono" style={{ fontWeight: 700 }}>{fmt0(totBerilgan)}</td>
+              <td className="right mono" style={{ fontWeight: 700, color: totVazvrat > 0 ? 'var(--danger)' : undefined }}>{fmt0(totVazvrat)}</td>
+              <td className="right mono" style={{ fontWeight: 800, color: totSavdo < 0 ? 'var(--danger)' : 'var(--ok)' }}>{fmt0(totSavdo)}</td>
+            </tr></tfoot>}
+          </table>
+        </div>
+      )}
+      {savdoTab === 'dokonlar' && (
+        <div className="tablewrap">
+          <table className="data">
+            <thead><tr><th>Do'kon</th><th className="right">Berilgan</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
+            <tbody>
+              {mktRows.map(r => (
+                <tr key={r.code}>
+                  <td><b>{r.name}</b> <span className="muted">{r.code}</span></td>
+                  <td className="right mono">{fmt0(r.berilgan)}</td>
+                  <td className="right mono" style={r.vazvrat > 0 ? { color: 'var(--danger)' } : undefined}>{fmt0(r.vazvrat)}</td>
+                  <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(r.berilgan-r.vazvrat)}</td>
+                </tr>
+              ))}
+              {mktRows.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)' }}>Ma'lumot yo'q</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {savdoTab === 'mahsulotlar' && (
+        <div className="tablewrap">
+          <table className="data">
+            <thead><tr><th>Mahsulot</th><th className="right">B.dona</th><th className="right">Berilgan</th><th className="right">V.dona</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
+            <tbody>
+              {prodRows.map((r: any) => (
+                <tr key={r.sku}>
+                  <td title={r.sku}>{r.name}</td>
+                  <td className="right mono">{r.berilganQty || '—'}</td>
+                  <td className="right mono">{fmt0(r.berilganSum)}</td>
+                  <td className="right mono" style={r.vazvratQty > 0 ? { color: 'var(--danger)' } : undefined}>{r.vazvratQty || '—'}</td>
+                  <td className="right mono" style={r.vazvratSum > 0 ? { color: 'var(--danger)' } : undefined}>{fmt0(r.vazvratSum)}</td>
+                  <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(r.berilganSum-r.vazvratSum)}</td>
+                </tr>
+              ))}
+              {prodRows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)' }}>Ma'lumot yo'q</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -3066,9 +4017,10 @@ function StatsPane({
   isAdmin: boolean;
   T?: (k: string) => string;
 }) {
-  const totalSum  = invoices.reduce((s, inv) => s + inv.sumTotal, 0);
-  const totalInit = invoices.reduce((s, inv) => s + inv.lines.reduce((ls, l) => ls + (l.init || 0), 0), 0);
-  const totalGiven = invoices.reduce((s, inv) => s + inv.sumQty, 0);
+  const totalSum     = invoices.filter(inv => inv.status === 'delivered').reduce((s, inv) => s + inv.sumTotal, 0);
+  const totalInit    = invoices.reduce((s, inv) => s + inv.lines.reduce((ls, l) => ls + (l.init || 0), 0), 0);
+  const totalInitSum = invoices.reduce((s, inv) => s + inv.lines.reduce((ls, l) => ls + (l.init || 0) * (l.price || 0) * 1.12, 0), 0);
+  const totalGiven   = invoices.reduce((s, inv) => s + inv.sumQty, 0);
   const totalReduced = totalInit - totalGiven;
 
   const products = useMemo(() =>
@@ -3076,15 +4028,15 @@ function StatsPane({
       const initTotal = invoices.reduce((s, inv) => s + (inv.lines[index]?.init || 0), 0);
       const givenQty  = invoices.reduce((s, inv) => s + (inv.lines[index]?.qty  || 0), 0);
       const givenSum  = invoices.reduce((s, inv) => s + (inv.lines[index]?.total || 0), 0);
-      return { name: product.name, initTotal, givenQty, givenSum, reduced: initTotal - givenQty };
+      return { name: product.name, index, initTotal, givenQty, givenSum, reduced: initTotal - givenQty };
     }).filter((r) => r.initTotal > 0).sort((a, b) => b.givenQty - a.givenQty),
   [invoices, catalog]);
 
   const markets = useMemo(() => {
-    const map: Record<string, { market: string; qty: number; sum: number; initSum: number; count: number }> = {};
+    const map: Record<string, { storeCode: string; market: string; qty: number; sum: number; initSum: number; count: number }> = {};
     for (const inv of invoices) {
       const key = inv.storeCode;
-      if (!map[key]) map[key] = { market: inv.market, qty: 0, sum: 0, initSum: 0, count: 0 };
+      if (!map[key]) map[key] = { storeCode: key, market: inv.market, qty: 0, sum: 0, initSum: 0, count: 0 };
       map[key].qty     += inv.sumQty;
       map[key].sum     += inv.sumTotal;
       map[key].initSum += inv.lines.reduce((s, l) => s + (l.init || 0) * (l.price || 0), 0);
@@ -3093,71 +4045,159 @@ function StatsPane({
     return Object.values(map).sort((a, b) => b.sum - a.sum);
   }, [invoices]);
 
+  const [peekMarket, setPeekMarket] = useState<string | null>(null);
+  const [peekInv, setPeekInv] = useState<number | null>(null);
+
   const maxProdQty   = products[0]?.givenQty || 1;
   const maxMarketSum = markets[0]?.sum || 1;
 
+  const [statsTab, setStatsTab] = useState<'products'|'markets'>('products');
+  const [expandedProduct, setExpandedProduct] = useState<number | null>(null);
+
   return (
     <section className="pane statsPane">
-      {/* Top: KPIs */}
-      <PaneHead title={T('stats_title')} meta={`${invoices.length} nakl.`} />
-      <div className="kpis" style={{ marginBottom: 20 }}>
-        <Kpi label="KELDI"    value={fmt0(totalInit)}    />
-        <Kpi label="KAMAYDI"  value={fmt0(totalReduced)} valueStyle={totalReduced > 0 ? { color: 'var(--danger)' } : undefined} />
-        <Kpi label="BERILDI"  value={fmt0(totalGiven)}   />
-        <Kpi label="SUMMA"    value={fmt0(totalSum)}     accent />
-      </div>
-
-      {/* Two-column layout: products left, markets right */}
-      <div className="statsCols">
-        {/* LEFT: Products */}
-        <div className="statsCol">
-          <h3 className="statsColHead">{T('lbl_product')}</h3>
-          <div className="statsRows">
-            {products.map((row) => (
-              <div key={row.name} className="statsRow">
-                <div className="statsRowName" title={row.name}>{row.name}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                  <div className="statsRowBar">
-                    <div className="statsBarFill" style={{ width: `${(row.givenQty / maxProdQty) * 100}%`, background: 'var(--berry)' }} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>
-                    <span title="Zakaz">Z:{fmt0(row.initTotal)}</span>
-                    {row.reduced > 0 && <span title="Kamaytirildi" style={{ color: 'var(--danger)' }}>−{fmt0(row.reduced)}</span>}
-                    <span title="Berildi" style={{ color: 'var(--ok)' }}>✓{fmt0(row.givenQty)}</span>
-                    <span title="Summa" style={{ color: 'var(--honey)' }}>{fmt0(row.givenSum)} so'm</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+      <div className="stats-head-row">
+        <div>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{T('stats_title')}</h2>
         </div>
-
-        {/* RIGHT: Markets */}
-        <div className="statsCol">
-          <h3 className="statsColHead">{T('lbl_store')}</h3>
-          <div className="statsRows">
-            {markets.map((m) => (
-              <div key={m.market} className="statsRow">
-                <div className="statsRowName" title={m.market}>{shortMkt(m.market)}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                  <div className="statsRowBar">
-                    <div className="statsBarFill" style={{ width: `${(m.sum / maxMarketSum) * 100}%`, background: 'var(--blue)' }} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>
-                    <span title="Zakaz summasi">Z:{fmt0(m.initSum)}</span>
-                    <span title="Berildi summasi" style={{ color: 'var(--ok)' }}>✓{fmt0(m.sum)}</span>
-                    <span>{m.count} nakl.</span>
-                  </div>
-                </div>
-                <div className="statsRowNums">
-                  <span className="mono">{fmt0(m.sum)}</span>
-                  <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{fmt0(m.qty)} dona</span>
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="stats-kpi-bar">
+          <span className="skpi"><span className="skpi-lbl">Keldi</span><span className="skpi-val">{fmt0(totalInit)}</span></span>
+          <span className="skpi-sep" />
+          <span className="skpi"><span className="skpi-lbl">Kamaydi</span><span className="skpi-val" style={totalReduced > 0 ? { color: 'var(--danger)' } : undefined}>{fmt0(totalReduced)}</span></span>
+          <span className="skpi-sep" />
+          <span className="skpi"><span className="skpi-lbl">Berildi</span><span className="skpi-val">{fmt0(totalGiven)}</span></span>
+          <span className="skpi-sep" />
+          <span className="skpi"><span className="skpi-lbl">Zakaz summa</span><span className="skpi-val">{fmt0(totalInitSum)}</span></span>
+          <span className="skpi-sep" />
+          <span className="skpi"><span className="skpi-lbl">Berilgan summa</span><span className="skpi-val skpi-accent">{fmt0(totalSum)}</span></span>
+        </div>
+        <div className="statsTabs">
+          <button className={`statsTab${statsTab === 'products' ? ' active' : ''}`} onClick={() => setStatsTab('products')}>
+            📦 {T('lbl_product')} ({products.length})
+          </button>
+          <button className={`statsTab${statsTab === 'markets' ? ' active' : ''}`} onClick={() => setStatsTab('markets')}>
+            🏪 {T('lbl_store')} ({markets.length})
+          </button>
         </div>
       </div>
+
+      {/* Products tab */}
+      {statsTab === 'products' && (
+        <div className="tablewrap" style={{ maxHeight: 'calc(100dvh - 200px)', overflowY: 'auto' }}>
+          <table className="data compact">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Mahsulot nomi</th>
+                <th style={{ textAlign: 'right' }}>Zakaz</th>
+                <th style={{ textAlign: 'right' }}>Kamaydi</th>
+                <th style={{ textAlign: 'right' }}>Berildi</th>
+                <th style={{ textAlign: 'right' }}>Summa (so'm)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((row, i) => {
+                const isOpen = expandedProduct === row.index;
+                const invRows = isOpen ? invoices.filter(inv => (inv.lines[row.index]?.qty || 0) > 0) : [];
+                return (
+                  <React.Fragment key={row.name}>
+                    <tr className={isOpen ? 'prod-expanded-row' : ''} style={{ cursor: 'pointer' }} onClick={() => setExpandedProduct(isOpen ? null : row.index)}>
+                      <td style={{ color: 'var(--muted)', fontSize: 11, width: 1, whiteSpace: 'nowrap' }}>{i + 1}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        <span className={`prod-chevron${isOpen ? ' open' : ''}`}>›</span>
+                        {row.name}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{fmt0(row.initTotal)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: row.reduced > 0 ? 'var(--danger)' : 'var(--muted)', fontWeight: row.reduced > 0 ? 700 : 400 }}>
+                        {row.reduced > 0 ? `−${fmt0(row.reduced)}` : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ok)', fontWeight: 700 }}>{fmt0(row.givenQty)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(row.givenSum)}</td>
+                    </tr>
+                    {isOpen && invRows.map(inv => (
+                      <tr key={`${row.index}-${inv.invNo}`} className="prod-sub-row">
+                        <td />
+                        <td style={{ paddingLeft: 28, color: 'var(--muted)', fontSize: 12 }}>
+                          <span style={{ fontFamily: 'var(--mono)', color: 'var(--ok)', fontWeight: 700, marginRight: 8 }}>{inv.invNo}</span>
+                          {inv.market}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--muted)' }}>{fmt0(inv.lines[row.index]?.init || 0)}</td>
+                        <td />
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>{fmt0(inv.lines[row.index]?.qty || 0)}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{fmt0(inv.lines[row.index]?.total || 0)}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Markets tab */}
+      {statsTab === 'markets' && (
+        <div className="tablewrap" style={{ maxHeight: 'calc(100dvh - 200px)', overflowY: 'auto' }}>
+          <table className="data compact">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Market nomi</th>
+                <th style={{ textAlign: 'right' }}>Hujjat soni</th>
+                <th style={{ textAlign: 'right' }}>Dona</th>
+                <th style={{ textAlign: 'right' }}>Summa (so'm)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {markets.map((m, i) => {
+                const isOpen = peekMarket === m.storeCode;
+                const mInvs = isOpen ? invoices.filter(inv => inv.storeCode === m.storeCode) : [];
+                return (
+                  <React.Fragment key={m.storeCode}>
+                    <tr className={isOpen ? 'prod-expanded-row' : ''} style={{ cursor: 'pointer' }} onClick={() => setPeekMarket(isOpen ? null : m.storeCode)}>
+                      <td style={{ color: 'var(--muted)', fontSize: 11, width: 1, whiteSpace: 'nowrap' }}>{i + 1}</td>
+                      <td style={{ fontWeight: 700 }}>
+                        <span className={`prod-chevron${isOpen ? ' open' : ''}`}>›</span>
+                        {shortMkt(m.market)}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{m.count}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{fmt0(m.qty)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(m.sum)}</td>
+                    </tr>
+                    {isOpen && mInvs.map(inv => {
+                      const invOpen = peekInv === inv.invNo;
+                      const invLines = catalog.map((p, pi) => ({ name: p.name, qty: inv.lines[pi]?.qty || 0, price: inv.lines[pi]?.price || 0, total: inv.lines[pi]?.total || 0 })).filter(l => l.qty > 0);
+                      return (
+                        <React.Fragment key={inv.invNo}>
+                          <tr className="prod-sub-row" style={{ cursor: 'pointer', ...(inv.status === 'cancelled' ? { opacity: 0.4 } : {}) }} onClick={() => setPeekInv(invOpen ? null : inv.invNo)}>
+                            <td />
+                            <td style={{ paddingLeft: 28, fontSize: 12 }}>
+                              <span className={`prod-chevron${invOpen ? ' open' : ''}`} style={{ fontSize: 13 }}>›</span>
+                              <span style={{ fontFamily: 'var(--mono)', color: 'var(--ok)', fontWeight: 700, marginRight: 8 }}>{inv.invNo}</span>
+                              <span style={{ color: 'var(--muted)' }}>{inv.order}</span>
+                            </td>
+                            <td />
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>{fmt0(inv.sumQty)}</td>
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(inv.sumTotal)}</td>
+                          </tr>
+                          {invOpen && invLines.map(l => (
+                            <tr key={l.name} className="prod-sub-row">
+                              <td colSpan={2} style={{ paddingLeft: 56, fontSize: 11, color: 'var(--muted)' }}>{l.name}</td>
+                              <td />
+                              <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ok)' }}>{fmt0(l.qty)}</td>
+                              <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11 }}>{fmt0(l.total)}</td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -3209,6 +4249,30 @@ function RequisiteBlock({
   );
 }
 
+function BarcodeCanvas({ value }: { value: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!value || !ref.current) return;
+    const render = () => {
+      if (ref.current && (window as any).JsBarcode) {
+        try {
+          (window as any).JsBarcode(ref.current, value, {
+            format: 'CODE128', width: 0.9, height: 20,
+            displayValue: true, fontSize: 7, margin: 2,
+            background: '#fff', lineColor: '#000',
+          });
+        } catch {}
+      }
+    };
+    if ((window as any).JsBarcode) { render(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+    s.onload = render;
+    document.head.appendChild(s);
+  }, [value]);
+  return <canvas ref={ref} style={{ display: 'block', maxWidth: '100%' }} />;
+}
+
 function InvoiceDocument({ invoice, requisites }: { invoice: Invoice; requisites: Requisites }) {
   const lines = invoice.lines.filter((line) => line.qty > 0);
   return (
@@ -3225,7 +4289,10 @@ function InvoiceDocument({ invoice, requisites }: { invoice: Invoice; requisites
       </header>
       <div className="docMeta">
         <DocMeta label="Дата" value={fmtDateRu(invoice.dateIso)} />
-        <DocMeta label="№ заказа" value={invoice.order} />
+        <div>
+          <span>№ заказа</span>
+          {invoice.order && <BarcodeCanvas value={invoice.order} />}
+        </div>
         <DocMeta label="Магазин" value={invoice.market} />
         <DocMeta label="Код" value={invoice.storeCode} />
       </div>
@@ -3324,7 +4391,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
   uz: {
     // nav
     nav_orders:'Buyurtmalar', nav_register:"Ro'yxat", nav_matrix:'Jadval',
-    nav_docs:'Nakladnoylar', nav_dispatch:'Ekspeditsiya', nav_schedule:'Grafik',
+    nav_docs:'Hujjatlar', nav_dispatch:'Marshrut', nav_schedule:'Grafik',
     nav_stats:'Statistika', nav_ops:'Operatsiyalar', nav_clients:'Mijozlar',
     nav_analytics:'Analitika', nav_settings:'Sozlamalar',
     nav_preferences:'Shaxsiy', pref_theme:'Mavzu', pref_theme_hint:'Yorug‘ yoki tungi ko‘rinish', pref_dark:'Tungi', pref_light:'Yorug‘',
@@ -3333,19 +4400,19 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     pref_lang:'Til', pref_lang_hint:'Interfeys tili',
     // topbar
     lbl_invoices:'nakl.', lbl_pcs:'dona', lbl_sum:"so'm", lbl_unsaved:'saqlanmagan',
-    lbl_logout:'Chiqish', lbl_store:"Do'kon", lbl_driver:'Haydovchi',
+    lbl_logout:'Chiqish', lbl_store:'Market', lbl_driver:'Haydovchi',
     lbl_print:'Chop etish', lbl_save:'Saqlash', lbl_add:"Qo'shish",
     lbl_cancel:'Bekor', lbl_date:'Sana', lbl_order:'Buyurtma',
     lbl_product:'Mahsulot', lbl_unit:'Birlik', lbl_qty:'Miqdor',
     lbl_price:'Narx', lbl_total:'Jami', lbl_vat:'QQS',
     lbl_delivered:'Yetkazildi', lbl_selected:'Tanlangan', lbl_restore:'Tiklash', lbl_delete:"O'chirish",
     // pane titles/meta
-    reg_title:"Nakladnoylar ro'yxati", reg_empty:"Nakladnoy yo'q",
+    reg_title:"Hujjatlar ro'yxati", reg_empty:"Hujjat yo'q",
     reg_meta_docs:'hujjat', reg_manual:'Qo\'lda',
     matrix_title:'Miqdor matritsasi', hide_zeros:"Nollarni yashir",
     matrix_product:'Mahsulot', matrix_total:'Jami',
-    docs_title:'Nakladnoylar', docs_print_sel:'Tanlanganlarni chop',
-    docs_empty:'Avval nakladnoy shakllantiring',
+    docs_title:'Hujjatlar', docs_print_sel:'Tanlanganlarni chop',
+    docs_empty:'Avval hujjat shakllantiring',
     sap_title:'SAP import', sap_meta_ready:'nakladnoy tayyor', sap_meta_empty:'Excel yukla',
     sap_batch:'Partiya nomi',
     ops_title:'Operatsiyalar', ops_orders:'Buyurtmalar', ops_moves:'Harakatlar',
@@ -3358,26 +4425,26 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     ops_last_moves:'So\'nggi harakatlar',
     clients_title:'Mijozlar', clients_meta:'mijoz', clients_empty:"Mijoz yo'q",
     clients_name:'Nomi', clients_phone:'Telefon', clients_addr:'Manzil', clients_notes:'Izoh',
-    dispatch_title:'Ekspeditsiya', dispatch_empty:'Avval nakladnoy shakllantiring',
+    dispatch_title:'Marshrut', dispatch_empty:'Avval hujjat shakllantiring',
     schedule_title:'Yetkazib berish jadvali',
     schedule_upload:'Grafik yuklash', schedule_view_only:"Ko'rish rejimi",
     stats_title:'Statistika', stats_invoices:'Nakladnoylar',
     stats_items:'Dona', stats_sum:'Summa', stats_avg:'O\'rtacha',
     analytics_title:'Analitika',
-    settings_cat:'Katalog', settings_req:'Rekvizitlar',
+    settings_cat:'Mahsulotlar', settings_req:'Tafsilot',
     settings_exc:'Istisno kunlar', settings_hist:'Tarix', settings_access:'Kirish',
-    settings_cat_title:'Tovarlar katalogi', settings_req_title:'Rekvizitlar',
+    settings_cat_title:'Mahsulotlar', settings_req_title:'Tafsilot',
     settings_hist_title:'Sessiya tarixi', settings_users_title:'Foydalanuvchilar',
     settings_supplier:'Yetkazib beruvchi', settings_receiver:'Qabul qiluvchi',
     settings_contract:'Shartnoma',
-    modal_manual:'Qo\'lda nakladnoy', modal_order:'Yangi buyurtma', modal_client:'Yangi mijoz',
+    modal_manual:'Qo\'lda hujjat', modal_order:'Yangi buyurtma', modal_client:'Yangi mijoz',
     // days
     days:['Du','Se','Ch','Pa','Ju','Sh','Ya'],
     days_full:['Dushanba','Seshanba','Chorshanba','Payshanba','Juma','Shanba','Yakshanba'],
   },
   ru: {
     nav_orders:'Заказы', nav_register:'Реестр', nav_matrix:'Таблица',
-    nav_docs:'Накладные', nav_dispatch:'Экспедиция', nav_schedule:'График',
+    nav_docs:'Hujjatlar', nav_dispatch:'Marshrut', nav_schedule:'График',
     nav_stats:'Статистика', nav_ops:'Операции', nav_clients:'Клиенты',
     nav_analytics:'Аналитика', nav_settings:'Настройки',
     nav_preferences:'Персонализация', pref_theme:'Тема', pref_theme_hint:'Светлый или тёмный режим', pref_dark:'Тёмная', pref_light:'Светлая',
@@ -3395,7 +4462,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     reg_meta_docs:'документов', reg_manual:'Вручную',
     matrix_title:'Матрица количества', hide_zeros:'Скрыть нули',
     matrix_product:'Товар', matrix_total:'Итого',
-    docs_title:'Накладные', docs_print_sel:'Печать выбранных',
+    docs_title:'Hujjatlar', docs_print_sel:'Печать выбранных',
     docs_empty:'Сначала сформируйте накладные',
     sap_title:'SAP импорт', sap_meta_ready:'накладных готово', sap_meta_empty:'Загрузите Excel',
     sap_batch:'Название партии',
@@ -3409,7 +4476,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     ops_last_moves:'Последние движения',
     clients_title:'Клиенты', clients_meta:'клиентов', clients_empty:'Клиентов пока нет',
     clients_name:'Имя', clients_phone:'Телефон', clients_addr:'Адрес', clients_notes:'Примечания',
-    dispatch_title:'Экспедиция', dispatch_empty:'Сначала сформируйте накладные',
+    dispatch_title:'Marshrut', dispatch_empty:'Сначала сформируйте накладные',
     schedule_title:'График доставки',
     schedule_upload:'Загрузить график', schedule_view_only:'Режим просмотра',
     stats_title:'Статистика', stats_invoices:'Накладных',
@@ -3427,7 +4494,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
   },
   en: {
     nav_orders:'Orders', nav_register:'Registry', nav_matrix:'Table',
-    nav_docs:'Invoices', nav_dispatch:'Dispatch', nav_schedule:'Schedule',
+    nav_docs:'Hujjatlar', nav_dispatch:'Dispatch', nav_schedule:'Schedule',
     nav_stats:'Statistics', nav_ops:'Operations', nav_clients:'Clients',
     nav_analytics:'Analytics', nav_settings:'Settings',
     nav_preferences:'Preferences', pref_theme:'Theme', pref_theme_hint:'Light or dark appearance', pref_dark:'Dark', pref_light:'Light',
@@ -3445,7 +4512,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     reg_meta_docs:'documents', reg_manual:'Manual',
     matrix_title:'Quantity Matrix', hide_zeros:'Hide zeros',
     matrix_product:'Product', matrix_total:'Total',
-    docs_title:'Invoices', docs_print_sel:'Print selected',
+    docs_title:'Hujjatlar', docs_print_sel:'Print selected',
     docs_empty:'Generate invoices first',
     sap_title:'SAP Import', sap_meta_ready:'invoices ready', sap_meta_empty:'Upload Excel',
     sap_batch:'Batch name',
@@ -3487,12 +4554,12 @@ function tDaysFull(lang: Lang): string[] { return I18N[lang].days_full as string
 // Per-route color coding, aligned to the brand palette (blue/pistachio/indigo/
 // honey/berry + one teal) instead of a separate iOS-system palette.
 const DISPATCH_COLORS = [
-  { header:'rgba(76,155,234,0.22)',  text:'#8fc1f2', dot:'#4c9bea',  cell:'rgba(76,155,234,0.10)' },
-  { header:'rgba(70,191,114,0.22)',  text:'#84d6a3', dot:'#46bf72',  cell:'rgba(70,191,114,0.10)' },
-  { header:'rgba(124,124,230,0.22)', text:'#aaaaf0', dot:'#7c7ce6',  cell:'rgba(124,124,230,0.10)' },
-  { header:'rgba(233,166,58,0.22)',  text:'#f1c074', dot:'#e9a63a',  cell:'rgba(233,166,58,0.10)' },
-  { header:'rgba(232,79,106,0.22)',  text:'#f2929f', dot:'#e84f6a',  cell:'rgba(232,79,106,0.10)' },
-  { header:'rgba(64,191,180,0.22)',  text:'#84d9d1', dot:'#40bfb4',  cell:'rgba(64,191,180,0.10)' },
+  { header:'rgba(76,155,234,0.85)',  text:'#ffffff', dot:'#4c9bea',  cell:'rgba(76,155,234,0.10)' },
+  { header:'rgba(70,191,114,0.85)',  text:'#ffffff', dot:'#46bf72',  cell:'rgba(70,191,114,0.10)' },
+  { header:'rgba(124,124,230,0.85)', text:'#ffffff', dot:'#7c7ce6',  cell:'rgba(124,124,230,0.10)' },
+  { header:'rgba(233,166,58,0.85)',  text:'#ffffff', dot:'#e9a63a',  cell:'rgba(233,166,58,0.10)' },
+  { header:'rgba(232,79,106,0.85)',  text:'#ffffff', dot:'#e84f6a',  cell:'rgba(232,79,106,0.10)' },
+  { header:'rgba(64,191,180,0.85)',  text:'#ffffff', dot:'#40bfb4',  cell:'rgba(64,191,180,0.10)' },
 ];
 
 // ─── SCHEDULE PANE ───────────────────────────────────────────────────────────
@@ -3638,22 +4705,40 @@ function SchedulePane({
       {scheduleRows.length === 0 ? (
         <div className="panel">
           <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>Excel формати:</p>
-          <table className="data compact" style={{ maxWidth: 760 }}>
-            <thead><tr><th>{T('lbl_store')} (код)</th><th>{T('lbl_store')}</th><th>{T('lbl_driver')}</th><th>Du</th><th>Se</th><th>Ch</th><th>Pa</th><th>Ju</th><th>Sh</th><th>Ya</th></tr></thead>
+          <div className="schedule-tablewrap" style={{ maxWidth: 760 }}>
+          <table className="data compact">
+            <thead><tr>
+              <th className="sched-freeze sched-freeze-1">{T('lbl_store')} (код)</th>
+              <th className="sched-freeze sched-freeze-2">{T('lbl_store')}</th>
+              <th className="sched-freeze sched-freeze-3">{T('lbl_driver')}</th>
+              <th className="sched-day">Dushanba</th><th className="sched-day">Seshanba</th><th className="sched-day">Chorshanba</th><th className="sched-day">Payshanba</th><th className="sched-day">Juma</th><th className="sched-day">Shanba</th><th className="sched-day">Yakshanba</th>
+            </tr></thead>
             <tbody>
-              <tr><td>4508881756</td><td>Aeroport /1</td><td>Алишер</td><td>1</td><td></td><td>1</td><td></td><td></td><td>1</td><td></td></tr>
-              <tr><td>4508882431</td><td>Aeroport /2</td><td>Бобур</td><td></td><td>1</td><td></td><td>1</td><td></td><td></td><td></td></tr>
+              <tr>
+                <td className="sched-freeze sched-freeze-1">4508881756</td>
+                <td className="sched-freeze sched-freeze-2">Aeroport /1</td>
+                <td className="sched-freeze sched-freeze-3">Алишер</td>
+                <td className="sched-day">1</td><td className="sched-day"></td><td className="sched-day">1</td><td className="sched-day"></td><td className="sched-day"></td><td className="sched-day">1</td><td className="sched-day"></td>
+              </tr>
+              <tr>
+                <td className="sched-freeze sched-freeze-1">4508882431</td>
+                <td className="sched-freeze sched-freeze-2">Aeroport /2</td>
+                <td className="sched-freeze sched-freeze-3">Бобур</td>
+                <td className="sched-day"></td><td className="sched-day">1</td><td className="sched-day"></td><td className="sched-day">1</td><td className="sched-day"></td><td className="sched-day"></td><td className="sched-day"></td>
+              </tr>
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
-        <div className="tablewrap">
+        <div className="schedule-tablewrap">
           <table className="data">
             <thead>
               <tr>
-                <th>Магазин</th>
-                <th>{T('lbl_driver')}</th>
-                {dayNames.map((d, i) => <th key={i} style={i === dow ? { background: 'var(--honey)', color: '#000' } : {}}>{d}</th>)}
+                <th className="sched-freeze sched-freeze-1">{T('lbl_store')} (код)</th>
+                <th className="sched-freeze sched-freeze-2">{T('lbl_store')}</th>
+                <th className="sched-freeze sched-freeze-3">{T('lbl_driver')}</th>
+                {dayNames.map((d, i) => <th key={i} className={`sched-day${i === dow ? ' today-col' : ''}`}>{d}</th>)}
                 <th>Бугун</th>
               </tr>
             </thead>
@@ -3663,10 +4748,11 @@ function SchedulePane({
                 const inInvoices = invoices.some((inv) => inv.storeCode === row.storeCode);
                 return (
                   <tr key={i} style={!inInvoices ? { opacity: 0.4 } : undefined}>
-                    <td><b>{row.market}</b><span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{row.storeCode}</span></td>
-                    <td>{row.driver}</td>
+                    <td className="sched-freeze sched-freeze-1" style={{ fontSize: 12, color: 'var(--muted)' }}>{row.storeCode}</td>
+                    <td className="sched-freeze sched-freeze-2"><b>{row.market}</b></td>
+                    <td className="sched-freeze sched-freeze-3">{row.driver}</td>
                     {row.days.map((on, di) => (
-                      <td key={di} style={{ textAlign: 'center', background: di === dow && on ? 'rgba(34,197,94,0.15)' : di === dow && !on ? 'rgba(239,68,68,0.08)' : '' }}>
+                      <td key={di} className="sched-day" style={{ background: di === dow && on ? 'rgba(34,197,94,0.15)' : di === dow && !on ? 'rgba(239,68,68,0.08)' : '' }}>
                         {on ? <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓</span> : <span style={{ color: '#ccc' }}>·</span>}
                       </td>
                     ))}
@@ -3705,7 +4791,10 @@ function DispatchPane({
   const DEFAULT_DRIVERS = [T('lbl_driver') + ' 1', T('lbl_driver') + ' 2'];
   const [extraDrivers, setExtraDrivers] = useState<string[]>([]);
   const baseDrivers = scheduleDrivers.length > 0 ? scheduleDrivers : DEFAULT_DRIVERS;
-  const drivers = [...baseDrivers, ...extraDrivers];
+  const [driverNames, setDriverNames] = useState<string[]>([]);
+  const [hiddenDrivers, setHiddenDrivers] = useState<Set<number>>(new Set());
+  const rawDrivers = [...baseDrivers, ...extraDrivers];
+  const drivers = rawDrivers.map((d, i) => driverNames[i] ?? d);
 
   // Configurable parts per driver
   const [driverPartCounts, setDriverPartCounts] = useState<number[]>(() => drivers.map(() => 1));
@@ -3821,47 +4910,62 @@ function DispatchPane({
 
       {invoices.length === 0 ? <Empty title={T('dispatch_empty')} /> : (
         <>
-          <div className="tablewrap" style={{ marginBottom: 24 }}>
+          <div className="tablewrap dispatch-tablewrap" style={{ marginBottom: 24, maxHeight: 'calc(100dvh - 220px)', overflowY: 'auto' }}>
             <table className="data dispatchTable">
-              <thead>
+              <thead className="dispatch-thead">
                 <tr>
-                  <th style={{ minWidth: 220, position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface-hi)' }}>{T('lbl_store')}</th>
+                  <th className="dispatch-name-cell" rowSpan={2} style={{ minWidth: 220, position: 'sticky', left: 0, zIndex: 5, top: 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.10em', textTransform: 'uppercase', color: 'var(--muted)' }}>{T('lbl_store')}</span>
+                  </th>
                   {drivers.map((d, di) => {
+                    if (hiddenDrivers.has(di)) return null;
                     const partCount = driverPartCounts[di] ?? 1;
                     const clr = DISPATCH_COLORS[di % DISPATCH_COLORS.length];
                     const isExtra = di >= baseDrivers.length;
                     return (
-                      <th key={di} colSpan={partCount} style={{ textAlign: 'center', borderLeft: '2px solid var(--line)', background: clr.header, color: clr.text, whiteSpace: 'nowrap' }}>
-                        {isExtra ? (
+                      <th key={di} colSpan={partCount} style={{ textAlign: 'center', borderLeft: '2px solid rgba(0,0,0,0.18)', background: clr.header, color: clr.text, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 3, padding: '8px 10px', height: 40, verticalAlign: 'middle' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                           <input
                             value={d}
-                            onChange={(e) => setExtraDrivers((prev) => { const n = [...prev]; n[di - baseDrivers.length] = e.target.value; return n; })}
-                            style={{ background: 'transparent', border: 'none', borderBottom: `1px solid ${clr.text}`, color: clr.text, fontSize: 12, fontWeight: 600, textAlign: 'center', outline: 'none', width: 90, marginRight: 6 }}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (isExtra) {
+                                setExtraDrivers((prev) => { const n = [...prev]; n[di - baseDrivers.length] = val; return n; });
+                              }
+                              setDriverNames((prev) => { const n = [...prev]; n[di] = val; return n; });
+                            }}
+                            style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderBottom: `1.5px solid rgba(255,255,255,0.5)`, borderRadius: 4, color: clr.text, fontSize: 13, fontWeight: 700, textAlign: 'center', outline: 'none', width: 100, padding: '2px 4px' }}
                           />
-                        ) : (
-                          <span style={{ marginRight: 8 }}>{d}</span>
-                        )}
-                        <button type="button" onClick={() => setDriverPartCounts((prev) => { const n = [...prev]; n[di] = Math.max(1, (n[di] ?? 1) - 1); return n; })} style={{ background: 'none', border: 'none', color: clr.text, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 3px' }}>−</button>
-                        <span style={{ fontSize: 11, color: clr.text }}>{partCount}</span>
-                        <button type="button" onClick={() => setDriverPartCounts((prev) => { const n = [...prev]; n[di] = Math.min(8, (n[di] ?? 1) + 1); return n; })} style={{ background: 'none', border: 'none', color: clr.text, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 3px' }}>+</button>
-                        {isExtra && (
-                          <button type="button" onClick={() => { setExtraDrivers((prev) => prev.filter((_, i) => i !== di - baseDrivers.length)); setDispatchMap(Object.fromEntries(Object.entries(dispatchMap).filter(([, v]) => v.driverIdx !== di))); }}
-                            style={{ background: 'none', border: 'none', color: clr.text, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '0 3px', opacity: 0.6, marginLeft: 4 }}>×</button>
-                        )}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, background: 'rgba(0,0,0,0.15)', borderRadius: 6, padding: '1px 4px' }}>
+                            <button type="button" onClick={() => setDriverPartCounts((prev) => { const n = [...prev]; n[di] = Math.max(1, (n[di] ?? 1) - 1); return n; })} style={{ background: 'none', border: 'none', color: clr.text, cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px', fontWeight: 700 }}>−</button>
+                            <span style={{ fontSize: 11, color: clr.text, minWidth: 12, textAlign: 'center' }}>{partCount}</span>
+                            <button type="button" onClick={() => setDriverPartCounts((prev) => { const n = [...prev]; n[di] = Math.min(8, (n[di] ?? 1) + 1); return n; })} style={{ background: 'none', border: 'none', color: clr.text, cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px', fontWeight: 700 }}>+</button>
+                          </span>
+                          {di >= 2 && (
+                            <button type="button" onClick={() => {
+                              if (isExtra) {
+                                setExtraDrivers((prev) => prev.filter((_, i) => i !== di - baseDrivers.length));
+                                setDispatchMap(Object.fromEntries(Object.entries(dispatchMap).filter(([, v]) => v.driverIdx !== di)));
+                              } else {
+                                setHiddenDrivers((prev) => new Set([...prev, di]));
+                              }
+                            }} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', borderRadius: 4, color: clr.text, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '1px 5px' }}>×</button>
+                          )}
+                        </div>
                       </th>
                     );
                   })}
                 </tr>
                 <tr>
-                  <th style={{ position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface-hi)' }} />
                   {drivers.map((_, di) => {
+                    if (hiddenDrivers.has(di)) return null;
                     const partCount = driverPartCounts[di] ?? 1;
                     const clr = DISPATCH_COLORS[di % DISPATCH_COLORS.length];
                     return Array.from({ length: partCount }, (__, pi) => {
                       const partNo = pi + 1;
                       const hasMarkets = markets.some((m) => dispatchMap[m.storeCode]?.driverIdx === di && dispatchMap[m.storeCode]?.part === partNo);
                       return (
-                        <th key={`${di}-${pi}`} style={{ textAlign: 'center', fontSize: 10, color: clr.text, borderLeft: pi === 0 ? '2px solid var(--line)' : undefined, whiteSpace: 'nowrap' }}>
+                        <th key={`${di}-${pi}`} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: clr.dot, borderLeft: pi === 0 ? '2px solid rgba(0,0,0,0.15)' : undefined, whiteSpace: 'nowrap', padding: '3px 4px', height: 28 }}>
                           {hasMarkets ? (
                             <button className="linklike" type="button" onClick={() => printDriverPart(di, partNo)} style={{ fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 2, color: clr.dot }}>
                               <Printer size={11} /> P{partNo}
@@ -3881,14 +4985,16 @@ function DispatchPane({
                   return (
                     <tr key={mkt.storeCode}>
                       <td title={`${mkt.storeCode}-${mkt.market.replace(/\s*\/\d+$/, '')}${mkt.defaultDriver ? ' · ' + mkt.defaultDriver : ''}`}
-                        style={{ position: 'sticky', left: 0, zIndex: 2, background: 'rgba(18,18,20,1)', borderRight: '1px solid rgba(var(--hi-rgb),0.07)' }}>
+                        className="dispatch-name-cell"
+                        style={{ position: 'sticky', left: 0, zIndex: 2 }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.2 }}>
-                          <span style={{ fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap' }}>
-                            {mkt.market.replace(/\s*\/\d+$/, '')}<span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 12 }}> ({mkt.storeCode})</span>
+                          <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', fontFamily: 'var(--sans)', letterSpacing: '-0.01em' }}>
+                            {mkt.market.replace(/\s*\/\d+$/, '')}<span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: 11, marginLeft: 4 }}>({mkt.storeCode})</span>
                           </span>
                         </div>
                       </td>
                       {drivers.map((_, di) => {
+                        if (hiddenDrivers.has(di)) return null;
                         const partCount = driverPartCounts[di] ?? 1;
                         const clr = DISPATCH_COLORS[di % DISPATCH_COLORS.length];
                         return Array.from({ length: partCount }, (__, pi) => {
@@ -3901,7 +5007,7 @@ function DispatchPane({
                               style={{
                                 textAlign: 'center',
                                 borderLeft: pi === 0 ? '2px solid var(--line)' : undefined,
-                                background: checked ? clr.cell : undefined,
+                                background: undefined,
                                 cursor: 'pointer',
                                 userSelect: 'none',
                                 transition: 'background 0.15s',

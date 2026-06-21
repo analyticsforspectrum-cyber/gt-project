@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PublicUser } from '../users/users.types';
@@ -28,5 +28,15 @@ export class VazvratController {
   @Get('analytics')
   analytics(@Query('from') from: string, @Query('to') to: string) {
     return this.vazvratService.analytics(from, to);
+  }
+
+  @Delete('by-date/:date')
+  deleteByDate(@Param('date') date: string) {
+    return this.vazvratService.deleteByDate(date);
+  }
+
+  @Delete('all')
+  deleteAll() {
+    return this.vazvratService.deleteAll();
   }
 }

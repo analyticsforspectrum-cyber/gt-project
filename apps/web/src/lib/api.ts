@@ -249,5 +249,9 @@ export const api = {
   vazvratAnalytics: (token: string, from: string, to: string) =>
     request<{ sku: string; name: string; berilganQty: number; berilganSum: number; vazvratQty: number; vazvratSum: number }[]>(
       `/vazvrat/analytics?from=${from}&to=${to}`, token
-    )
+    ),
+  deleteVazvratByDate: (token: string, date: string) =>
+    request<{ ok: boolean; deleted: number }>(`/vazvrat/by-date/${date}`, token, { method: 'DELETE' }),
+  deleteAllVazvrat: (token: string) =>
+    request<{ ok: boolean; deleted: number }>('/vazvrat/all', token, { method: 'DELETE' }),
 };
