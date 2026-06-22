@@ -89,7 +89,7 @@ export class ImportsController {
         importedRecords = Math.max(0, rows.length - 1);
       } else if (ext === 'csv' || ext === 'txt') {
         const text = buffer.toString('utf8');
-        importedRecords = Math.max(0, text.split(/\r?\n/).filter((line) => line.trim()).length - 1);
+        importedRecords = Math.max(0, text.split(/\r?\n/).filter((line: string) => line.trim()).length - 1);
       } else {
         errors.push({ message: `Неподдерживаемый формат файла: ${ext}` });
       }
