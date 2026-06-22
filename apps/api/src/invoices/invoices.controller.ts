@@ -36,16 +36,14 @@ export class InvoicesController {
     return this.invoicesService.findOne(Number(invNo));
   }
 
-  /** Generate invoices — admin only */
+  /** Generate invoices — any authenticated user */
   @Post('generate')
-  @Roles('admin')
   generate(@Body() dto: GenerateInvoicesDto, @CurrentUser() user: PublicUser) {
     return this.invoicesService.generate(dto, user);
   }
 
-  /** Manual invoice — admin only */
+  /** Manual invoice — any authenticated user */
   @Post('manual')
-  @Roles('admin')
   async manual(@Body() dto: ManualInvoiceDto, @CurrentUser() user: PublicUser) {
     return this.invoicesService.manual(dto, user);
   }
