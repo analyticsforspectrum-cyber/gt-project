@@ -19,8 +19,22 @@ export class InvoicesService {
     @InjectModel(InvoiceDocumentClass.name) private readonly invoiceModel: Model<InvoiceDocument>
   ) {}
 
-  async list() {
-    return this.invoiceModel.find().sort({ dateIso: -1, invNo: 1 }).exec();
+  async list(dateIso?: string, page = 1, limit = 200) {
+    const filter: Record<string, unknown> = dateIso ? { dateIso, status: { $ne: 'cancelled' } } : { status: { $ne: 'cancelled' } };
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.invoiceModel.find(filter).sort({ dateIso: -1, invNo: 1 }).skip(skip).limit(limit).exec(),
+      this.invoiceModel.countDocuments(filter)
+    ]);
+    return { items, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  async listCancelled() {
+    return this.invoiceModel
+      .find({ status: 'cancelled' })
+      .sort({ dateIso: -1, invNo: -1 })
+      .lean()
+      .exec();
   }
 
   async findOne(invNo: number) {
@@ -122,28 +136,40 @@ export class InvoicesService {
       catalog,
       invoices
     });
-    const session = await this.sessionsService.save(
-      {
-        invoiceDate: dto.dateIso,
-        invoiceCount: invoices.length,
-        sumTotal: invoices.reduce((sum, invoice) => sum + invoice.sumTotal, 0),
-        snapshot
-      },
-      user
-    );
+    // Sessiya faqat skipSession=false (yoki ko'rsatilmagan) bo'lganda saqlanadi
+    let session = null;
+    if (!dto.skipSession) {
+      session = await this.sessionsService.save(
+        {
+          invoiceDate: dto.dateIso,
+          invoiceCount: invoices.length,
+          sumTotal: invoices.reduce((sum, invoice) => sum + invoice.sumTotal, 0),
+          snapshot
+        },
+        user
+      );
+    }
     return { rows: rows.length, invoices: invoicesWithStatus, catalog, snapshot, session };
   }
 
   async softDelete(invNo: number, user: PublicUser) {
-    const invoice = await this.findOne(invNo);
-    invoice.status = 'cancelled';
-    invoice.updatedBy = user.id;
-    await invoice.save();
-    return invoice;
+    const result = await this.invoiceModel.findOneAndUpdate(
+      { invNo },
+      { $set: { status: 'cancelled', updatedBy: user.id } },
+      { new: true }
+    ).lean().exec();
+    if (!result) throw new NotFoundException('Invoice not found');
+    return result;
   }
 
   async restore(invNo: number, user: PublicUser) {
     return this.setStatus(invNo, 'saved', user);
+  }
+
+  async hardDelete(invNo: number) {
+    const result = await this.invoiceModel.deleteOne({ invNo }).exec();
+    if (!result.deletedCount) throw new NotFoundException('Invoice not found');
+    return { ok: true };
   }
 
   async setStatus(invNo: number, status: 'draft' | 'saved' | 'delivered' | 'cancelled', user: PublicUser) {
@@ -209,6 +235,7 @@ export class InvoicesService {
       } catch (err) {
         // 11000 = duplicate key on invNo → another request took this number; retry.
         if ((err as { code?: number }).code === 11000 && attempt < 4) continue;
+        console.error('[manual invoice error]', err);
         throw err;
       }
     }

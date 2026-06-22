@@ -80,13 +80,12 @@ export interface DaySnapshot {
 }
 
 export interface SessionSummary {
-  _id?: string;
+  _id: string;
   invoiceDate: string;
   savedAt: string;
   invoiceCount: number;
   sumTotal: number;
-  versions?: unknown[];
-  name?: string;
+  name: string;
 }
 
 export interface SessionRecord extends SessionSummary {
@@ -242,3 +241,24 @@ export interface InventoryStat {
   outgoing: number;
   closingBalance: number;
 }
+
+/** Ishonchnoma (power-of-attorney) fields */
+export interface DovFields {
+  driver: string;
+  prava: string;
+  car: string;
+  plate: string;
+  validUntil: string;
+  director: string;
+  company: string;
+  address: string;
+  docDate: string;
+  docNo: string;
+}
+
+/** One printed Ishonchnoma entry stored in history */
+export interface DovEntry extends DovFields {
+  printedAt: string; // ISO string
+}
+
+export type SettingsView = 'catalog' | 'requisites' | 'users' | 'audit' | 'doverennost' | null;

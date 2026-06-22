@@ -113,7 +113,7 @@ export const api = {
     }),
   resetRequisites: (token: string) =>
     request<Requisites>('/requisites/reset', token, { method: 'POST' }),
-  generate: (token: string, input: { sapRaw: string; startId: number; dateIso: string }) =>
+  generate: (token: string, input: { sapRaw: string; startId: number; dateIso: string; skipSession?: boolean }) =>
     request<GenerateResponse>('/invoices/generate', token, {
       method: 'POST',
       body: JSON.stringify(input)
@@ -140,8 +140,14 @@ export const api = {
       }
     ),
   sessions: (token: string) => request<SessionSummary[]>('/sessions', token),
-  session: (token: string, invoiceDate: string) =>
-    request<SessionRecord>(`/sessions/${invoiceDate}`, token),
+  /** Get session by MongoDB _id */
+  session: (token: string, id: string) =>
+    request<SessionRecord>(`/sessions/${id}`, token),
+  checkSessionDuplicate: (token: string, invoiceDate: string, name: string) =>
+    request<{ exists: boolean; id?: string }>(
+      `/sessions/check-duplicate?invoiceDate=${encodeURIComponent(invoiceDate)}&name=${encodeURIComponent(name)}`,
+      token
+    ),
   saveSession: (
     token: string,
     input: { invoiceDate: string; invoiceCount: number; sumTotal: number; snapshot: unknown; name?: string }
@@ -150,19 +156,37 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input)
     }),
-  deleteSession: (token: string, invoiceDate: string) =>
-    request<{ ok: true }>(`/sessions/${invoiceDate}`, token, { method: 'DELETE' }),
-  invoices: (token: string) => request<Invoice[]>('/invoices', token),
+  /** Delete session by MongoDB _id (soft delete → Arxiv) */
+  deleteSession: (token: string, id: string) =>
+    request<{ ok: true }>(`/sessions/${id}`, token, { method: 'DELETE' }),
+  /** List soft-deleted sessions (Arxiv) */
+  listDeletedSessions: (token: string) =>
+    request<SessionSummary[]>('/sessions/deleted', token),
+  /** Restore session from Arxiv */
+  restoreSession: (token: string, id: string) =>
+    request<{ ok: true }>(`/sessions/${id}/restore`, token, { method: 'PATCH' }),
+  /** Hard delete session from Arxiv (permanent) */
+  hardDeleteSession: (token: string, id: string) =>
+    request<{ ok: true }>(`/sessions/${id}/hard`, token, { method: 'DELETE' }),
+  invoices: (token: string, dateIso?: string, page = 1, limit = 200) =>
+    request<{ items: Invoice[]; total: number; page: number; limit: number; pages: number }>(
+      `/invoices${dateIso ? `?dateIso=${dateIso}&page=${page}&limit=${limit}` : `?page=${page}&limit=${limit}`}`,
+      token
+    ).then(r => r.items),
   invoice: (token: string, invNo: number) => request<Invoice>(`/invoices/${invNo}`, token),
   updateInvoice: (token: string, invNo: number, input: Partial<Invoice>) =>
     request<Invoice>(`/invoices/${invNo}`, token, {
       method: 'PATCH',
       body: JSON.stringify(input)
     }),
+  listCancelledInvoices: (token: string) =>
+    request<Invoice[]>('/invoices/cancelled', token),
   deleteInvoice: (token: string, invNo: number) =>
     request<Invoice>(`/invoices/${invNo}`, token, { method: 'DELETE' }),
   restoreInvoice: (token: string, invNo: number) =>
     request<Invoice>(`/invoices/${invNo}/restore`, token, { method: 'PATCH' }),
+  hardDeleteInvoice: (token: string, invNo: number) =>
+    request<{ ok: true }>(`/invoices/${invNo}/hard`, token, { method: 'DELETE' }),
   deliverInvoice: (token: string, invNo: number) =>
     request<Invoice>(`/invoices/${invNo}/deliver`, token, { method: 'PATCH' }),
   undeliverInvoice: (token: string, invNo: number, comment: string) =>
@@ -254,4 +278,6 @@ export const api = {
     request<{ ok: boolean; deleted: number }>(`/vazvrat/by-date/${date}`, token, { method: 'DELETE' }),
   deleteAllVazvrat: (token: string) =>
     request<{ ok: boolean; deleted: number }>('/vazvrat/all', token, { method: 'DELETE' }),
+  deleteVazvratDates: (token: string, dates: string[]) =>
+    request<{ ok: boolean; deleted: number }>('/vazvrat/delete-dates', token, { method: 'POST', body: JSON.stringify({ dates }) }),
 };

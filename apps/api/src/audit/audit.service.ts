@@ -8,7 +8,7 @@ export class AuditService {
   constructor(@InjectModel(AuditLog.name) private readonly auditModel: Model<AuditLogDocument>) {}
 
   async list(): Promise<AuditLog[]> {
-    return this.auditModel.find().sort({ createdAt: -1 }).exec();
+    return this.auditModel.find().sort({ createdAt: -1 }).limit(500).exec();
   }
 
   async create(input: {

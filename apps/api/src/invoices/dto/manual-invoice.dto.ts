@@ -62,4 +62,9 @@ export class ManualInvoiceDto {
   @ValidateNested({ each: true })
   @Type(() => ManualQuantityDto)
   quantities: ManualQuantityDto[];
+
+  /** Passed by frontend for invNo collision avoidance — ignored by service (uses DB). */
+  @IsOptional()
+  @IsArray()
+  existingInvoices?: unknown[];
 }

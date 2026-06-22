@@ -114,6 +114,11 @@ export class VazvratService {
     return { ok: true, deleted: result.deletedCount };
   }
 
+  async deleteByDates(dates: string[]) {
+    const result = await this.vazvratModel.deleteMany({ date: { $in: dates } }).exec();
+    return { ok: true, deleted: result.deletedCount };
+  }
+
   async deleteAll() {
     const result = await this.vazvratModel.deleteMany({}).exec();
     return { ok: true, deleted: result.deletedCount };

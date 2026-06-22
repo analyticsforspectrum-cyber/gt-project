@@ -34,4 +34,9 @@ export class AnalyticsController {
   users(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
     return this.analyticsService.userAnalytics(dateFrom, dateTo);
   }
+
+  @Get('sessions-merged')
+  sessionsMerged(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
+    return this.analyticsService.sessionsMerged(dateFrom, dateTo);
+  }
 }

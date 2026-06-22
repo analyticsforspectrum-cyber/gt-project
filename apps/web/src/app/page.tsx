@@ -4,12 +4,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   BarChart3,
+  CalendarDays,
   ClipboardList,
   Download,
   FileText,
   Grid3x3,
   LogOut,
   Map as MapIcon,
+  PenLine,
   Plus,
   Printer,
   QrCode,
@@ -60,19 +62,15 @@ import {
   SessionSummary
 } from '@/types/domain';
 
-type View = 'register' | 'matrix' | 'documents' | 'stats' | 'settings' | 'operations' | 'customers' | 'analytics' | 'orders' | 'schedule' | 'dispatch' | 'undelivered' | 'preferences';
-type SettingsView = 'catalog' | 'requisites' | 'sessions' | 'users' | 'exceptions' | 'doverennost';
+type View = 'register' | 'matrix' | 'documents' | 'stats' | 'settings' | 'operations' | 'customers' | 'analytics' | 'orders' | 'schedule' | 'dispatch' | 'undelivered' | 'preferences' | 'manual-list';
+type SettingsView = 'catalog' | 'requisites' | 'sessions' | 'users' | 'exceptions' | 'doverennost' | 'trash';
 type Theme = 'dark' | 'light';
-type Density = 'compact' | 'cozy' | 'comfortable';
+type Density = 'tight' | 'compact' | 'cozy' | 'comfortable';
 
 // Curated backgrounds guaranteed to match the rest of the UI. `theme` is the
 // readable text/surface theme each background pairs with.
 const BG_PRESETS: { id: string; label: string; value: string; theme: Theme }[] = [
-  { id: 'midnight', label: 'Midnight', value: 'linear-gradient(180deg, #0b0e12 0%, #080a0d 100%)', theme: 'dark' },
-  { id: 'ocean',    label: 'Ocean',    value: 'linear-gradient(160deg, #0a1420 0%, #080d14 100%)', theme: 'dark' },
-  { id: 'plum',     label: 'Plum',     value: 'linear-gradient(160deg, #16101c 0%, #0b0810 100%)', theme: 'dark' },
-  { id: 'forest',   label: 'Forest',   value: 'linear-gradient(160deg, #0c1612 0%, #080d0b 100%)', theme: 'dark' },
-  { id: 'graphite', label: 'Graphite', value: '#0f1115', theme: 'dark' },
+  { id: 'white',    label: 'Oq',       value: '#ffffff', theme: 'light' },
   { id: 'paper',    label: 'Paper',    value: 'linear-gradient(180deg, #eef1f6 0%, #e4e9f1 100%)', theme: 'light' },
 ];
 
@@ -116,7 +114,10 @@ export default function Home() {
   const [dateIso, setDateIso] = useState(todayIso());
   const [filterDate, setFilterDate] = useState('');
   const [sessionSuffix, setSessionSuffix] = useState('');
-  const [ordersTab, setOrdersTab] = useState<'import' | 'history'>('import');
+  const [ordersTab, setOrdersTab] = useState<'import' | 'history' | 'vazvrat'>('import');
+  const [vazvratUploadBusy, setVazvratUploadBusy] = useState(false);
+  const [histFrom, setHistFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 10); return d.toISOString().slice(0, 10); });
+  const [histTo,   setHistTo]   = useState(todayIso);
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [catalogDraft, setCatalogDraft] = useState<CatalogProduct[]>([]);
   const [requisites, setRequisites] = useState<Requisites>(DEFAULT_REQUISITES);
@@ -184,73 +185,118 @@ export default function Home() {
   const [lang, setLang] = useState<'uz' | 'ru' | 'en'>(() =>
     typeof window !== 'undefined' ? ((localStorage.getItem('lang') as 'uz' | 'ru' | 'en') || 'uz') : 'uz'
   );
-  const [theme, setTheme] = useState<Theme>(() =>
-    typeof window !== 'undefined' ? ((localStorage.getItem('pref_theme') as Theme) || 'light') : 'light'
-  );
+  // Always light mode
+  const [theme, setTheme] = useState<Theme>('light');
   const [density, setDensity] = useState<Density>(() =>
     typeof window !== 'undefined' ? ((localStorage.getItem('pref_density') as Density) || 'cozy') : 'cozy'
   );
   const [appBg, setAppBg] = useState<string>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('pref_bg') || '') : ''
   );
+  const [accent, setAccent] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('pref_accent') || 'berry') : 'berry'
+  );
 
   // Ishonchnoma (power of attorney) fields
   const [dovFields, setDovFields] = useState(() => {
-    if (typeof window === 'undefined') return { driver: '', prava: '', car: '', plate: '', validUntil: '', director: '', company: '', address: '' };
+    const defaults = {
+      company: 'MCHJ «Druzya»',
+      address: 'Toshkent shahar, Yunusobod tumani, Xiyobon 48',
+      docNo: '18',
+      docDate: '',
+      driver: '',
+      prava: 'AF 0006178',
+      car: 'LB2',
+      plate: '01 W 851 SC',
+      validUntil: '',
+      director: 'Бойматова Д.А.',
+    };
+    if (typeof window === 'undefined') return defaults;
     const s = localStorage.getItem('dov_fields');
-    return s ? JSON.parse(s) : { driver: '', prava: '', car: '', plate: '', validUntil: '', director: '', company: '', address: '' };
+    if (!s) return defaults;
+    const saved = JSON.parse(s);
+    // Only override defaults with saved values that are non-empty strings
+    const merged = { ...defaults };
+    for (const key of Object.keys(defaults) as (keyof typeof defaults)[]) {
+      if (saved[key] !== undefined && saved[key] !== '') merged[key] = saved[key];
+    }
+    return merged;
   });
   const setDov = (key: string, val: string) => {
+    setDovSaved(false);
     setDovFields((prev: typeof dovFields) => {
       const next = { ...prev, [key]: val };
       localStorage.setItem('dov_fields', JSON.stringify(next));
       return next;
     });
   };
-  const [dovHistory, setDovHistory] = useState<any[]>(() =>
+  const [dovHistory, setDovHistory] = useState<import('@/types/domain').DovEntry[]>(() =>
     typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('dov_history') || '[]') : []
   );
+  const [dovSaved, setDovSaved] = useState(false);
+  function deleteDovEntry(index: number) {
+    setDovHistory(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      localStorage.setItem('dov_history', JSON.stringify(next));
+      return next;
+    });
+  }
   const [histTab, setHistTab] = useState<'nakl' | 'dov'>('nakl');
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const toggleDateGroup = (key: string) => setExpandedDates(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
-  const printDov = () => {
+  const saveDov = () => {
     const entry = { ...dovFields, printedAt: new Date().toISOString() };
     const hist = [entry, ...dovHistory].slice(0, 20);
     setDovHistory(hist);
     localStorage.setItem('dov_history', JSON.stringify(hist));
+    setDovSaved(true);
+  };
 
+  const printDov = () => {
+
+    const fmtD = (d: string) => d ? new Date(d).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' }) : '';
+    const v = dovFields;
     const w = window.open('', '_blank', 'width=794,height=1123');
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      body{font-family:'Times New Roman',serif;font-size:14pt;margin:0;padding:40px 60px;line-height:1.6;color:#000}
-      .center{text-align:center}.bold{font-weight:bold}.right{text-align:right}
-      .title{font-size:18pt;font-weight:bold;letter-spacing:4px;margin:30px 0 10px}
-      .field{border-bottom:1px solid #000;display:inline-block;min-width:200px;padding:0 4px}
-      p{margin:8px 0}
-      .sign{margin-top:60px;display:flex;justify-content:space-between}
-      @media print{body{padding:20px 40px}@page{size:A4;margin:20mm}}
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Доверенность</title><style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Times New Roman',Times,serif;font-size:14pt;line-height:1.8;color:#000;background:#fff;padding:20mm 25mm}
+      .topright{text-align:right;margin-bottom:24px}
+      .ul{border-bottom:1px solid #000;display:inline-block;padding:0 4px;min-width:80px}
+      .title{text-align:center;font-size:18pt;font-weight:bold;letter-spacing:6px;margin:32px 0 28px}
+      p{margin:0 0 12px;text-align:justify;text-indent:40px}
+      .sign{margin-top:80px;display:flex;justify-content:space-between;align-items:flex-end}
+      b{font-weight:bold}
+      @page{size:A4;margin:0}
     </style></head><body>
-    <div class="right"><b>${dovFields.company || 'MCHJ «_________»'}</b><br>
-    ${dovFields.address || ''}<br>
-    Ish. №____<br>
-    ${dovFields.validUntil ? `от ${new Date(dovFields.validUntil).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' })} г.` : 'от __________ г.'} г. Ташкент</div>
-    <div class="center title">Д О В Е Р Е Н Н О С Т Ь</div>
-    <p>Настоящей доверенностью руководство <b>${dovFields.company || '___________'}</b> уполномочивает водителя
-    <b>${dovFields.driver || '______________________________'}</b> экспедитора
-    владельцу прав <b>${dovFields.prava || '__________'}</b>
-    направо пользования автомобилем <b>«${dovFields.car || '_____'}»</b>
-    гос. номер <b>${dovFields.plate || '____________'}</b></p>
-    <p>Доверенность действительна до <b>${dovFields.validUntil ? new Date(dovFields.validUntil).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' }) : '__________'}</b> года.</p>
-    <div class="sign">
-      <div>Генеральный директор</div>
-      <div>${dovFields.director || '_________________________'}</div>
-    </div>
+      <div class="topright">
+        <div><b><span class="ul" style="min-width:220px">${v.company || ''}</span></b></div>
+        <div><span class="ul" style="min-width:300px">${v.address || ''}</span></div>
+        <div>Исх. №<span class="ul" style="min-width:40px;text-align:center">${v.docNo || ''}</span></div>
+        <div>от <span class="ul" style="min-width:120px;text-align:center">${fmtD(v.docDate)}</span> г.&nbsp;&nbsp;г. Ташкент</div>
+      </div>
+      <div class="title">Д О В Е Р Е Н Н О С Т Ь</div>
+      <p>Настоящей доверенностью руководство <b><span class="ul" style="min-width:160px">${v.company || ''}</span></b> уполномочивает водителя <b><span class="ul" style="min-width:260px">${v.driver || ''}</span></b> экспедитора владельцу правы <span class="ul" style="min-width:120px">${v.prava || ''}</span> направо пользования автомобилем «<span class="ul" style="min-width:60px;text-align:center">${v.car || ''}</span>» гос. номер <span class="ul" style="min-width:120px">${v.plate || ''}</span></p>
+      <p>Доверенность действительна до <b>${fmtD(v.validUntil) || '__________'}</b> года.</p>
+      <div class="sign">
+        <div>Генеральный директор</div>
+        <div><span class="ul" style="min-width:220px;text-align:center">${v.director || ''}</span></div>
+      </div>
     </body></html>`);
     w.document.close();
-    w.focus();
-    setTimeout(() => { w.print(); }, 400);
+    w.onload = () => { w.focus(); w.print(); };
   };
+  // Accent color presets
+  const ACCENT_PRESETS = [
+    { id: 'berry',    label: "Pushti",    main: '#e84f6a', dark: '#bf3652', ok: '#46bf72', okRgb: '70,191,114' },
+    { id: 'green',    label: "Yashil",    main: '#22c55e', dark: '#16a34a', ok: '#22c55e', okRgb: '34,197,94' },
+    { id: 'blue',     label: "Ko'k",      main: '#3b82f6', dark: '#2563eb', ok: '#3b82f6', okRgb: '59,130,246' },
+    { id: 'purple',   label: "Binafsha",  main: '#8b5cf6', dark: '#7c3aed', ok: '#8b5cf6', okRgb: '139,92,246' },
+    { id: 'orange',   label: "To'q sariq",main: '#f97316', dark: '#ea580c', ok: '#f97316', okRgb: '249,115,22' },
+    { id: 'teal',     label: "Feruza",    main: '#14b8a6', dark: '#0d9488', ok: '#14b8a6', okRgb: '20,184,166' },
+  ];
+
   // Apply visual preferences to <html> so all token-based styling reacts.
   useEffect(() => {
     const root = document.documentElement;
@@ -258,13 +304,21 @@ export default function Home() {
     root.dataset.density = density;
     if (appBg) root.style.setProperty('--app-bg', appBg);
     else root.style.removeProperty('--app-bg');
+    // Apply accent colors
+    const ap = ACCENT_PRESETS.find(p => p.id === accent) ?? ACCENT_PRESETS[0];
+    root.style.setProperty('--berry', ap.main);
+    root.style.setProperty('--berry-dark', ap.dark);
+    root.style.setProperty('--ok', ap.ok);
+    root.style.setProperty('--ok-rgb', ap.okRgb);
+    root.style.setProperty('--accent', ap.main);
     localStorage.setItem('pref_theme', theme);
     localStorage.setItem('pref_density', density);
     localStorage.setItem('pref_bg', appBg);
-  }, [theme, density, appBg]);
+    localStorage.setItem('pref_accent', accent);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme, density, appBg, accent]);
   const [unsaved, setUnsaved] = useState(false);
-  const [printInvoices, setPrintInvoices] = useState<Invoice[]>([]);
-  const [manualOpen, setManualOpen] = useState(false);
+const [manualOpen, setManualOpen] = useState(false);
   const [manual, setManual] = useState({
     storeCode: '',
     storeName: '',
@@ -277,6 +331,7 @@ export default function Home() {
   type StoreCol = { storeCode: string; storeName: string; order: string; cells: Record<string, { qty: string; price: string }> };
   const emptyStoreRow = (): StoreCol => ({ storeCode: '', storeName: '', order: '', cells: {} });
   const [manualStores, setManualStores] = useState<StoreCol[]>([emptyStoreRow()]);
+  const [manualWithVat, setManualWithVat] = useState(true); // true = narx QQS bilan (×1.12)
   const [newUser, setNewUser] = useState({
     name: '',
     email: '',
@@ -290,9 +345,10 @@ export default function Home() {
   [invoices]);
 
   // Invoices filtered by selected date (empty = show all)
-  const filteredInvoices = useMemo(() =>
-    filterDate ? invoices.filter((i) => i.dateIso === filterDate) : invoices,
-  [invoices, filterDate]);
+  const filteredInvoices = useMemo(() => {
+    const active = invoices.filter((i) => i.status !== 'cancelled');
+    return filterDate ? active.filter((i) => i.dateIso === filterDate) : active;
+  }, [invoices, filterDate]);
 
   const selectedInvoices = useMemo(() => {
     if (!selected.size) return filteredInvoices;
@@ -347,7 +403,7 @@ export default function Home() {
       if (sessionsResult.length > 0) {
         try {
           const latest = sessionsResult[0]; // sorted newest first
-          const sessionRecord = await api.session(authToken, latest.invoiceDate);
+          const sessionRecord = await api.session(authToken, latest._id);
           if (sessionRecord?.snapshot) {
             // restoreSnapshot needs setInvoices etc — call inline here
             const snap = sessionRecord.snapshot;
@@ -357,14 +413,18 @@ export default function Home() {
             setCatalogDraft(catalogResult || snap.catalog);
             // Sync DB statuses on top of snapshot
             try {
-              const dbInvoices = await api.invoices(authToken);
+              const [dbInvoices, cancelledInvoices] = await Promise.all([
+                api.invoices(authToken),
+                api.listCancelledInvoices(authToken).catch(() => [] as Invoice[]),
+              ]);
               setAllDbInvoices(dbInvoices);
               const statusMap: Record<number, Invoice['status']> = {};
               for (const d of dbInvoices) statusMap[d.invNo] = d.status;
+              for (const d of cancelledInvoices) statusMap[d.invNo] = 'cancelled';
               setInvoices((prev) => prev.map((inv) => ({ ...inv, status: statusMap[inv.invNo] ?? inv.status ?? 'saved' })));
-            } catch { /* ignore */ }
+            } catch (e) { console.warn('[loadCore] DB status sync failed:', e); }
           }
-        } catch { /* ignore — no session available */ }
+        } catch (e) { console.warn('[loadCore] No session available:', e); }
       }
       if (role === 'admin') {
         const userResult = await api.users(authToken);
@@ -394,11 +454,15 @@ export default function Home() {
       .finally(() => setBooting(false));
   }, [loadCore]);
 
+  // Pre-load JsBarcode so print doesn't wait for network
   useEffect(() => {
-    const cleanup = () => setPrintInvoices([]);
-    window.addEventListener('afterprint', cleanup);
-    return () => window.removeEventListener('afterprint', cleanup);
+    if ((window as any).JsBarcode) return;
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+    document.head.appendChild(s);
   }, []);
+
+
 
   async function handleLogin(email: string, password: string) {
     setBusy(true);
@@ -445,15 +509,15 @@ export default function Home() {
     }
     setBusy(true);
     try {
-      const result = await api.generate(token, { sapRaw: raw, startId, dateIso });
+      // skipSession: true — sessiya saqlanmaydi, faqat invoicelar generatsiya qilinadi
+      // Sessiya faqat "Saqlash" bosilganda saqlanadi
+      const result = await api.generate(token, { sapRaw: raw, startId, dateIso, skipSession: true });
       setInvoices(result.invoices);
       setCatalog(result.catalog);
       setCatalogDraft(result.catalog);
       setSelected(new Set(result.invoices.map((invoice) => invoice.invNo)));
-      setUnsaved(false);
-      setView('register');
-      await refreshSessions();
-      showToast('ok', `Готово: ${result.invoices.length} накладных из ${result.rows} строк`);
+      setUnsaved(true); // Saqlash kerakligi ko'rsatiladi
+      showToast('ok', `Tayyor: ${result.invoices.length} ta hujjat. "Saqlash" tugmasini bosing!`);
     } catch (error) {
       showToast('err', getError(error));
     } finally {
@@ -461,7 +525,7 @@ export default function Home() {
     }
   }
 
-  async function saveCurrentSession(nextInvoices = invoices, nextCatalog = catalog, silent = false) {
+  async function saveCurrentSession(nextInvoices = invoices, nextCatalog = catalog, silent = false, forceName?: string) {
     if (!token || !nextInvoices.length) return;
     const snapshot = buildSnapshot({
       invoiceDate: dateIso,
@@ -471,7 +535,35 @@ export default function Home() {
       invoices: nextInvoices
     });
     try {
-      const sessionName = dateIso + (sessionSuffix.trim() ? ` ${sessionSuffix.trim()}` : '');
+      // Build session name: suffix if provided, else auto-increment per day
+      let sessionName: string;
+      if (forceName !== undefined) {
+        sessionName = forceName;
+      } else if (sessionSuffix.trim()) {
+        sessionName = dateIso + ' ' + sessionSuffix.trim();
+      } else {
+        // Auto-name: use dateIso as base, check backend for duplicates
+        sessionName = dateIso;
+      }
+
+      // Duplicate check (only when not silent auto-save)
+      if (!silent) {
+        const dup = await api.checkSessionDuplicate(token, dateIso, sessionName);
+        if (dup.exists) {
+          const confirmed = window.confirm(`"${sessionName}" nomli sessiya mavjud.\n\nUstiga yozilsinmi?\n\n"Bekor" — yangi nom bilan saqlash`);
+          if (!confirmed) {
+            // Find next free name
+            let n = 2;
+            while (true) {
+              const candidate = `${dateIso} #${n}`;
+              const check = await api.checkSessionDuplicate(token, dateIso, candidate);
+              if (!check.exists) { sessionName = candidate; break; }
+              n++;
+            }
+          }
+        }
+      }
+
       await api.saveSession(token, {
         invoiceDate: dateIso,
         invoiceCount: nextInvoices.length,
@@ -480,17 +572,75 @@ export default function Home() {
         name: sessionName
       });
       setUnsaved(false);
-      // Track last used invNo for auto-increment
       if (nextInvoices.length) {
         const maxInvNo = Math.max(...nextInvoices.map(i => i.invNo));
         localStorage.setItem('gdetort_last_inv_no', String(maxInvNo));
         setStartId(maxInvNo + 1);
       }
       await refreshSessions();
-      if (!silent) showToast('ok', 'Сессия сохранена');
+      if (!silent) {
+        showToast('ok', `Сессия сохранена: ${sessionName}`);
+        setView('register');
+      }
     } catch (error) {
       showToast('err', getError(error));
     }
+  }
+
+  async function uploadVazvratFromOrders(file: File) {
+    if (!token) return;
+    setVazvratUploadBusy(true);
+    try {
+      const XLSX = await import('xlsx');
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      let maxR = 0, maxC = 0;
+      Object.keys(ws).filter((k) => !k.startsWith('!')).forEach((addr) => {
+        const cell = XLSX.utils.decode_cell(addr);
+        if (cell.r > maxR) maxR = cell.r;
+        if (cell.c > maxC) maxC = cell.c;
+      });
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
+      const records: import('@/types/domain').VazvratUploadItem[] = [];
+      let lastOrderNo = '', lastDate = '', lastMarketCode = '', lastMarketName = '';
+      for (let i = 3; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r || r.every((c) => !c)) continue;
+        const orderNo     = String(r[0] || lastOrderNo);
+        const dateRaw     = r[1];
+        const marketName  = String(r[4] || lastMarketName);
+        const marketCode  = String(r[5] || lastMarketCode);
+        const sapCode     = String(r[17] || '');
+        const productName = String(r[15] || '');
+        const qty         = Number(r[19]) || 0;
+        const price       = Number(r[20]) || 0;
+        const totalWithVat = Number(r[24]) || 0;
+        if (!sapCode && !productName) continue;
+        let date = lastDate;
+        if (dateRaw) {
+          if (typeof dateRaw === 'number') {
+            const d = new Date(Math.round((dateRaw - 25569) * 86400 * 1000));
+            date = d.toISOString().slice(0, 10);
+          } else { date = String(dateRaw).slice(0, 10); }
+        }
+        if (orderNo) lastOrderNo = orderNo;
+        if (date) lastDate = date;
+        if (marketCode) lastMarketCode = marketCode;
+        if (marketName) lastMarketName = marketName;
+        if (!lastDate || !sapCode) continue;
+        const isoDate = lastDate.match(/^\d{4}-\d{2}-\d{2}$/) ? lastDate : null;
+        if (!isoDate) continue;
+        records.push({ orderNo: lastOrderNo || '-', date: isoDate, marketCode: lastMarketCode || '-', marketName: lastMarketName || '-', sapCode, productName: productName || sapCode, qty: qty || 0, pricePerUnit: price || 0, totalWithVat: totalWithVat || 0 });
+      }
+      if (!records.length) { showToast('err', 'Hech qanday yozuv topilmadi'); return; }
+      await api.uploadVazvrat(token, records);
+      const fresh = await api.queryVazvrat(token, '2020-01-01', new Date().toISOString().slice(0, 10));
+      setVazvratAllRows(fresh);
+      showToast('ok', `${records.length} ta qaytarma yozuv yuklandi`);
+    } catch (e) { showToast('err', 'Xato: ' + String(e)); }
+    finally { setVazvratUploadBusy(false); }
   }
 
   function updateQty(invNo: number, lineIndex: number, value: string) {
@@ -533,7 +683,11 @@ export default function Home() {
             if (qty <= 0) return null;
             // price displayed to user is with VAT; convert to pre-VAT for backend
             const userPrice = parseNum(cell?.price);
-            const pricePreVat = userPrice > 0 ? Math.round((userPrice / 1.12) * 100) / 100 : undefined;
+            // if manualWithVat=true, user entered price WITH VAT — convert to pre-VAT for backend
+            // if manualWithVat=false, user entered pre-VAT price — use directly
+            const pricePreVat = userPrice > 0
+              ? (manualWithVat ? Math.round((userPrice / 1.12) * 100) / 100 : userPrice)
+              : undefined;
             return { sku: p.sku, qty, price: pricePreVat };
           })
           .filter((l): l is NonNullable<typeof l> => l !== null);
@@ -583,10 +737,10 @@ export default function Home() {
     setView('register');
   }
 
-  async function loadSession(invoiceDate: string) {
+  async function loadSession(id: string) {
     if (!token) return;
     try {
-      const session = await api.session(token, invoiceDate);
+      const session = await api.session(token, id);
       restoreSnapshot(session.snapshot);
       // Sync status + undeliverComment + undeliveredAt from DB
       try {
@@ -604,21 +758,21 @@ export default function Home() {
             undeliveredAt: db.undeliveredAt ?? inv.undeliveredAt,
           };
         }));
-      } catch {
-        // ignore — snapshot status is fine
+      } catch (e) {
+        console.warn('[loadSession] DB status sync skipped (snapshot used):', e);
       }
-      showToast('ok', `Открыта сессия ${fmtDateRu(invoiceDate)}`);
+      showToast('ok', `Sessiya yuklandi: ${session.name || fmtDateRu(session.invoiceDate)}`);
     } catch (error) {
       showToast('err', getError(error));
     }
   }
 
-  async function deleteSession(invoiceDate: string) {
-    if (!token || !window.confirm(`Удалить сессию ${fmtDateRu(invoiceDate)}?`)) return;
+  async function deleteSession(id: string, name?: string) {
+    if (!token || !window.confirm(`"${name || id}" sessiyasini o'chirilsinmi?`)) return;
     try {
-      await api.deleteSession(token, invoiceDate);
+      await api.deleteSession(token, id);
       await refreshSessions();
-      showToast('ok', 'Сессия удалена');
+      showToast('ok', 'Sessiya o\'chirildi');
     } catch (error) {
       showToast('err', getError(error));
     }
@@ -805,7 +959,7 @@ export default function Home() {
     try {
       const updated = await api.updateInvoice(token, invNo, { status: 'delivered', dateIso: date, lines: updatedLines } as any);
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, ...updated } : inv));
-      showToast('ok', `✓ Nakl. №${invNo} tiklandi — ${fmtDateRu(date)}`);
+      showToast('ok', `✓ ${T('lbl_invoices')} №${invNo} ${T('tarix_restored')} — ${fmtDateRu(date)}`);
     } catch (error) {
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'saved' } : inv));
       showToast('err', getError(error));
@@ -910,39 +1064,207 @@ export default function Home() {
       setInventoryStats(iStats);
       setCustomerStats(cStats);
 
-      // Merge all sessions' invoices for analytics
-      if (sessions.length > 1) {
-        try {
-          const allSnaps = await Promise.all(
-            sessions.map(s => api.session(token, s.invoiceDate).catch(() => null))
-          );
-          const merged: Invoice[] = [];
-          const seen = new Set<number>();
-          for (const rec of allSnaps) {
-            if (!rec?.snapshot?.invoices) continue;
-            for (const inv of rec.snapshot.invoices as Invoice[]) {
-              if (!seen.has(inv.invNo)) { seen.add(inv.invNo); merged.push(inv); }
+      // Merge ALL saved sessions' invoices for analytics (use _id, not invoiceDate)
+      try {
+        const allSnaps = await Promise.all(
+          sessions.map(s => api.session(token, s._id).catch(() => null))
+        );
+        const merged: Invoice[] = [];
+        const seen = new Set<number>();
+        for (const rec of allSnaps) {
+          if (!rec?.snapshot?.invoices) continue;
+          // Tag each invoice with its session date so date filtering works
+          const sessionDate = rec.invoiceDate;
+          for (const inv of rec.snapshot.invoices as Invoice[]) {
+            if (!seen.has(inv.invNo)) {
+              seen.add(inv.invNo);
+              merged.push({ ...inv, dateIso: inv.dateIso || sessionDate });
             }
           }
-          // Sync statuses from DB
-          const dbInvs = allDbInvoices.length > 0 ? allDbInvoices : await api.invoices(token).catch(() => []);
-          const statusMap: Record<number, Invoice['status']> = {};
-          for (const d of dbInvs) statusMap[d.invNo] = d.status;
-          setAllDbInvoices(merged.map(inv => ({ ...inv, status: statusMap[inv.invNo] ?? inv.status })));
-        } catch { /* ignore */ }
-      }
+        }
+        setAllDbInvoices(merged);
+      } catch (e) { console.warn('[loadAnalytics] sessions merge failed:', e); }
     } catch (error) {
       showToast('err', getError(error));
     }
   }
 
   function print(list = selectedInvoices) {
-    if (!list.length) {
-      showToast('err', 'Нет накладных для печати');
-      return;
-    }
-    setPrintInvoices(list);
-    window.setTimeout(() => window.print(), 80);
+    if (!list.length) { showToast('err', 'Нет накладных для печати'); return; }
+
+    const doRender = () => {
+      // Build SVG barcodes for each invoice with an order number
+      const barcodes: Record<string, string> = {};
+      list.forEach(inv => {
+        if (!inv.order) return;
+        try {
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          (window as any).JsBarcode(svg, inv.order, {
+            format: 'CODE128', width: 0.9, height: 20,
+            displayValue: true, fontSize: 7, margin: 2,
+            background: '#fff', lineColor: '#000',
+          });
+          barcodes[inv.order] = new XMLSerializer().serializeToString(svg);
+        } catch {}
+      });
+
+      const fmt = (n: number) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+      const fmt0 = (n: number) => new Intl.NumberFormat('ru-RU').format(n);
+      const fmtDate = (iso: string) => {
+        const [y, m, d] = iso.split('-');
+        const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+        return `${Number(d)} ${months[Number(m) - 1]} ${y}`;
+      };
+
+      const invoiceHtml = (inv: Invoice) => {
+        const lines = inv.lines.filter(l => l.qty > 0);
+        const barcodeSvg = inv.order && barcodes[inv.order] ? barcodes[inv.order] : '';
+        return `
+<div class="invoiceDoc">
+  <header>
+    <div><b>ГДЕ ТОРТ?</b><span>Кондитерские изделия</span></div>
+    <section><h2>Накладная — счёт-фактура</h2><strong>№ ${inv.invNo}</strong></section>
+  </header>
+  <div class="docMeta">
+    <div><span>Дата</span><b>${fmtDate(inv.dateIso)}</b></div>
+    <div><span>№ заказа</span>${barcodeSvg}</div>
+    <div><span>Магазин</span><b>${inv.market ?? ''}</b></div>
+    <div><span>Код</span><b>${inv.storeCode}</b></div>
+  </div>
+  <p class="contract">${requisites.contract ?? ''}</p>
+  <div class="parties">
+    <div>
+      <em>Поставщик</em><b>${requisites.supplier.name}</b>
+      <span>${requisites.supplier.addr}</span>
+      <span>ИНН: ${requisites.supplier.inn} · НДС: ${requisites.supplier.vat}</span>
+    </div>
+    <div>
+      <em>Получатель</em><b>${requisites.receiver.name}</b>
+      <span style="color:#c00">Адрес: ${inv.address}</span>
+      <span>ИНН: ${requisites.receiver.inn} · НДС: ${requisites.receiver.vat}</span>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Наименование товара</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Стоимость</th><th>НДС</th><th>С НДС</th></tr></thead>
+    <tbody>
+      ${lines.map((l, i) => `<tr><td>${i+1}</td><td>${l.name}</td><td>${l.unit}</td><td class="right">${fmt0(l.qty)}</td><td class="right">${fmt(l.price)}</td><td class="right">${fmt(l.cost)}</td><td class="right">${fmt(l.vat)}</td><td class="right">${fmt(l.total)}</td></tr>`).join('')}
+      <tr class="total"><td></td><td>Итого</td><td></td><td class="right">${fmt0(inv.sumQty)}</td><td></td><td class="right">${fmt(inv.sumCost)}</td><td class="right">${fmt(inv.sumVat)}</td><td class="right">${fmt(inv.sumTotal)}</td></tr>
+    </tbody>
+  </table>
+  <p class="words">Всего отпущено на сумму: <b>${amountWords(inv.sumTotal)}</b></p>
+  <footer><span>Руководитель ____________ <b>BAYMATOVA D.A</b></span><span>Главный бухгалтер ____________ <b>НЕ ПРЕДУСМОТРЕН</b></span></footer>
+  <footer><span>Отпустил ____________________</span><span>Получил ____________________</span></footer>
+</div>`;
+      };
+
+      const pageHtml = list.map((inv, i) => `
+<div class="printPage${i === list.length - 1 ? ' last' : ''}">
+  <div class="printHalf top">${invoiceHtml(inv)}</div>
+  <div class="printHalf bottom">${invoiceHtml(inv)}</div>
+</div>`).join('');
+
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; font-size: 9px; color: #000; background: #fff; }
+@page { size: A4 portrait; margin: 8mm 7mm; }
+.printPage { page-break-after: always; break-after: page; }
+.printPage.last { page-break-after: auto; break-after: auto; }
+.printHalf { height: 138mm; max-height: 138mm; overflow: hidden; padding: 5mm 4mm; }
+.printHalf.top { border-bottom: 1.5px dashed #777; }
+.invoiceDoc { color: #000; font-size: 9px; line-height: 1.3; }
+.invoiceDoc header { margin-bottom: 5px; display: flex; justify-content: space-between; }
+.invoiceDoc header b { font-size: 14px; font-weight: 900; }
+.invoiceDoc header span { font-size: 8px; font-weight: 700; text-transform: uppercase; display: block; }
+.invoiceDoc h2 { font-size: 11px; margin: 0; font-weight: 700; }
+.invoiceDoc strong { font-size: 10px; }
+.docMeta { display: flex; gap: 4px; margin-bottom: 4px; }
+.docMeta > div { border: 1px solid #888; padding: 3px 5px; flex: 1; }
+.docMeta span { display: block; color: #333; font-size: 7px; font-weight: 700; text-transform: uppercase; }
+.docMeta b { font-size: 10px; font-weight: 700; font-family: "Courier New", monospace; }
+.docMeta svg { max-width: 100%; height: auto; display: block; }
+.contract { margin: 3px 0; font-size: 6.5px; color: #222; }
+.parties { display: flex; gap: 5px; margin-bottom: 4px; }
+.parties > div { border: 1px solid #888; padding: 3px 5px; flex: 1; }
+.parties em { display: block; color: #333; font-size: 7px; font-weight: 700; text-transform: uppercase; }
+.parties b { display: block; font-size: 8px; font-weight: 700; }
+.parties span { display: block; font-size: 7.5px; }
+table { width: 100%; border-collapse: collapse; font-size: 9px; margin-top: 4px; }
+th { background: #d8d8d8 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid #333; font-weight: 700; padding: 3px 4px; text-align: left; }
+td { border: 1px solid #888; padding: 2px 4px; }
+td.right, th.right { text-align: right; }
+tr.total td { font-weight: 700; border-top: 2px solid #333; }
+.words { margin-top: 4px; font-size: 7.5px; }
+footer { display: flex; justify-content: space-between; margin-top: 5px; font-size: 7.5px; border-top: 1px solid #bbb; padding-top: 3px; }
+</style></head><body>${pageHtml}</body></html>`;
+
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument!;
+      doc.open(); doc.write(html); doc.close();
+      const cleanup = () => { try { document.body.removeChild(iframe); } catch {} window.removeEventListener('afterprint', cleanup); };
+      window.addEventListener('afterprint', cleanup);
+      setTimeout(() => { iframe.contentWindow!.focus(); iframe.contentWindow!.print(); }, 300);
+    };
+
+    if ((window as any).JsBarcode) { doRender(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+    s.onload = doRender;
+    document.head.appendChild(s);
+  }
+
+  function savePdf(list: Invoice[]) {
+    if (!list.length) return;
+    const doRender = () => {
+      const barcodes: Record<string, string> = {};
+      list.forEach(inv => {
+        if (!inv.order) return;
+        try {
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          (window as any).JsBarcode(svg, inv.order, { format: 'CODE128', width: 0.9, height: 20, displayValue: true, fontSize: 7, margin: 2, background: '#fff', lineColor: '#000' });
+          barcodes[inv.order] = new XMLSerializer().serializeToString(svg);
+        } catch {}
+      });
+      const fmtN  = (n: number) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+      const fmt0N = (n: number) => new Intl.NumberFormat('ru-RU').format(n);
+      const fmtDate = (iso: string) => { const [y,m,d] = iso.split('-'); const months=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря']; return `${Number(d)} ${months[Number(m)-1]} ${y}`; };
+      const invoiceHtml = (inv: Invoice) => {
+        const lines = inv.lines.filter(l => l.qty > 0);
+        const barcodeSvg = inv.order && barcodes[inv.order] ? barcodes[inv.order] : '';
+        return `<div class="invoiceDoc"><header><div><b>ГДЕ ТОРТ?</b><span>Кондитерские изделия</span></div><section><h2>Накладная — счёт-фактура</h2><strong>№ ${inv.invNo}</strong></section></header><div class="docMeta"><div><span>Дата</span><b>${fmtDate(inv.dateIso)}</b></div><div><span>№ заказа</span>${barcodeSvg}</div><div><span>Магазин</span><b>${inv.market??''}</b></div><div><span>Код</span><b>${inv.storeCode}</b></div></div><p class="contract">${requisites.contract??''}</p><div class="parties"><div><em>Поставщик</em><b>${requisites.supplier.name}</b><span>${requisites.supplier.addr}</span><span>ИНН: ${requisites.supplier.inn} · НДС: ${requisites.supplier.vat}</span></div><div><em>Получатель</em><b>${requisites.receiver.name}</b><span style="color:#c00">Адрес: ${inv.address}</span><span>ИНН: ${requisites.receiver.inn} · НДС: ${requisites.receiver.vat}</span></div></div><table><thead><tr><th>#</th><th>Наименование товара</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Стоимость</th><th>НДС</th><th>С НДС</th></tr></thead><tbody>${lines.map((l,i)=>`<tr><td>${i+1}</td><td>${l.name}</td><td>${l.unit}</td><td class="right">${fmt0N(l.qty)}</td><td class="right">${fmtN(l.price)}</td><td class="right">${fmtN(l.cost)}</td><td class="right">${fmtN(l.vat)}</td><td class="right">${fmtN(l.total)}</td></tr>`).join('')}<tr class="total"><td></td><td>Итого</td><td></td><td class="right">${fmt0N(inv.sumQty)}</td><td></td><td class="right">${fmtN(inv.sumCost)}</td><td class="right">${fmtN(inv.sumVat)}</td><td class="right">${fmtN(inv.sumTotal)}</td></tr></tbody></table><p class="words">Всего отпущено на сумму: <b>${amountWords(inv.sumTotal)}</b></p><footer><span>Руководитель ____________ <b>BAYMATOVA D.A</b></span><span>Главный бухгалтер ____________ <b>НЕ ПРЕДУСМОТРЕН</b></span></footer><footer><span>Отпустил ____________________</span><span>Получил ____________________</span></footer></div>`;
+      };
+      const css = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9px;color:#000}.page{width:210mm;padding:8mm 7mm;page-break-after:always}.half{height:138mm;max-height:138mm;overflow:hidden;padding:5mm 4mm}.half.top{border-bottom:1.5px dashed #777}.invoiceDoc{color:#000;font-size:9px;line-height:1.3}.invoiceDoc header{margin-bottom:5px;display:flex;justify-content:space-between}.invoiceDoc header b{font-size:14px;font-weight:900}.invoiceDoc header span{font-size:8px;font-weight:700;text-transform:uppercase;display:block}.invoiceDoc h2{font-size:11px;margin:0;font-weight:700}.invoiceDoc strong{font-size:10px}.docMeta{display:flex;gap:4px;margin-bottom:4px}.docMeta>div{border:1px solid #888;padding:3px 5px;flex:1}.docMeta span{display:block;color:#333;font-size:7px;font-weight:700;text-transform:uppercase}.docMeta b{font-size:10px;font-weight:700;font-family:"Courier New",monospace}.docMeta svg{max-width:100%;height:auto;display:block}.contract{margin:3px 0;font-size:6.5px}.parties{display:flex;gap:5px;margin-bottom:4px}.parties>div{border:1px solid #888;padding:3px 5px;flex:1}.parties em{display:block;color:#333;font-size:7px;font-weight:700;text-transform:uppercase}.parties b{display:block;font-size:8px;font-weight:700}.parties span{display:block;font-size:7.5px}table{width:100%;border-collapse:collapse;font-size:9px;margin-top:4px}th{background:#d8d8d8;border:1px solid #333;font-weight:700;padding:3px 4px;text-align:left}td{border:1px solid #888;padding:2px 4px}td.right{text-align:right}tr.total td{font-weight:700;border-top:2px solid #333}.words{margin-top:4px;font-size:7.5px}footer{display:flex;justify-content:space-between;margin-top:5px;font-size:7.5px;border-top:1px solid #bbb;padding-top:3px}`;
+      const pagesHtml = list.map(inv => `<div class="page"><div class="half top">${invoiceHtml(inv)}</div><div class="half">${invoiceHtml(inv)}</div></div>`).join('');
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99998;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-family:sans-serif;';
+      overlay.textContent = 'PDF tayyorlanmoqda...';
+      document.body.appendChild(overlay);
+
+      const container = document.createElement('div');
+      container.style.cssText = 'position:fixed;top:0;left:0;width:794px;background:#fff;z-index:99999;';
+      container.innerHTML = `<style>${css.replace(/210mm/g,'794px').replace(/138mm/g,'521px').replace(/8mm 7mm/g,'30px 26px').replace(/5mm 4mm/g,'19px 15px')}</style>${pagesHtml}`;
+      document.body.appendChild(container);
+
+      const filename = `nakladnoy_${list.map(i => i.invNo).join('_')}.pdf`;
+      (window as any).html2pdf().set({
+        margin: 0,
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false, width: 794 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }).from(container).save().finally(() => {
+        document.body.removeChild(container);
+        document.body.removeChild(overlay);
+      });
+    };
+    const loadAndRender = () => { if ((window as any).JsBarcode) { doRender(); return; } const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js'; s.onload = doRender; document.head.appendChild(s); };
+    if ((window as any).html2pdf) { loadAndRender(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    s.onload = loadAndRender;
+    document.head.appendChild(s);
   }
 
   async function exportXlsx() {
@@ -1039,20 +1361,20 @@ export default function Home() {
               <div className="brandsub">накладные · счёт-фактура</div>
             </div>
           </div>
+          <div className="topbar-divider" />
           <div className="topstats">
-            {/* Session date switcher */}
-            {sessions.length > 0 && (
-              <SessionPicker
-                sessions={sessions}
-                currentDate={dateIso}
-                onSelect={(d) => void loadSession(d)}
-              />
+            {dateIso && (
+              <div className="topbar-date">
+                <span className="topbar-date-day">{dateIso.slice(8,10)}</span>
+                <div className="topbar-date-rest">
+                  <span className="topbar-date-month">{['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(dateIso.slice(5,7))-1]}</span>
+                  <span className="topbar-date-year">{dateIso.slice(0,4)}</span>
+                </div>
+              </div>
             )}
-            <div className="topstat-chip" title="Hujjat soni"><span className="topstat-val">{totals.count}</span></div>
-            <div className="topstat-chip"><span className="topstat-val">{fmt0(totals.qty)}</span><span className="topstat-lbl">{T('lbl_pcs')}</span></div>
-            <div className="topstat-chip accent"><span className="topstat-val">{fmt0(totals.sum)}</span><span className="topstat-lbl">{T('lbl_sum')}</span></div>
             {unsaved && <span className="topstat-unsaved">{T('lbl_unsaved')}</span>}
           </div>
+          <div className="topbar-divider" />
           <div className="userbar">
             <select
               className="langSelect"
@@ -1084,6 +1406,8 @@ export default function Home() {
           {isAdmin  && <Tab active={view === 'analytics'}  icon={<BarChart3 size={18} />}     label={T('nav_analytics')} onClick={() => { setView('analytics'); void loadAnalytics(); }} />}
           <Tab             active={view === 'undelivered'} icon={<AlertTriangle size={18} />} label="Qaytgan" onClick={() => setView('undelivered')}
             badge={invoices.filter(i => i.status === 'saved').length || undefined} />
+          {!isAdmin && <Tab active={view === 'manual-list'} icon={<PenLine size={18} />} label="Qo'lda" onClick={() => setView('manual-list')}
+            badge={invoices.filter(i => i.manual && i.status !== 'cancelled').length || undefined} />}
           <Tab             active={view === 'settings'}    icon={<Settings size={18} />}      label={T('nav_settings')}  onClick={() => setView('settings')} />
           <Tab             active={view === 'preferences'} icon={<Palette size={18} />}       label={T('nav_preferences')} onClick={() => setView('preferences')} />
         </nav>
@@ -1103,9 +1427,9 @@ export default function Home() {
                       currentDate={dateIso}
                       onSelect={(d) => loadSession(d)}
                     />
-                    <button className="small dark" type="button" onClick={() => setManualOpen(true)}>
+                    {!isAdmin && <button className="small dark" type="button" onClick={() => setManualOpen(true)}>
                       <Plus size={15} /> {T('reg_manual')}
-                    </button>
+                    </button>}
                     <button className="small" type="button" disabled={!filteredInvoices.length} onClick={exportXlsx}>
                       <Download size={15} /> Excel
                     </button>
@@ -1120,7 +1444,7 @@ export default function Home() {
                     <thead>
                       <tr>
                         <th title={T('lbl_delivered')}>Status</th>
-                        <th className="check" title="Chop etish uchun tanlash">
+                        <th className="check" title="Chop etish uchun tanlash" style={{ whiteSpace: 'nowrap' }}>
                           <input type="checkbox"
                             style={{ accentColor: '#46bf72', cursor: 'pointer' }}
                             checked={filteredInvoices.length > 0 && filteredInvoices.every(i => selected.has(i.invNo))}
@@ -1128,12 +1452,14 @@ export default function Home() {
                               if (e.target.checked) setSelected(new Set(filteredInvoices.map(i => i.invNo)));
                               else setSelected(new Set());
                             }} />
+                          {' '}Print
                         </th>
                         <th>№</th>
                         <th>{T('lbl_order')}</th>
                         <th>{T('lbl_store')}</th>
                         <th className="right">{T('lbl_pcs')}</th>
                         <th className="right">{T('lbl_total')}</th>
+                        <th></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1186,6 +1512,13 @@ export default function Home() {
                           <td className="right mono" style={invoice.status !== 'delivered' ? { color: 'var(--muted)' } : undefined}>
                             {fmt(invoice.sumTotal)}
                           </td>
+                          <td style={{ width: 1, whiteSpace: 'nowrap' }}>
+                            <button className="mini" type="button" title="Chop etish"
+                              onClick={e => { e.stopPropagation(); print([invoice]); }}
+                              style={{ padding: '3px 8px', fontSize: 11 }}>
+                              <Printer size={12} /> Print
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1205,7 +1538,7 @@ export default function Home() {
                 </div>
                 <div className="modalBody" style={{ padding: '20px 24px' }}>
                   <p style={{ color: 'var(--muted)', marginBottom: 12, fontSize: 14 }}>
-                    Nakl. №{undeliverModal.invNo} uchun delivery statusini o&apos;chiryapsiz. Sabab ko&apos;rsatish <b style={{ color: 'var(--fg)' }}>majburiy</b>:
+                    Hujjat №{undeliverModal.invNo} uchun yetkazish statusini o&apos;chiryapsiz. Sabab ko&apos;rsatish <b style={{ color: 'var(--fg)' }}>majburiy</b>:
                   </p>
                   <textarea
                     autoFocus
@@ -1241,7 +1574,7 @@ export default function Home() {
             <div className="modalBackdrop" onClick={() => setRestoreModal(null)}>
               <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
                 <div className="modalHead">
-                  <h3>↩ Nakl. №{restoreModal.invNo} — tiklash</h3>
+                  <h3>↩ Hujjat №{restoreModal.invNo} — tiklash</h3>
                   <button className="iconbtn" type="button" onClick={() => setRestoreModal(null)}>✕</button>
                 </div>
                 <div className="modalBody" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1367,7 +1700,7 @@ export default function Home() {
                     <button className="small" type="button" style={{ color: 'var(--ok)', borderColor: 'rgba(47,209,88,0.3)' }} onClick={() => { restoreInvoice(invoiceDetail.invNo); setInvoiceDetail(null); }}>
                       ↩ {T('lbl_restore')}
                     </button>
-                  ) : (
+                  ) : isAdmin ? (
                     <button
                       className="small"
                       type="button"
@@ -1380,7 +1713,7 @@ export default function Home() {
                     >
                       <Trash2 size={13} /> {T('lbl_delete')}
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1401,9 +1734,6 @@ export default function Home() {
                       <input type="checkbox" checked={hideZero} onChange={(event) => setHideZero(event.target.checked)} />
                       {T('hide_zeros')}
                     </label>
-                    <button className="small dark" type="button" disabled={!invoices.length} onClick={() => saveCurrentSession()}>
-                      <Save size={15} /> {unsaved ? `${T('lbl_save')} *` : T('lbl_save')}
-                    </button>
                   </>
                 }
               />
@@ -1514,7 +1844,10 @@ export default function Home() {
             <section className="pane">
               <div className="subtabs" style={{ position: 'static', marginTop: 0, paddingTop: 0, background: 'transparent' }}>
                 <button className={ordersTab === 'import' ? 'active' : ''} type="button" onClick={() => setOrdersTab('import')}>
-                  <FileText size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> SAP import
+                  <FileText size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Buyurtma yuklash
+                </button>
+                <button className={ordersTab === 'vazvrat' ? 'active' : ''} type="button" onClick={() => setOrdersTab('vazvrat')}>
+                  <Download size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Qaytarma
                 </button>
                 <button className={ordersTab === 'history' ? 'active' : ''} type="button" onClick={() => setOrdersTab('history')}>
                   <ClipboardList size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Buyurtma tarixi
@@ -1523,12 +1856,10 @@ export default function Home() {
               </div>
 
               {ordersTab === 'import' && (<>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
 
-              {/* ── Trendy import layout ── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-
-                {/* LEFT: Upload zone */}
-                <label style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 200, border: `2px dashed ${sapRaw ? '#46bf72' : 'rgba(var(--ink-rgb),0.15)'}`, borderRadius: 16, background: sapRaw ? 'rgba(70,191,114,0.06)' : 'rgba(var(--ink-rgb),0.02)', cursor: 'pointer', transition: 'all 0.2s' }}>
+                {/* Upload zone — compact */}
+                <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', border: `2px dashed ${sapRaw ? '#46bf72' : 'rgba(var(--ink-rgb),0.15)'}`, borderRadius: 12, background: sapRaw ? 'rgba(70,191,114,0.06)' : 'rgba(var(--ink-rgb),0.02)', cursor: 'pointer' }}>
                   <input type="file" accept=".xls,.xlsx" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
@@ -1548,15 +1879,15 @@ export default function Home() {
                       } catch { showToast('err', "Faylni o'qishda xatolik"); }
                     }}
                   />
-                  <div style={{ width: 56, height: 56, borderRadius: 16, background: sapRaw ? 'rgba(70,191,114,0.15)' : 'rgba(var(--ink-rgb),0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <FileText size={26} style={{ color: sapRaw ? '#46bf72' : 'var(--muted)' }} />
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: sapRaw ? 'rgba(70,191,114,0.15)' : 'rgba(var(--ink-rgb),0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <FileText size={18} style={{ color: sapRaw ? '#46bf72' : 'var(--muted)' }} />
                   </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: sapRaw ? '#46bf72' : 'var(--ink)' }}>{sapRaw ? '✓ Fayl yuklandi' : 'Excel faylni tanlang'}</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>.xls yoki .xlsx formatda</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: sapRaw ? '#46bf72' : 'var(--ink)' }}>{sapRaw ? '✓ Fayl yuklandi' : 'Excel faylni tanlang'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>.xls yoki .xlsx formatda</div>
                   </div>
                   {xlsSheets.length > 1 && (
-                    <select value={xlsSelectedSheet} style={{ fontSize: 12, borderRadius: 8, padding: '4px 8px', position: 'relative', zIndex: 1 }}
+                    <select value={xlsSelectedSheet} style={{ fontSize: 12, borderRadius: 8, padding: '4px 8px', position: 'relative', zIndex: 1, marginLeft: 'auto' }}
                       onClick={e => e.stopPropagation()}
                       onChange={async (e) => {
                         e.stopPropagation();
@@ -1573,78 +1904,118 @@ export default function Home() {
                   )}
                 </label>
 
-                {/* RIGHT: Settings */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 6 }}>Sana</div>
-                      <input type="date" value={dateIso} onChange={(e) => setDateIso(e.target.value)} style={{ width: '100%' }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 6 }}>Hujjat № dan</div>
-                      <input type="number" value={startId} onChange={(e) => setStartId(Number(e.target.value))} style={{ width: '100%' }} />
-                    </div>
+                {/* Settings row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>Sana</div>
+                    <input type="date" value={dateIso} onChange={(e) => setDateIso(e.target.value)} style={{ width: '100%' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 6 }}>Sessiya nomi</div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(var(--ink-rgb),0.04)', border: '1px solid rgba(var(--ink-rgb),0.09)', borderRadius: 10, padding: '2px 10px 2px 4px' }}>
-                      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--muted)', background: 'rgba(var(--ink-rgb),0.06)', borderRadius: 6, padding: '4px 8px', whiteSpace: 'nowrap' }}>{dateIso}</span>
-                      <input type="text" placeholder="qo'shimcha (ixtiyoriy)" value={sessionSuffix} onChange={(e) => setSessionSuffix(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13 }} />
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 'auto' }}>
-                    <button type="button" disabled={busy || !sapRaw} onClick={() => generateInvoices()}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 0', borderRadius: 12, fontWeight: 700, fontSize: 14, border: 'none', cursor: busy || !sapRaw ? 'not-allowed' : 'pointer', opacity: busy || !sapRaw ? 0.45 : 1, background: 'linear-gradient(135deg, #46bf72 0%, #2ea855 100%)', color: '#fff', boxShadow: sapRaw ? '0 4px 16px rgba(70,191,114,0.35)' : 'none', transition: 'all 0.2s' }}>
-                      <FileText size={16} /> SAP import
-                    </button>
-                    <button type="button" disabled={busy || !invoices.length} onClick={() => saveCurrentSession()}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 0', borderRadius: 12, fontWeight: 700, fontSize: 14, border: '1.5px solid rgba(var(--ink-rgb),0.15)', cursor: busy || !invoices.length ? 'not-allowed' : 'pointer', opacity: busy || !invoices.length ? 0.4 : 1, background: 'rgba(var(--ink-rgb),0.04)', color: 'var(--ink)', transition: 'all 0.2s' }}>
-                      <Save size={16} /> Saqlash
-                    </button>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>Hujjat № dan</div>
+                    <input type="number" value={startId} onChange={(e) => setStartId(Number(e.target.value))} style={{ width: '100%' }} />
                   </div>
                 </div>
-              </div>
 
-              {/* Summary */}
-              {invoices.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                  {[
-                    { label: 'Nakladnoylar', value: `${invoices[0].invNo}–${invoices[invoices.length-1].invNo}` },
-                    { label: 'Jami dona', value: invoices.length },
-                    { label: 'Summa', value: `${fmt0(totals.sum)} so'm` },
-                    { label: 'Tanlangan', value: selected.size || invoices.length },
-                  ].map(item => (
-                    <div key={item.label} style={{ background: 'rgba(var(--ink-rgb),0.03)', border: '1px solid rgba(var(--ink-rgb),0.08)', borderRadius: 12, padding: '12px 16px' }}>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{item.label}</div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--mono)' }}>{item.value}</div>
-                    </div>
-                  ))}
+                {/* Sessiya nomi */}
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>Sessiya nomi <span style={{ color: '#ef4444' }}>*</span></div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(var(--ink-rgb),0.04)', border: `1px solid ${!sessionSuffix.trim() ? 'rgba(239,68,68,0.5)' : 'rgba(var(--ink-rgb),0.09)'}`, borderRadius: 10, padding: '2px 10px 2px 4px' }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)', background: 'rgba(var(--ink-rgb),0.06)', borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap' }}>{dateIso}</span>
+                    <input type="text" placeholder="nom kiriting (majburiy)" value={sessionSuffix} onChange={(e) => setSessionSuffix(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13 }} />
+                  </div>
                 </div>
-              )}
+
+                {/* Buttons */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <button type="button" disabled={busy || !sapRaw || !sessionSuffix.trim()} onClick={() => {
+                    if (!sessionSuffix.trim()) { showToast('err', 'Sessiya nomini kiriting!'); return; }
+                    generateInvoices();
+                  }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, border: 'none', cursor: busy || !sapRaw || !sessionSuffix.trim() ? 'not-allowed' : 'pointer', opacity: busy || !sapRaw || !sessionSuffix.trim() ? 0.45 : 1, background: 'linear-gradient(135deg, #46bf72 0%, #2ea855 100%)', color: '#fff', boxShadow: sapRaw && sessionSuffix.trim() ? '0 4px 12px rgba(70,191,114,0.35)' : 'none' }}>
+                    <FileText size={15} /> Buyurtma yuklash
+                  </button>
+                  <button type="button" disabled={busy || !invoices.length || !sessionSuffix.trim()} onClick={() => saveCurrentSession()}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, border: '1.5px solid rgba(var(--ink-rgb),0.15)', cursor: busy || !invoices.length || !sessionSuffix.trim() ? 'not-allowed' : 'pointer', opacity: busy || !invoices.length || !sessionSuffix.trim() ? 0.4 : 1, background: 'rgba(var(--ink-rgb),0.04)', color: 'var(--ink)' }}>
+                    <Save size={15} /> {T('lbl_save')}
+                  </button>
+                </div>
+
+                {/* Summary */}
+                {invoices.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                    {[
+                      { label: 'Hujjatlar', value: `${invoices[0].invNo}–${invoices[invoices.length-1].invNo}` },
+                      { label: 'Jami dona', value: invoices.length },
+                      { label: 'Summa', value: `${fmt0(totals.sum)} so'm` },
+                      { label: 'Tanlangan', value: selected.size || invoices.length },
+                    ].map(item => (
+                      <div key={item.label} style={{ background: 'rgba(var(--ink-rgb),0.03)', border: '1px solid rgba(var(--ink-rgb),0.08)', borderRadius: 10, padding: '8px 12px' }}>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{item.label}</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--mono)' }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               </>)}
 
-              {ordersTab === 'history' && (
-                <div className="sessionList" style={{ marginTop: 8 }}>
-                  {sessions.length === 0 ? (
-                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Buyurtma tarixi yo'q</div>
-                  ) : sessions.map((session) => (
-                    <div className="sessionRow" key={session.invoiceDate}>
-                      <b>{session.invoiceDate}</b>
-                      <span className="sess-badge">{session.invoiceCount} накл.</span>
-                      <span className="sess-sum">{fmt0(session.sumTotal)} сум</span>
-                      <span className="sess-badge">{session.versions?.length || 0} версий</span>
-                      <button className="mini" type="button" onClick={() => loadSession(session.invoiceDate)}>
-                        {T('lbl_restore')}
-                      </button>
-                      {isAdmin && (
-                        <button className="iconbtn danger" type="button" onClick={() => deleteSession(session.invoiceDate)}>
-                          <Trash2 size={15} />
-                        </button>
-                      )}
+              {ordersTab === 'vazvrat' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 480, marginTop: 8 }}>
+                  <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', border: '2px dashed rgba(var(--ink-rgb),0.15)', borderRadius: 12, background: 'rgba(var(--ink-rgb),0.02)', cursor: 'pointer' }}>
+                    <input type="file" accept=".xls,.xlsx" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
+                      disabled={vazvratUploadBusy}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadVazvratFromOrders(f); e.target.value = ''; }} />
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: 'rgba(var(--ink-rgb),0.07)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <Download size={17} style={{ opacity: 0.5 }} />
                     </div>
-                  ))}
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>Vazvrat Excel faylini tanlang</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>.xls yoki .xlsx formatda</div>
+                    </div>
+                  </label>
+                  {vazvratUploadBusy && <div style={{ fontSize: 13, color: 'var(--muted)' }}>Yuklanmoqda...</div>}
+                  {vazvratAllRows.length > 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600 }}>
+                      ✓ Jami {vazvratAllRows.length} ta qaytarma yozuvi mavjud
+                    </div>
+                  )}
                 </div>
               )}
+
+              {ordersTab === 'history' && (() => {
+                const filteredSessions = sessions.filter(s => s.invoiceDate >= histFrom && s.invoiceDate <= histTo);
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    {/* Date filter */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>Sana:</span>
+                      <input type="date" value={histFrom} onChange={e => setHistFrom(e.target.value)} style={{ width: 130, fontSize: 12, padding: '4px 8px' }} />
+                      <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
+                      <input type="date" value={histTo} onChange={e => setHistTo(e.target.value)} style={{ width: 130, fontSize: 12, padding: '4px 8px' }} />
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filteredSessions.length} ta sessiya</span>
+                    </div>
+                    <div className="sessionList">
+                      {filteredSessions.length === 0 ? (
+                        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Bu oraliqda buyurtma yo'q</div>
+                      ) : filteredSessions.map((session, si) => (
+                        <div className="sessionRow" key={session._id || session.invoiceDate + '-' + si}>
+                          <b>{session.name || session.invoiceDate}</b>
+                          <span className="sess-badge">{session.invoiceCount} {T('lbl_invoices')}</span>
+                          <span className="sess-sum">{fmt0(session.sumTotal)} {T('lbl_sum')}</span>
+                          <button className="mini" type="button" onClick={() => loadSession(session._id)}>
+                            {T('lbl_restore')}
+                          </button>
+                          {isAdmin && (
+                            <button className="iconbtn danger" type="button" onClick={() => deleteSession(session._id, session.name)}>
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </section>
           )}
 
@@ -1693,7 +2064,7 @@ export default function Home() {
               ) : (
                 <div className="docgrid">
                   {invoices.map((invoice) => (
-                    <article key={invoice.invNo} className="paper">
+                    <article key={invoice.invNo} className="paper" data-invno={invoice.invNo}>
                       <div className="paperTools">
                         <span>№ {invoice.invNo}</span>
                         <button className="mini" type="button" onClick={() => print([invoice])}>
@@ -1940,7 +2311,7 @@ export default function Home() {
 
           {view === 'analytics' && (
             <AnalyticsPane
-              invoices={allDbInvoices.length > invoices.length ? allDbInvoices : invoices}
+              invoices={allDbInvoices.length > 0 ? allDbInvoices : invoices}
               catalog={catalog}
               sessions={sessions}
               dashboardStats={dashboardStats}
@@ -1954,7 +2325,7 @@ export default function Home() {
           )}
 
           {view === 'undelivered' && <UndeliveredPane
-            invoices={invoices}
+            invoices={invoices.filter(i => i.status !== 'cancelled')}
             undeliveredFilter={undeliveredFilter}
             setUndeliveredFilter={setUndeliveredFilter}
             setInvoiceDetail={setInvoiceDetail}
@@ -1964,6 +2335,69 @@ export default function Home() {
           />}
 
 
+          {view === 'manual-list' && (() => {
+            const manualInvoices = invoices
+              .filter(i => i.manual && i.status !== 'cancelled')
+              .sort((a, b) => b.invNo - a.invNo);
+            return (
+              <section className="pane">
+                <PaneHead
+                  title="Qo'lda kiritilgan hujjatlar"
+                  meta={manualInvoices.length ? `${manualInvoices.length} ta · ${fmt0(manualInvoices.reduce((s,i)=>s+i.sumTotal,0))} so'm` : '—'}
+                  actions={
+                    <button className="small dark" type="button" onClick={() => setManualOpen(true)}>
+                      <Plus size={15} /> Yangi hujjat
+                    </button>
+                  }
+                />
+                {!manualInvoices.length ? (
+                  <Empty title="Qo'lda kiritilgan hujjat yo'q" />
+                ) : (
+                  <div className="tablewrap" style={{ maxHeight: 'calc(100dvh - 240px)', overflowY: 'auto' }}>
+                    <table className="data">
+                      <thead>
+                        <tr>
+                          <th>№</th>
+                          <th>Sana</th>
+                          <th>Do'kon</th>
+                          <th>Manzil</th>
+                          <th className="right">Summa</th>
+                          <th>Status</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {manualInvoices.map(inv => (
+                          <tr key={inv.invNo} style={{ cursor: 'pointer' }} onClick={() => setInvoiceDetail(inv)}>
+                            <td><b>{inv.invNo}</b></td>
+                            <td>{inv.dateIso}</td>
+                            <td>{inv.market}</td>
+                            <td style={{ fontSize: '0.8em', color: 'var(--muted)' }}>{inv.address}</td>
+                            <td className="right">{fmt0(inv.sumTotal)}</td>
+                            <td>
+                              <span className={`badge ${inv.status === 'delivered' ? 'green' : 'yellow'}`}>
+                                {inv.status === 'delivered' ? 'Yetkazildi' : 'Saqlanda'}
+                              </span>
+                            </td>
+                            {isAdmin && (
+                            <td>
+                              <button className="icon-btn danger" type="button"
+                                onClick={e => { e.stopPropagation(); if (window.confirm(`№ ${inv.invNo} hujjatni o'chirish?`)) void deleteInvoice(inv.invNo); }}
+                                title="O'chirish">
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            );
+          })()}
+
           {view === 'preferences' && (
 
             <section className="pane">
@@ -1971,46 +2405,10 @@ export default function Home() {
               <div className="prefGrid">
 
                 <div className="prefCard">
-                  <h3>{T('pref_theme')}</h3>
-                  <p className="prefHint">{T('pref_theme_hint')}</p>
-                  <div className="seg" role="group">
-                    <button type="button" className={theme === 'dark' ? 'on' : ''} onClick={() => { setTheme('dark'); setAppBg(''); }}>{T('pref_dark')}</button>
-                    <button type="button" className={theme === 'light' ? 'on' : ''} onClick={() => { setTheme('light'); setAppBg(''); }}>{T('pref_light')}</button>
-                  </div>
-                </div>
-
-                <div className="prefCard">
-                  <h3>{T('pref_bg')}</h3>
-                  <p className="prefHint">{T('pref_bg_hint')}</p>
-                  <div className="swatches">
-                    {BG_PRESETS.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        title={p.label}
-                        className={`swatch${appBg === p.value ? ' on' : ''}`}
-                        style={{ background: p.value }}
-                        onClick={() => { setAppBg(p.value); setTheme(p.theme); }}
-                      />
-                    ))}
-                  </div>
-                  <div className="prefRow" style={{ marginTop: 14 }}>
-                    <span>{T('pref_bg_custom')}</span>
-                    <span className="colorPick">
-                      <input
-                        type="color"
-                        value={/^#[0-9a-f]{6}$/i.test(appBg) ? appBg : '#0b0e12'}
-                        onChange={(e) => { const c = e.target.value; setAppBg(c); setTheme(isLightColor(c) ? 'light' : 'dark'); }}
-                      />
-                      <button className="small" type="button" onClick={() => { setAppBg(''); setTheme('dark'); }}>{T('pref_reset')}</button>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="prefCard">
                   <h3>{T('pref_density')}</h3>
                   <p className="prefHint">{T('pref_density_hint')}</p>
                   <div className="seg" role="group">
+                    <button type="button" className={density === 'tight' ? 'on' : ''} onClick={() => setDensity('tight')}>{T('pref_tight')}</button>
                     <button type="button" className={density === 'compact' ? 'on' : ''} onClick={() => setDensity('compact')}>{T('pref_compact')}</button>
                     <button type="button" className={density === 'cozy' ? 'on' : ''} onClick={() => setDensity('cozy')}>{T('pref_cozy')}</button>
                     <button type="button" className={density === 'comfortable' ? 'on' : ''} onClick={() => setDensity('comfortable')}>{T('pref_comfortable')}</button>
@@ -2018,10 +2416,39 @@ export default function Home() {
                 </div>
 
                 <div className="prefCard">
+                  <h3>{T('pref_accent')}</h3>
+                  <p className="prefHint">{T('pref_accent_hint')}</p>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+                    {ACCENT_PRESETS.map(ap => (
+                      <button
+                        key={ap.id}
+                        type="button"
+                        onClick={() => setAccent(ap.id)}
+                        title={ap.label}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                          background: accent === ap.id ? 'rgba(0,0,0,0.07)' : 'transparent',
+                          border: accent === ap.id ? `2px solid ${ap.main}` : '2px solid transparent',
+                          borderRadius: 12, padding: '8px 12px', cursor: 'pointer', transition: 'all .15s',
+                        }}
+                      >
+                        <span style={{
+                          display: 'block', width: 28, height: 28, borderRadius: '50%',
+                          background: ap.main,
+                          boxShadow: accent === ap.id ? `0 0 0 3px ${ap.main}40` : 'none',
+                          transition: 'box-shadow .15s',
+                        }} />
+                        <span style={{ fontSize: 11, fontWeight: 600, color: accent === ap.id ? ap.main : 'var(--muted)', whiteSpace: 'nowrap' }}>{ap.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="prefCard">
                   <h3>{T('pref_lang')}</h3>
                   <p className="prefHint">{T('pref_lang_hint')}</p>
                   <div className="seg" role="group">
-                    <button type="button" className={lang === 'uz' ? 'on' : ''} onClick={() => { setLang('uz'); localStorage.setItem('lang', 'uz'); }}>O‘zbek</button>
+                    <button type="button" className={lang === 'uz' ? 'on' : ''} onClick={() => { setLang('uz'); localStorage.setItem('lang', 'uz'); }}>O'zbek</button>
                     <button type="button" className={lang === 'ru' ? 'on' : ''} onClick={() => { setLang('ru'); localStorage.setItem('lang', 'ru'); }}>Русский</button>
                     <button type="button" className={lang === 'en' ? 'on' : ''} onClick={() => { setLang('en'); localStorage.setItem('lang', 'en'); }}>English</button>
                   </div>
@@ -2040,6 +2467,7 @@ export default function Home() {
                 <button className={settingsView === 'sessions' ? 'active' : ''} type="button" onClick={() => setSettingsView('sessions')}>{T('settings_hist')}</button>
                 {isAdmin && <button className={settingsView === 'users' ? 'active' : ''} type="button" onClick={() => setSettingsView('users')}>{T('settings_access')}</button>}
                 <button className={(settingsView as string) === 'doverennost' ? 'active' : ''} type="button" onClick={() => setSettingsView('doverennost' as any)}>Ishonchnoma</button>
+                {isAdmin && <button className={(settingsView as string) === 'trash' ? 'active' : ''} type="button" onClick={() => setSettingsView('trash' as any)} style={{ color: '#ef4444' }}>🗑 Arxiv</button>}
               </div>
 
               {settingsView === 'catalog' && (
@@ -2071,6 +2499,7 @@ export default function Home() {
                           <th>{T('lbl_product')}</th>
                           <th style={{ width: '60px' }}>{T('lbl_unit')}</th>
                           <th className="right" style={{ width: '120px' }}>{T('lbl_price')}</th>
+                          <th className="right" style={{ width: '120px' }}>NDS ({T('lbl_price')}+12%)</th>
                           {isAdmin && <th style={{ width: '40px' }} />}
                         </tr>
                       </thead>
@@ -2088,6 +2517,9 @@ export default function Home() {
                             </td>
                             <td>
                               <input className="right" disabled={!isAdmin} value={fmt0(product.price)} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { price: parseNum(event.target.value) }))} />
+                            </td>
+                            <td className="right mono" style={{ color: 'var(--ink-2)', fontSize: 13 }}>
+                              {product.price ? fmt0(Math.round(product.price * 1.12)) : '—'}
                             </td>
                             {isAdmin && (
                               <td className="actions">
@@ -2166,7 +2598,9 @@ export default function Home() {
                   loadSession={loadSession}
                   deleteSession={deleteSession}
                   setDovFields={setDovFields}
+                  setDovSaved={setDovSaved}
                   setSettingsView={setSettingsView}
+                  deleteDovEntry={deleteDovEntry}
                   refreshSessions={refreshSessions}
                   isAdmin={isAdmin}
                   fmtDateRu={fmtDateRu}
@@ -2261,18 +2695,23 @@ export default function Home() {
                 <>
                   {/* Word-like document preview */}
                   <div className="dov-page-wrap" style={{ position: 'relative' }}>
-                    <button className="small dark" type="button" onClick={printDov} style={{ position: 'absolute', top: 16, right: 16, fontSize: 12, padding: '6px 16px', zIndex: 2 }}>
-                      <Printer size={13} /> Chop etish
-                    </button>
+                    <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, display: 'flex', gap: 8 }}>
+                      <button className="small" type="button" onClick={saveDov} style={{ fontSize: 12, padding: '6px 16px', background: dovSaved ? '#059669' : undefined, color: dovSaved ? '#fff' : undefined, borderColor: dovSaved ? '#059669' : undefined }}>
+                        <Save size={13} /> {dovSaved ? T('dov_saved') : T('dov_save')}
+                      </button>
+                      <button className="small dark" type="button" onClick={printDov} disabled={!dovSaved} style={{ fontSize: 12, padding: '6px 16px', opacity: dovSaved ? 1 : 0.4, cursor: dovSaved ? 'pointer' : 'not-allowed' }}>
+                        <Printer size={13} /> {T('dov_print')}
+                      </button>
+                    </div>
                     <div className="dov-page">
 
                       {/* Top-right block */}
                       <div className="dov-topright">
                         <div><input className="dov-inp dov-inp-right bold" value={dovFields.company} onChange={e => setDov('company', e.target.value)} placeholder='MCHJ «Druzya»' /></div>
                         <div><input className="dov-inp dov-inp-right" value={dovFields.address} onChange={e => setDov('address', e.target.value)} placeholder='Toshkent shahar, Yunusobod tumani, ...' /></div>
-                        <div className="dov-tr-meta">Исх. №18</div>
+                        <div className="dov-tr-meta">Исх. №<input className="dov-inp" style={{ width: 40, textAlign: 'center' }} value={dovFields.docNo} onChange={e => setDov('docNo', e.target.value)} placeholder='18' /></div>
                         <div className="dov-tr-meta">
-                          от <input className="dov-inp dov-inp-sm" type="date" value={dovFields.validUntil} onChange={e => setDov('validUntil', e.target.value)} /> г.&nbsp;&nbsp;г. Ташкент
+                          от <input className="dov-inp dov-inp-sm" type="date" value={dovFields.docDate} onChange={e => setDov('docDate', e.target.value)} /> г.&nbsp;&nbsp;г. Ташкент
                         </div>
                       </div>
 
@@ -2285,7 +2724,7 @@ export default function Home() {
                       </p>
 
                       <p className="dov-body">
-                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Доверенность действительна до <strong>{dovFields.validUntil ? new Date(dovFields.validUntil).toLocaleDateString('ru-RU', {day:'2-digit',month:'2-digit',year:'numeric'}) : '__________'}</strong> года.
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Доверенность действительна до <input className="dov-inp dov-inp-sm" type="date" value={dovFields.validUntil} onChange={e => setDov('validUntil', e.target.value)} /> года.
                       </p>
 
                       {/* Signature */}
@@ -2294,10 +2733,14 @@ export default function Home() {
                         <input className="dov-inp dov-inp-md" value={dovFields.director} onChange={e => setDov('director', e.target.value)} placeholder='Бойматова Д.А.' />
                       </div>
                     </div>
-                  </div>
+                  </div>{/* dov-page-wrap */}
 
                   {/* Doverennost history moved to Tarix tab */}
                 </>
+              )}
+
+              {(settingsView as string) === 'trash' && isAdmin && token && (
+                <TrashPane token={token} fmt0={fmt0} fmtDateRu={fmtDateRu} T={T} />
               )}
             </section>
           )}
@@ -2312,14 +2755,45 @@ export default function Home() {
               <button className="iconbtn" type="button" onClick={() => { setManualOpen(false); setManualStores([emptyStoreRow()]); }}>✕</button>
             </div>
             <div className="modalBody manual-modal-body">
-              {/* Top bar: date + add store */}
+              {/* Top bar: date + QQS toggle + add store + total + submit */}
               <div className="manual-topbar">
                 <label className="manual-date-field">
                   <span>Sana</span>
                   <input type="date" value={manual.dateIso} onChange={(e) => setManual({ ...manual, dateIso: e.target.value })} />
                 </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+                  <span style={{ position: 'relative', display: 'inline-block', width: 36, height: 20, flexShrink: 0 }}>
+                    <input type="checkbox" checked={manualWithVat} onChange={(e) => setManualWithVat(e.target.checked)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                    <span style={{ position: 'absolute', inset: 0, borderRadius: 20, background: manualWithVat ? '#16a34a' : 'rgba(var(--ink-rgb),0.18)', transition: 'background 0.2s' }} />
+                    <span style={{ position: 'absolute', top: 3, left: manualWithVat ? 19 : 3, width: 14, height: 14, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left 0.2s' }} />
+                  </span>
+                  <span>Narx QQS bilan</span>
+                </label>
                 <button type="button" className="small" onClick={() => setManualStores([...manualStores, emptyStoreRow()])}>
                   + Do&apos;kon
+                </button>
+                <div style={{ flex: 1 }} />
+                {(() => {
+                  let grandTotal = 0;
+                  for (const col of manualStores) {
+                    for (const p of catalog) {
+                      const cell = col.cells[p.sku];
+                      const qty = parseNum(cell?.qty ?? '');
+                      if (qty <= 0) continue;
+                      const userPrice = parseNum(cell?.price ?? '');
+                      const effectivePrice = userPrice > 0 ? userPrice : (manualWithVat ? Math.round(p.price * 1.12 * 100) / 100 : p.price);
+                      grandTotal += qty * effectivePrice;
+                    }
+                  }
+                  return grandTotal > 0 ? (
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+                      Jami: <span style={{ color: 'var(--honey)', fontWeight: 700 }}>{fmt0(Math.round(grandTotal))} so&apos;m</span>
+                    </span>
+                  ) : null;
+                })()}
+                <button className="small" type="button" onClick={() => { setManualOpen(false); setManualStores([emptyStoreRow()]); }} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.35)' }}>{T('lbl_cancel')}</button>
+                <button className="small" type="button" onClick={createManualInvoice} disabled={busy} style={{ background: busy ? undefined : '#16a34a', color: '#fff', borderColor: '#16a34a', opacity: busy ? 0.5 : 1 }}>
+                  {busy ? '...' : `✓ Qo'shish (${manualStores.filter(r => r.storeCode.trim()).length} ta do'kon)`}
                 </button>
               </div>
 
@@ -2330,30 +2804,37 @@ export default function Home() {
                     <tr>
                       <th className="manual-prodcol">Mahsulot</th>
                       {manualStores.map((col, ci) => (
-                        <th key={ci} className="manual-storecol">
-                          <div className="manual-store-header">
-                            <input className="manual-inp" placeholder="Kod" value={col.storeCode}
-                              onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeCode: e.target.value }; setManualStores(u); }} />
-                            <input className="manual-inp manual-inp-grow" placeholder="Market nomi" value={col.storeName}
-                              onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeName: e.target.value }; setManualStores(u); }} />
-                            <button type="button" className="manual-del"
-                              onClick={() => setManualStores(manualStores.length > 1 ? manualStores.filter((_, i) => i !== ci) : [emptyStoreRow()])}>×</button>
-                          </div>
-                          <input className="manual-inp manual-inp-full" placeholder="№ Zakaz" value={col.order}
-                            onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], order: e.target.value }; setManualStores(u); }} />
-                        </th>
+                        <React.Fragment key={ci}>
+                          <th className="manual-storecol" style={{ borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', width: 54, textAlign: 'center', verticalAlign: 'bottom', paddingBottom: 4 }}>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>Son</div>
+                          </th>
+                          <th className="manual-storecol" style={{ borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', borderRight: '2px solid rgba(var(--ink-rgb),0.10)', width: 80, textAlign: 'center', verticalAlign: 'bottom', paddingBottom: 4 }}>
+                            <div style={{ marginBottom: 3 }}>
+                              <div className="manual-store-header" style={{ justifyContent: 'center' }}>
+                                <input className="manual-inp" placeholder="Kod" value={col.storeCode}
+                                  onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeCode: e.target.value }; setManualStores(u); }} />
+                                <input className="manual-inp manual-inp-grow" placeholder="Market nomi" value={col.storeName}
+                                  onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeName: e.target.value }; setManualStores(u); }} />
+                                <button type="button" className="manual-del"
+                                  onClick={() => setManualStores(manualStores.length > 1 ? manualStores.filter((_, i) => i !== ci) : [emptyStoreRow()])}>×</button>
+                              </div>
+                              <input className="manual-inp manual-inp-full" placeholder="№ Zakaz" value={col.order}
+                                onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], order: e.target.value }; setManualStores(u); }}
+                                style={{ marginTop: 3 }} />
+                            </div>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Narx</div>
+                          </th>
+                        </React.Fragment>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {catalog.map((p, ri) => {
-                      const defaultPrice = Math.round(p.price * 1.12 * 100) / 100;
-                      const rowHasAny = manualStores.some(col => parseNum(col.cells[p.sku]?.qty ?? '') > 0);
+                      const defaultPrice = manualWithVat ? Math.round(p.price * 1.12 * 100) / 100 : p.price;
                       return (
                         <tr key={p.sku} className={ri % 2 === 0 ? '' : 'manual-row-even'}>
                           <td className="manual-prodcol manual-prodname">
                             <span className="manual-name">{p.name}</span>
-                            <span className="manual-meta">{defaultPrice.toLocaleString('ru-RU')} · {p.unit}</span>
                           </td>
                           {manualStores.map((col, ci) => {
                             const cell = col.cells[p.sku];
@@ -2366,14 +2847,24 @@ export default function Home() {
                               setManualStores(u);
                             };
                             return (
-                              <td key={ci} className={`manual-cell${hasQty ? ' manual-cell-active' : ''}`}>
-                                <input type="number" min={0} placeholder="0"
-                                  value={qtyVal} onChange={(e) => update('qty', e.target.value)}
-                                  className={`manual-qty${hasQty ? ' active' : ''}`} />
-                                <input type="number" min={0} placeholder={String(defaultPrice)}
-                                  value={priceVal} onChange={(e) => update('price', e.target.value)}
-                                  className="manual-price" style={{ color: priceVal && parseNum(priceVal) !== defaultPrice ? 'var(--honey)' : undefined }} />
-                              </td>
+                              <React.Fragment key={ci}>
+                                <td style={{ padding: '3px 6px', textAlign: 'center', width: 90, background: hasQty ? 'rgba(5,150,105,0.05)' : undefined }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(var(--ink-rgb),0.05)', borderRadius: 20, padding: '2px 4px', border: hasQty ? '1px solid rgba(5,150,105,0.3)' : '1px solid rgba(var(--ink-rgb),0.1)' }}>
+                                    <button type="button" onClick={() => update('qty', String(Math.max(0, parseNum(qtyVal) - 1)))}
+                                      style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: parseNum(qtyVal) > 0 ? 'pointer' : 'default', background: parseNum(qtyVal) > 0 ? '#ef4444' : 'rgba(var(--ink-rgb),0.08)', color: parseNum(qtyVal) > 0 ? '#fff' : 'var(--muted)', fontSize: 16, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>−</button>
+                                    <input type="number" min={0} value={qtyVal} onChange={(e) => update('qty', e.target.value)}
+                                      className="manual-qty-input"
+                                      style={{ width: 32, textAlign: 'center', fontSize: 13, fontWeight: hasQty ? 700 : 400, color: hasQty ? 'var(--ok)' : 'var(--muted)', fontFamily: 'var(--mono)', background: 'transparent', border: 'none', outline: 'none' }} />
+                                    <button type="button" onClick={() => update('qty', String(parseNum(qtyVal) + 1))}
+                                      style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#16a34a', color: '#fff', fontSize: 16, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>+</button>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '3px 4px', textAlign: 'right', width: 80, borderRight: '2px solid rgba(var(--ink-rgb),0.10)', background: hasQty ? 'rgba(5,150,105,0.05)' : undefined }}>
+                                  <input type="text" inputMode="numeric" placeholder={defaultPrice.toLocaleString('ru-RU')}
+                                    value={priceVal} onChange={(e) => update('price', e.target.value.replace(/\s/g, ''))}
+                                    style={{ width: 72, textAlign: 'right', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 6, padding: '4px 4px', fontSize: 12, background: 'transparent', outline: 'none', color: priceVal && parseNum(priceVal) !== defaultPrice ? 'var(--honey)' : 'var(--muted)' }} />
+                                </td>
+                              </React.Fragment>
                             );
                           })}
                         </tr>
@@ -2382,12 +2873,6 @@ export default function Home() {
                   </tbody>
                 </table>
               </div>
-            </div>
-            <div className="modalFoot">
-              <button className="small" type="button" onClick={() => { setManualOpen(false); setManualStores([emptyStoreRow()]); }}>{T('lbl_cancel')}</button>
-              <button className="small dark" type="button" onClick={createManualInvoice} disabled={busy}>
-                {busy ? '...' : `✓ Qo'shish (${manualStores.filter(r => r.storeCode.trim()).length} ta do'kon)`}
-              </button>
             </div>
           </div>
         </div>
@@ -2477,19 +2962,6 @@ export default function Home() {
         </div>
       )}
 
-      <div id="printRoot">
-        {printInvoices.map((invoice) => (
-          <div className="printPage" key={invoice.invNo}>
-            <div className="printHalf">
-              <InvoiceDocument invoice={invoice} requisites={requisites} />
-            </div>
-            <div className="printHalf">
-              <InvoiceDocument invoice={invoice} requisites={requisites} />
-            </div>
-          </div>
-        ))}
-        {/* Dispatch prints open in a new tab via window.open() — nothing to render here */}
-      </div>
     </>
   );
 }
@@ -2594,7 +3066,7 @@ function LoginScreen({
           <div style={{ position: 'absolute', top: 20, left: 10, width: 390, height: 250, background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', transform: 'rotate(2deg)', overflow: 'hidden', opacity: 0.92 }}>
             <div style={{ background: '#f8f8fa', borderBottom: '1px solid #eee', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#666', marginLeft: 6 }}>Nakladnoylar ro'yxati — 75 hujjat</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#666', marginLeft: 6 }}>Hujjatlar ro'yxati — 75 ta</div>
             </div>
             <div style={{ padding: '8px 12px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '32px 40px 1fr 60px 60px', gap: 4, fontSize: 7, fontWeight: 800, color: '#aaa', textTransform: 'uppercase', marginBottom: 6, paddingBottom: 4, borderBottom: '2px solid #eee' }}>
@@ -2626,7 +3098,7 @@ function LoginScreen({
                   <div style={{ fontSize: 16, fontWeight: 900, color: '#111' }}>24 472 661</div>
                 </div>
                 <div style={{ flex: 1, background: '#fff4f4', borderRadius: 10, padding: '8px 10px' }}>
-                  <div style={{ fontSize: 8, color: '#999', marginBottom: 3 }}>VAZVRAT</div>
+                  <div style={{ fontSize: 8, color: '#999', marginBottom: 3 }}>QAYTARMA</div>
                   <div style={{ fontSize: 16, fontWeight: 900, color: '#e84a5f' }}>24 756 671</div>
                 </div>
                 <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 10, padding: '8px 10px' }}>
@@ -2635,7 +3107,7 @@ function LoginScreen({
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 70px 70px', gap: 4, fontSize: 7, fontWeight: 800, color: '#aaa', textTransform: 'uppercase', marginBottom: 4, paddingBottom: 4, borderBottom: '2px solid #eee' }}>
-                <span>SANA</span><span style={{textAlign:'right'}}>NAKL.</span><span style={{textAlign:'right'}}>BERILGAN</span><span style={{textAlign:'right'}}>VAZVRAT</span><span style={{textAlign:'right'}}>SAVDO</span>
+                <span>SANA</span><span style={{textAlign:'right'}}>HUJJAT</span><span style={{textAlign:'right'}}>BERILGAN</span><span style={{textAlign:'right'}}>QAYTARMA</span><span style={{textAlign:'right'}}>SAVDO</span>
               </div>
               {[['16.06.2026','–','–','8 903 454','−8 903 454'],['17.06.2026','–','–','5 254 479','−5 254 479'],['20.06.2026','75','24 472 661','–','24 472 661']].map(([d,n,b,v,s]) => (
                 <div key={d} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 70px 70px', gap: 4, padding: '4px 0', borderBottom: '1px solid #f5f5f5' }}>
@@ -2689,7 +3161,7 @@ function SessionPicker({
 }: {
   sessions: SessionSummary[];
   currentDate: string;
-  onSelect: (invoiceDate: string) => void;
+  onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
@@ -2708,8 +3180,8 @@ function SessionPicker({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Show raw invoiceDate (file name)
-  const label = (s: SessionSummary) => s.invoiceDate;
+  // Show session name (file name)
+  const label = (s: SessionSummary) => s.name || s.invoiceDate;
 
   const filtered = sessions.filter((s) =>
     label(s).toLowerCase().includes(query.toLowerCase()) ||
@@ -2775,9 +3247,9 @@ function SessionPicker({
               const active = s.invoiceDate === currentDate;
               return (
                 <button
-                  key={s.invoiceDate}
+                  key={s._id}
                   type="button"
-                  onClick={() => { onSelect(s.invoiceDate); setOpen(false); setQuery(''); }}
+                  onClick={() => { onSelect(s._id); setOpen(false); setQuery(''); }}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     width: '100%', padding: '7px 14px', border: 'none', textAlign: 'left',
@@ -2790,7 +3262,7 @@ function SessionPicker({
                   onMouseOut={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
                 >
                   <span>{label(s)}</span>
-                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{s.invoiceCount} nakl</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{s.invoiceCount} hujjat</span>
                 </button>
               );
             })}
@@ -2859,9 +3331,185 @@ function DateGroupHeader({ dateKey, count, expanded, onToggle }: { dateKey: stri
   );
 }
 
+// ─── Confirm Modal ───────────────────────────────────────────────────────────
+function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onCancel}>
+      <div style={{ background: 'var(--shell)', borderRadius: 16, padding: '28px 32px', maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: 20 }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.5 }}>{message}</div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="small" type="button" onClick={onCancel}>Bekor qilish</button>
+          <button className="small dark" type="button"
+            style={{ background: '#ef4444', borderColor: '#ef4444' }}
+            onClick={() => { onConfirm(); onCancel(); }}>
+            Ha, o'chirish
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TrashPane: Arxiv — cancelled invoices + deleted sessions ────────────────
+function TrashPane({ token, fmt0, fmtDateRu, T }: {
+  token: string; fmt0: (n: number) => string; fmtDateRu: (d: string) => string; T: (k: string) => string;
+}) {
+  const [arxivTab, setArxivTab] = React.useState<'invoices' | 'sessions'>('invoices');
+  const [invoices, setInvoices] = React.useState<import('@/types/domain').Invoice[]>([]);
+  const [sessions, setSessions] = React.useState<import('@/types/domain').SessionSummary[]>([]);
+  const [busy, setBusy] = React.useState(false);
+  const [actionBusy, setActionBusy] = React.useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = React.useState<{ message: string; onConfirm: () => void } | null>(null);
+
+  const load = React.useCallback(() => {
+    setBusy(true);
+    Promise.all([
+      api.listCancelledInvoices(token),
+      api.listDeletedSessions(token),
+    ]).then(([invs, sess]) => {
+      setInvoices(invs);
+      setSessions(sess as import('@/types/domain').SessionSummary[]);
+    }).catch(() => {}).finally(() => setBusy(false));
+  }, [token]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const setBusy2 = (key: string, val: boolean) =>
+    setActionBusy(prev => { const n = new Set(prev); val ? n.add(key) : n.delete(key); return n; });
+
+  // ── Invoice actions ──
+  const restoreInvoice = async (invNo: number) => {
+    setBusy2(`inv-${invNo}`, true);
+    try { await api.restoreInvoice(token, invNo); setInvoices(prev => prev.filter(i => i.invNo !== invNo)); }
+    catch { /* ignore */ } finally { setBusy2(`inv-${invNo}`, false); }
+  };
+  const hardDeleteInvoice = (invNo: number) => {
+    setConfirm({
+      message: `№${invNo} hujjatni bazadan butunlay o'chirish. Bu amalni qaytarib bo'lmaydi!`,
+      onConfirm: async () => {
+        setBusy2(`inv-h-${invNo}`, true);
+        try { await api.hardDeleteInvoice(token, invNo); setInvoices(prev => prev.filter(i => i.invNo !== invNo)); }
+        catch { /* ignore */ } finally { setBusy2(`inv-h-${invNo}`, false); }
+      },
+    });
+  };
+
+  // ── Session actions ──
+  const restoreSession = async (id: string, name: string) => {
+    setBusy2(`sess-${id}`, true);
+    try { await api.restoreSession(token, id); setSessions(prev => prev.filter(s => s._id !== id)); }
+    catch { /* ignore */ } finally { setBusy2(`sess-${id}`, false); }
+  };
+  const hardDeleteSession = (id: string, name: string) => {
+    setConfirm({
+      message: `"${name}" sessiyani bazadan butunlay o'chirish. Bu amalni qaytarib bo'lmaydi!`,
+      onConfirm: async () => {
+        setBusy2(`sess-h-${id}`, true);
+        try { await api.hardDeleteSession(token, id); setSessions(prev => prev.filter(s => s._id !== id)); }
+        catch { /* ignore */ } finally { setBusy2(`sess-h-${id}`, false); }
+      },
+    });
+  };
+
+  if (busy) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Yuklanmoqda…</div>;
+
+  const row = (key: string, left: React.ReactNode, right: React.ReactNode) => (
+    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid rgba(239,68,68,0.4)', borderRadius: 10 }}>
+      {left}
+      <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexShrink: 0 }}>{right}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
+
+      {/* Tabs */}
+      <div className="subtabs" style={{ position: 'static', padding: 0, background: 'transparent' }}>
+        <button className={arxivTab === 'invoices' ? 'active' : ''} type="button" onClick={() => setArxivTab('invoices')}>
+          Hujjatlar ({invoices.length})
+        </button>
+        <button className={arxivTab === 'sessions' ? 'active' : ''} type="button" onClick={() => setArxivTab('sessions')}>
+          Sessiyalar ({sessions.length})
+        </button>
+      </div>
+
+      {/* Invoices tab */}
+      {arxivTab === 'invoices' && (
+        invoices.length === 0
+          ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>O'chirilgan hujjatlar yo'q</div>
+          : (() => {
+              const byDate: Record<string, typeof invoices> = {};
+              for (const inv of invoices) { if (!byDate[inv.dateIso]) byDate[inv.dateIso] = []; byDate[inv.dateIso].push(inv); }
+              return Object.entries(byDate).sort(([a],[b]) => b.localeCompare(a)).map(([date, invs]) => (
+                <div key={date}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6, paddingBottom: 4, borderBottom: '1px solid rgba(var(--ink-rgb),0.08)' }}>
+                    {fmtDateRu(date)} · {invs.length} ta
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {invs.map(inv => row(
+                      String(inv.invNo),
+                      <>
+                        <span style={{ fontWeight: 700, fontSize: 13, fontFamily: 'var(--mono)', color: '#ef4444', minWidth: 52 }}>№{inv.invNo}</span>
+                        <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 55 }}>{inv.order || '—'}</span>
+                        <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.market || inv.storeCode}</span>
+                        <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmt0(inv.sumTotal ?? 0)} so'm</span>
+                      </>,
+                      <>
+                        <button className="mini" type="button" disabled={actionBusy.has(`inv-${inv.invNo}`)}
+                          onClick={() => restoreInvoice(inv.invNo)}
+                          style={{ background: '#059669', color: '#fff', borderColor: '#059669' }}>
+                          {actionBusy.has(`inv-${inv.invNo}`) ? '…' : '↩ Tiklash'}
+                        </button>
+                        <button className="mini" type="button" disabled={actionBusy.has(`inv-h-${inv.invNo}`)}
+                          onClick={() => hardDeleteInvoice(inv.invNo)}
+                          style={{ background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}>
+                          {actionBusy.has(`inv-h-${inv.invNo}`) ? '...' : 'Ochirish'}
+                        </button>
+                      </>
+                    ))}
+                  </div>
+                </div>
+              ));
+            })()
+      )}
+
+      {/* Sessions tab */}
+      {arxivTab === 'sessions' && (
+        sessions.length === 0
+          ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>O'chirilgan sessiyalar yo'q</div>
+          : <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {sessions.map(s => row(
+                s._id,
+                <>
+                  <span style={{ fontSize: 13, fontWeight: 700, minWidth: 110 }}>{s.invoiceDate}</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)', flex: 1 }}>{s.name || '—'}</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{s.invoiceCount} ta · {fmt0(s.sumTotal)} so'm</span>
+                </>,
+                <>
+                  <button className="mini" type="button" disabled={actionBusy.has(`sess-${s._id}`)}
+                    onClick={() => restoreSession(s._id, s.name || s.invoiceDate)}
+                    style={{ background: '#059669', color: '#fff', borderColor: '#059669' }}>
+                    {actionBusy.has(`sess-${s._id}`) ? '…' : '↩ Tiklash'}
+                  </button>
+                  <button className="mini" type="button" disabled={actionBusy.has(`sess-h-${s._id}`)}
+                    onClick={() => hardDeleteSession(s._id, s.name || s.invoiceDate)}
+                    style={{ background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}>
+                    {actionBusy.has(`sess-h-${s._id}`) ? '...' : 'Ochirish'}
+                  </button>
+                </>
+              ))}
+            </div>
+      )}
+    </div>
+  );
+}
+
 function NaklHistory({ sessions, expandedDates, toggleDateGroup, loadSession, deleteSession, isAdmin, fmtDateRu, fmt0, T }: {
-  sessions: any[]; expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
-  loadSession: (d: string) => void; deleteSession: (d: string) => void;
+  sessions: import('@/types/domain').SessionSummary[]; expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
+  loadSession: (id: string) => void; deleteSession: (id: string, name?: string) => void;
   isAdmin: boolean; fmtDateRu: (d: string) => string; fmt0: (n: number) => string; T: (k: string) => string;
 }) {
   const groups = groupByDateKey(sessions, s => s.invoiceDate.slice(0, 10));
@@ -2874,15 +3522,14 @@ function NaklHistory({ sessions, expandedDates, toggleDateGroup, loadSession, de
         return (
           <div key={dateKey}>
             <DateGroupHeader dateKey={dateKey} count={items.length} expanded={open} onToggle={() => toggleDateGroup('nakl-' + dateKey)} />
-            {visible.map((session: any) => (
-              <div className="sessionRow" key={session.invoiceDate} style={{ marginBottom: 6, marginLeft: multi ? 12 : 0 }}>
+            {visible.map((session: import('@/types/domain').SessionSummary) => (
+              <div className="sessionRow" key={session._id} style={{ marginBottom: 6, marginLeft: multi ? 12 : 0 }}>
                 {multi && <span style={{ color: 'var(--muted)', fontWeight: 700 }}>›</span>}
-                <b>{session.invoiceDate}</b>
+                <b>{session.name || session.invoiceDate}</b>
                 <span className="sess-badge">{session.invoiceCount} накл.</span>
                 <span className="sess-sum">{fmt0(session.sumTotal)} сум</span>
-                <span className="sess-badge">{session.versions?.length || 0} версий</span>
-                <button className="mini" type="button" onClick={() => loadSession(session.invoiceDate)}>{T('lbl_restore')}</button>
-                {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(session.invoiceDate)}><Trash2 size={15} /></button>}
+                <button className="mini" type="button" onClick={() => loadSession(session._id)}>{T('lbl_restore')}</button>
+                {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(session._id, session.name)}><Trash2 size={15} /></button>}
               </div>
             ))}
             {multi && !open && (
@@ -2897,9 +3544,9 @@ function NaklHistory({ sessions, expandedDates, toggleDateGroup, loadSession, de
   );
 }
 
-function DovHistory({ dovHistory, expandedDates, toggleDateGroup, setDovFields, setSettingsView }: {
-  dovHistory: any[]; expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
-  setDovFields: (h: any) => void; setSettingsView: (v: any) => void;
+function DovHistory({ dovHistory, expandedDates, toggleDateGroup, setDovFields, setDovSaved, setSettingsView }: {
+  dovHistory: import('@/types/domain').DovEntry[]; expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
+  setDovFields: (h: import('@/types/domain').DovEntry) => void; setDovSaved: (v: boolean) => void; setSettingsView: React.Dispatch<React.SetStateAction<SettingsView>>;
 }) {
   const groups = groupByDateKey(dovHistory, h => new Date(h.printedAt).toISOString().slice(0, 10));
   return (
@@ -2911,13 +3558,13 @@ function DovHistory({ dovHistory, expandedDates, toggleDateGroup, setDovFields, 
         return (
           <div key={dateKey}>
             <DateGroupHeader dateKey={dateKey} count={items.length} expanded={open} onToggle={() => toggleDateGroup('dov-' + dateKey)} />
-            {visible.map((h: any, i: number) => (
+            {visible.map((h: import('@/types/domain').DovEntry, i: number) => (
               <div className="sessionRow" key={i} style={{ marginBottom: 6, marginLeft: multi ? 12 : 0 }}>
                 {multi && <span style={{ color: 'var(--muted)', fontWeight: 700 }}>›</span>}
                 <b>{new Date(h.printedAt).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</b>
                 <span className="sess-badge">{h.driver || '—'}</span>
                 <span className="sess-badge">{h.plate || '—'} · {h.car || '—'}</span>
-                <button className="mini" type="button" onClick={() => { setDovFields(h); setSettingsView('doverennost'); }}>Yuklash</button>
+                <button className="mini" type="button" onClick={() => { setDovFields(h); setDovSaved(true); setSettingsView('doverennost'); }}>Yuklash</button>
               </div>
             ))}
             {multi && !open && (
@@ -2933,45 +3580,93 @@ function DovHistory({ dovHistory, expandedDates, toggleDateGroup, setDovFields, 
 }
 
 type HistoryEvent =
-  | { kind: 'nakl'; dateKey: string; data: any }
-  | { kind: 'dov';  dateKey: string; data: any }
-  | { kind: 'qayt'; dateKey: string; data: any }
-  | { kind: 'vazt'; dateKey: string; data: any };
+  | { kind: 'nakl'; dateKey: string; data: import('@/types/domain').SessionSummary }
+  | { kind: 'dov';  dateKey: string; data: import('@/types/domain').DovEntry }
+  | { kind: 'qayt'; dateKey: string; data: import('@/types/domain').Invoice }
+  | { kind: 'vazt'; dateKey: string; data: import('@/types/domain').VazvratRecord };
 
-const KIND_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  nakl: { label: 'Hujjat',    color: '#2563eb', bg: 'rgba(37,99,235,0.09)' },
-  dov:  { label: 'Ishonchnoma', color: '#7c3aed', bg: 'rgba(124,58,237,0.09)' },
-  qayt: { label: 'Qaytgan',   color: '#dc2626', bg: 'rgba(220,38,38,0.09)' },
-  vazt: { label: 'Qaytarma',  color: '#d97706', bg: 'rgba(217,119,6,0.09)' },
+const KIND_STYLE: Record<string, { labelKey: string; color: string; bg: string }> = {
+  nakl: { labelKey: 'tarix_hujjat',      color: '#2563eb', bg: 'rgba(37,99,235,0.09)' },
+  dov:  { labelKey: 'tarix_ishonchnoma', color: '#7c3aed', bg: 'rgba(124,58,237,0.09)' },
+  qayt: { labelKey: 'tarix_qaytgan',     color: '#dc2626', bg: 'rgba(220,38,38,0.09)' },
+  vazt: { labelKey: 'tarix_qaytarma',    color: '#d97706', bg: 'rgba(217,119,6,0.09)' },
 };
 
 // ─── TarixPane: tabbed history ────────────────────────────────────────────────
 type TarixTab = 'nakl' | 'vazvrat' | 'zakas' | 'dov';
 
 function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazvratAllRows, orders, token,
-  expandedDates, toggleDateGroup, loadSession, deleteSession, setDovFields, setSettingsView,
-  refreshSessions, isAdmin, fmtDateRu, fmt0, T }: {
-  sessions: any[]; dovHistory: any[]; qaytganInvoices: any[]; vazvratRows: any[];
-  setVazvratAllRows: (rows: any[]) => void; orders: any[]; token: string;
+  expandedDates, toggleDateGroup, loadSession, deleteSession, setDovFields, setDovSaved, setSettingsView,
+  deleteDovEntry, refreshSessions, isAdmin, fmtDateRu, fmt0, T }: {
+  sessions: import('@/types/domain').SessionSummary[]; dovHistory: import('@/types/domain').DovEntry[];
+  qaytganInvoices: import('@/types/domain').Invoice[]; vazvratRows: import('@/types/domain').VazvratRecord[];
+  setVazvratAllRows: (rows: import('@/types/domain').VazvratRecord[]) => void;
+  orders: import('@/types/domain').Order[]; token: string;
   expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
-  loadSession: (d: string) => void; deleteSession: (d: string) => void;
-  setDovFields: (h: any) => void; setSettingsView: (v: any) => void;
+  loadSession: (d: string) => void; deleteSession: (d: string, name?: string) => void;
+  setDovFields: (h: import('@/types/domain').DovEntry) => void;
+  setDovSaved: (v: boolean) => void;
+  setSettingsView: React.Dispatch<React.SetStateAction<SettingsView>>;
+  deleteDovEntry: (index: number) => void;
   refreshSessions: () => void;
   isAdmin: boolean; fmtDateRu: (d: string) => string; fmt0: (n: number) => string; T: (k: string) => string;
 }) {
   const [vazvratBusy, setVazvratBusy] = React.useState(false);
+  const allDates = React.useMemo(() => {
+    const s = new Set(vazvratRows.map(v => v.date.slice(0, 10)));
+    return [...s].sort((a, b) => b.localeCompare(a));
+  }, [vazvratRows]);
+  const todayPv = todayIso();
+  const [pvFrom, setPvFrom] = React.useState(todayPv);
+  const [pvTo, setPvTo] = React.useState(todayPv);
 
-  const deleteVazvratDate = async (date: string) => {
-    if (!confirm(`${date} sanasidagi barcha vazvratlarni o'chirish?`)) return;
+  // ── Vazvrat date-picker delete panel ──
+  const [showDeletePanel, setShowDeletePanel] = React.useState(false);
+  const [deleteDateSearch, setDeleteDateSearch] = React.useState('');
+  const [selectedDeleteDates, setSelectedDeleteDates] = React.useState<Set<string>>(new Set());
+  const [vazvratAllDates, setVazvratAllDates] = React.useState<string[]>([]);
+  const [datesBusy, setDatesBusy] = React.useState(false);
+
+  const openDeletePanel = async () => {
+    setShowDeletePanel(true);
+    setSelectedDeleteDates(new Set());
+    setDeleteDateSearch('');
+    setDatesBusy(true);
+    try {
+      const dates = await api.vazvratDates(token);
+      setVazvratAllDates([...dates].sort((a, b) => b.localeCompare(a)));
+    } finally { setDatesBusy(false); }
+  };
+
+  const filteredDeleteDates = React.useMemo(() => {
+    const q = deleteDateSearch.trim().toLowerCase();
+    const list = q ? vazvratAllDates.filter(d => d.includes(q)) : vazvratAllDates.slice(0, 10);
+    return list;
+  }, [vazvratAllDates, deleteDateSearch]);
+
+  const toggleDeleteDate = (d: string) => {
+    setSelectedDeleteDates(prev => {
+      const n = new Set(prev);
+      n.has(d) ? n.delete(d) : n.add(d);
+      return n;
+    });
+  };
+
+  const confirmDeleteDates = async () => {
+    if (!selectedDeleteDates.size) return;
+    const dates = [...selectedDeleteDates];
     setVazvratBusy(true);
     try {
-      await api.deleteVazvratByDate(token, date);
-      setVazvratAllRows(vazvratRows.filter(v => v.date !== date));
+      await api.deleteVazvratDates(token, dates);
+      setVazvratAllRows(vazvratRows.filter(v => !selectedDeleteDates.has(v.date.slice(0, 10))));
+      setVazvratAllDates(prev => prev.filter(d => !selectedDeleteDates.has(d)));
+      setSelectedDeleteDates(new Set());
+      setShowDeletePanel(false);
     } finally { setVazvratBusy(false); }
   };
 
   const deleteAllVazvrat = async () => {
-    if (!confirm('Barcha vazvrat yozuvlarini o\'chirish?')) return;
+    if (!confirm(T('pv_del_all'))) return;
     setVazvratBusy(true);
     try {
       await api.deleteAllVazvrat(token);
@@ -3037,10 +3732,10 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
   const [tab, setTab] = React.useState<TarixTab>('nakl');
 
   const TABS: { key: TarixTab; label: string; count: number; color: string }[] = [
-    { key: 'nakl',    label: 'Hujjat',    count: sessions.length,     color: '#2563eb' },
-    { key: 'vazvrat', label: 'Qaytarma',    count: vazvratRows.length,  color: '#d97706' },
-    { key: 'zakas',   label: 'Buyurtma',    count: sessions.length,     color: '#7c3aed' },
-    { key: 'dov',     label: 'Ishonchnoma', count: dovHistory.length,   color: '#059669' },
+    { key: 'nakl',    label: T('tarix_hujjat'),      count: sessions.length,     color: '#2563eb' },
+    { key: 'vazvrat', label: T('tarix_qaytarma'),    count: vazvratRows.length,  color: '#d97706' },
+    { key: 'zakas',   label: T('tarix_buyurtma'),    count: sessions.length,     color: '#7c3aed' },
+    { key: 'dov',     label: T('tarix_ishonchnoma'), count: dovHistory.length,   color: '#059669' },
   ];
 
   return (
@@ -3060,10 +3755,26 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
             </button>
           ))}
         </div>
-        <button type="button" onClick={refreshSessions}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: '1px solid rgba(var(--ink-rgb),0.15)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: 'var(--ink)', cursor: 'pointer' }}>
-          <RefreshCcw size={13} /> Yangilash
-        </button>
+        {/* Refresh + date range — right side */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" onClick={refreshSessions}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--berry)', border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(var(--berry-rgb,180,0,80),0.28)', letterSpacing: '0.01em' }}>
+            <RefreshCcw size={13} /> Yangilash
+          </button>
+
+          {/* Date range */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 10, padding: '5px 10px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <input type="date" value={pvFrom} onChange={e => setPvFrom(e.target.value)}
+              style={{ fontSize: 13, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer' }} />
+            <span style={{ color: 'rgba(var(--ink-rgb),0.3)', padding: '0 4px' }}>—</span>
+            <input type="date" value={pvTo} onChange={e => setPvTo(e.target.value)}
+              style={{ fontSize: 13, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer' }} />
+            {(pvFrom !== todayPv || pvTo !== todayPv) && (
+              <button type="button" onClick={() => { setPvFrom(todayPv); setPvTo(todayPv); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16, lineHeight: 1, padding: '0 2px' }}>×</button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Nakladnoy tab */}
@@ -3071,78 +3782,208 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
         sessions.length === 0 ? <Empty title="Hujjat tarixi yo'q" /> :
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {sessions.map(s => {
-            const key = 'nakl-' + s.invoiceDate;
             return (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #2563eb', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div key={s._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #2563eb', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{s.invoiceDate}</div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{s.invoiceCount} ta nakl</div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{s.name || s.invoiceDate}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{s.invoiceCount} ta nakl · {s.invoiceDate}</div>
                 </div>
                 <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{fmt0(s.sumTotal)} so&apos;m</span>
-                <button className="mini" type="button" onClick={() => loadSession(s.invoiceDate)}>{T('lbl_restore')}</button>
-                {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(s.invoiceDate)}><Trash2 size={14} /></button>}
+                <button className="mini" type="button" onClick={() => loadSession(s._id)}>{T('lbl_restore')}</button>
+                {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(s._id, s.name)}><Trash2 size={14} /></button>}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Vazvrat tab */}
+      {/* Vazvrat tab — Pivot table */}
       {tab === 'vazvrat' && (() => {
-        const sorted = [...vazvratRows].sort((a, b) => b.date.localeCompare(a.date));
-        const byDate: Record<string, typeof sorted> = {};
-        for (const v of sorted) { if (!byDate[v.date]) byDate[v.date] = []; byDate[v.date].push(v); }
-        const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+        // Date filter
+        const from = pvFrom || (allDates[allDates.length - 1] ?? '');
+        const to   = pvTo   || (allDates[0] ?? '');
+        const filtered = vazvratRows.filter(v => {
+          const d = v.date.slice(0, 10);
+          return (!from || d >= from) && (!to || d <= to);
+        });
+
+        // Pivot: rows=product, cols=market, value=qty+sum
+        const products = [...new Set(filtered.map(v => v.productName))].sort();
+        const markets  = [...new Set(filtered.map(v => v.marketName || v.marketCode))].sort();
+        type Cell = { qty: number; sum: number };
+        const pivot: Record<string, Record<string, Cell>> = {};
+        const colTotals: Record<string, Cell> = {};
+        const rowTotals: Record<string, Cell> = {};
+        let grandQty = 0; let grandSum = 0;
+        for (const v of filtered) {
+          const p = v.productName;
+          const m = v.marketName || v.marketCode;
+          if (!pivot[p]) pivot[p] = {};
+          if (!pivot[p][m]) pivot[p][m] = { qty: 0, sum: 0 };
+          pivot[p][m].qty += v.qty;
+          pivot[p][m].sum += v.totalWithVat;
+          if (!rowTotals[p]) rowTotals[p] = { qty: 0, sum: 0 };
+          rowTotals[p].qty += v.qty; rowTotals[p].sum += v.totalWithVat;
+          if (!colTotals[m]) colTotals[m] = { qty: 0, sum: 0 };
+          colTotals[m].qty += v.qty; colTotals[m].sum += v.totalWithVat;
+          grandQty += v.qty; grandSum += v.totalWithVat;
+        }
+
+        const thStyle: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface-2, #f5f5f7)', border: '1px solid #c8c8cc', textAlign: 'center' };
+        const tdStyle: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid #c8c8cc', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
+        const stickyCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 180, maxWidth: 260 };
+
+        const activeDays = allDates.filter(d => (!from||d>=from)&&(!to||d<=to)).length;
+        const kpi = [
+          { label: T('pv_kpi_qaytarma'), value: `${grandQty} ${T('pv_dona')}`, sub: fmt0(grandSum) + ' so\'m', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
+          { label: T('pv_kpi_mahsulot'), value: products.length, sub: T('pv_xil_tovar'), color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+          { label: T('pv_kpi_market'), value: markets.length, sub: T('pv_ta_dokon'), color: '#0891b2', bg: 'rgba(8,145,178,0.08)' },
+          { label: T('pv_kpi_kunlar'), value: activeDays, sub: `${filtered.length} ${T('pv_ta_yozuv')}`, color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+        ];
+
         return (
           <>
-            {/* Toolbar */}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '6px 12px', border: '1px solid rgba(var(--ink-rgb),0.15)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
-                <FileText size={13} /> Excel yuklash
-                <input type="file" accept=".xlsx,.xls" style={{ position: 'absolute', opacity: 0, inset: 0, cursor: 'pointer' }}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadVazvratExcel(f); e.target.value = ''; }} />
-              </label>
-              {vazvratRows.length > 0 && (
-                <button type="button" disabled={vazvratBusy} onClick={deleteAllVazvrat}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '6px 12px', border: '1px solid #dc2626', borderRadius: 8, background: 'rgba(220,38,38,0.06)', color: '#dc2626', cursor: 'pointer' }}>
-                  <Trash2 size={13} /> Hammasini o&apos;chir
+            {/* Top bar: delete */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+              {isAdmin && vazvratRows.length > 0 && (
+                <button type="button" disabled={vazvratBusy} onClick={openDeletePanel}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '7px 12px', border: '1px solid #dc2626', borderRadius: 9, background: 'rgba(220,38,38,0.06)', color: '#dc2626', cursor: 'pointer' }}>
+                  <Trash2 size={13} /> O&apos;chir
                 </button>
               )}
-            </div>
-            {dates.length === 0 ? <Empty title="Vazvrat tarixi yo'q" /> :
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {dates.map(date => {
-                  const rows = byDate[date];
-                  const total = rows.reduce((s, v) => s + v.totalWithVat, 0);
-                  const open = expandedDates.has('vazt-' + date);
-                  return (
-                    <div key={date} style={{ background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.08)', borderRadius: 12, overflow: 'hidden' }}>
-                      {/* Date header — clickable */}
-                      <div onClick={() => toggleDateGroup('vazt-' + date)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: open ? 'rgba(217,119,6,0.07)' : 'transparent' }}>
-                        <span style={{ color: '#d97706', fontWeight: 800, fontSize: 15, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>›</span>
-                        <span style={{ fontWeight: 700, fontSize: 13 }}>{fmtDateRu(date)}</span>
-                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{rows.length} ta yozuv</span>
-                        <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: '#d97706', marginLeft: 'auto' }}>{fmt0(total)} so&apos;m</span>
-                        <button type="button" disabled={vazvratBusy} onClick={(e) => { e.stopPropagation(); void deleteVazvratDate(date); }}
-                          className="iconbtn danger" title="Shu sanani o'chir"><Trash2 size={14} /></button>
-                      </div>
-                      {/* Rows — only when open */}
-                      {open && rows.map((v, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px 8px 38px', borderTop: '1px solid rgba(var(--ink-rgb),0.05)' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600 }}>{v.marketName || v.marketCode}</div>
-                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{v.productName}</div>
-                          </div>
-                          <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>×{v.qty} dona</span>
-                          <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: '#d97706', whiteSpace: 'nowrap' }}>{fmt0(v.totalWithVat)} so&apos;m</span>
-                        </div>
+
+              {/* Delete date panel */}
+              {showDeletePanel && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  onClick={() => setShowDeletePanel(false)}>
+                  <div style={{ background: 'var(--shell)', borderRadius: 16, padding: 24, width: 360, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+                    onClick={e => e.stopPropagation()}>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>Sanani tanlang</div>
+
+                    {/* Search */}
+                    <input type="text" placeholder="Qidirish (yyyy-mm-dd)..." value={deleteDateSearch}
+                      onChange={e => setDeleteDateSearch(e.target.value)}
+                      style={{ padding: '7px 11px', borderRadius: 8, border: '1px solid rgba(var(--ink-rgb),0.18)', fontSize: 13, background: 'var(--surface)' }} />
+
+                    {/* Date list */}
+                    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320 }}>
+                      {datesBusy ? (
+                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Yuklanmoqda…</div>
+                      ) : filteredDeleteDates.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Topilmadi</div>
+                      ) : filteredDeleteDates.map(d => (
+                        <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: selectedDeleteDates.has(d) ? 'rgba(239,68,68,0.08)' : 'var(--surface)', border: `1px solid ${selectedDeleteDates.has(d) ? '#ef4444' : 'rgba(var(--ink-rgb),0.08)'}` }}>
+                          <input type="checkbox" checked={selectedDeleteDates.has(d)} onChange={() => toggleDeleteDate(d)} style={{ accentColor: '#ef4444' }} />
+                          <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600 }}>{d}</span>
+                        </label>
                       ))}
+                      {!deleteDateSearch && vazvratAllDates.length > 10 && (
+                        <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', paddingTop: 4 }}>
+                          Jami {vazvratAllDates.length} ta sana. Qidirish orqali ko&apos;proq toping.
+                        </div>
+                      )}
                     </div>
-                  );
-                })}
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <button className="small" type="button" onClick={() => setShowDeletePanel(false)}>Bekor</button>
+                      <button className="small dark" type="button"
+                        disabled={selectedDeleteDates.size === 0 || vazvratBusy}
+                        onClick={confirmDeleteDates}
+                        style={{ background: '#ef4444', borderColor: '#ef4444', opacity: selectedDeleteDates.size === 0 ? 0.5 : 1 }}>
+                        {vazvratBusy ? '…' : `O'chirish (${selectedDeleteDates.size} ta sana)`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* KPI cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+              {kpi.map(k => (
+                <div key={k.label} style={{ padding: '12px 16px', borderRadius: 12, background: k.bg, border: `1px solid ${k.color}22`, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: k.color, textTransform: 'uppercase', letterSpacing: '0.04em', opacity: 0.85 }}>{k.label}</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: k.color, lineHeight: 1.1 }}>{k.value}</span>
+                  <span style={{ fontSize: 11, color: k.color, opacity: 0.65 }}>{k.sub}</span>
+                </div>
+              ))}
+            </div>
+
+            {products.length === 0 ? <Empty title={T('pv_empty')} /> : (
+              <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid rgba(var(--ink-rgb),0.09)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+                <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: 12 }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 15 }}>
+                    <tr>
+                      <th style={{ ...thStyle, ...stickyCol, zIndex: 25, fontSize: 12, background: 'var(--surface-2, #f5f5f7)' }}>{T('pv_mahsulot')}</th>
+                      {markets.map(m => {
+                        const short = m
+                          .replace(/^Korzinka\s*[-–]\s*/i, '')
+                          .replace(/^Супермаркет\s*/i, '')
+                          .replace(/^Магазин\s*/i, '');
+                        return (
+                          <th key={m} title={m} style={{ width: 42, minWidth: 42, padding: 0, height: 140, position: 'relative', overflow: 'visible', border: 'none', borderBottom: '1px solid #c8c8cc', background: 'var(--surface-2,#f6f6f8)', boxSizing: 'border-box' }}>
+                            {/* diagonal line: bottom-left → top-right */}
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, width: 1, height: 200, background: '#a8a8b0', transformOrigin: 'left bottom', transform: 'rotate(45deg)', pointerEvents: 'none', zIndex: 1 }} />
+                            {/* text: anchored at bottom-left of cell, rotated -45°, offset to center of band */}
+                            <div style={{ position: 'absolute', bottom: 14, left: 35, transformOrigin: 'left bottom', transform: 'rotate(-45deg)', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 600, lineHeight: 1, color: 'var(--ink)', zIndex: 2 }}>
+                              {short}
+                            </div>
+                          </th>
+                        );
+                      })}
+                      <th style={{ width: 42, minWidth: 42, padding: 0, height: 140, position: 'relative', overflow: 'visible', border: 'none', borderBottom: '1px solid #c8c8cc', borderLeft: '2px solid rgba(217,119,6,0.25)', background: 'rgba(217,119,6,0.04)', boxSizing: 'border-box' }}>
+                        <div style={{ position: 'absolute', bottom: 0, left: 0, width: 1, height: 200, background: 'rgba(217,119,6,0.3)', transformOrigin: 'left bottom', transform: 'rotate(45deg)', pointerEvents: 'none', zIndex: 1 }} />
+                        <div style={{ position: 'absolute', bottom: 14, left: 35, transformOrigin: 'left bottom', transform: 'rotate(-45deg)', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 700, lineHeight: 1, color: '#d97706', zIndex: 2 }}>
+                          {T('pv_jami')}
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((p, pi) => {
+                      const rt = rowTotals[p] ?? { qty: 0, sum: 0 };
+                      return (
+                        <tr key={p} style={{ background: pi % 2 === 0 ? 'transparent' : 'rgba(var(--ink-rgb),0.018)' }}>
+                          <td style={{ ...tdStyle, ...stickyCol, background: pi % 2 === 0 ? 'var(--surface)' : 'var(--surface-1, #f9f9fb)' }}
+                            title={p}>{p.length > 38 ? p.slice(0, 36) + '…' : p}</td>
+                          {markets.map(m => {
+                            const c = pivot[p]?.[m];
+                            return (
+                              <td key={m} style={{ ...tdStyle, color: c ? 'var(--ink)' : 'rgba(var(--ink-rgb),0.15)' }}
+                                title={c ? `${c.qty} dona · ${fmt0(c.sum)} so'm` : '—'}>
+                                {c ? c.qty : '—'}
+                              </td>
+                            );
+                          })}
+                          <td style={{ ...tdStyle, fontWeight: 800, color: '#d97706', borderLeft: '2px solid rgba(217,119,6,0.25)', background: 'rgba(217,119,6,0.04)', minWidth: 90 }}
+                            title={`${rt.qty} dona · ${fmt0(rt.sum)} so'm`}>
+                            {rt.qty} <span style={{ fontSize: 10, fontWeight: 400, color: 'rgba(217,119,6,0.7)' }}>({fmt0(rt.sum)})</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 15 }}>
+                    <tr style={{ borderTop: '2px solid rgba(var(--ink-rgb),0.12)' }}>
+                      <td style={{ ...tdStyle, ...stickyCol, background: 'var(--surface-2, #f5f5f7)', fontWeight: 700, zIndex: 25 }}>{T('pv_jami')}</td>
+                      {markets.map(m => {
+                        const ct = colTotals[m] ?? { qty: 0, sum: 0 };
+                        return (
+                          <td key={m} style={{ ...tdStyle, fontWeight: 700, background: 'rgba(217,119,6,0.06)', color: '#d97706' }}
+                            title={`${ct.qty} dona · ${fmt0(ct.sum)} so'm`}>
+                            {ct.qty}
+                          </td>
+                        );
+                      })}
+                      <td style={{ ...tdStyle, fontWeight: 800, background: 'rgba(217,119,6,0.12)', color: '#d97706', borderLeft: '2px solid rgba(217,119,6,0.2)' }}>
+                        {grandQty} <span style={{ fontSize: 10, fontWeight: 400 }}>({fmt0(grandSum)})</span>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-            }
+            )}
           </>
         );
       })()}
@@ -3168,24 +4009,24 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
               return (
                 <div key={g.dateKey}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #7c3aed', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)', cursor: multi ? 'pointer' : 'default' }}
-                    onClick={() => { if (multi) toggleDateGroup('zakas-' + g.dateKey); else loadSession(g.items[0].invoiceDate); }}>
+                    onClick={() => { if (multi) toggleDateGroup('zakas-' + g.dateKey); else loadSession(g.items[0]._id); }}>
                     {multi && <span style={{ color: '#7c3aed', fontWeight: 800, fontSize: 15, transform: open ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>›</span>}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{fmtDateRu(g.dateKey)}</div>
                       {multi && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.items.length} ta versiya</div>}
                     </div>
-                    <span style={{ fontSize: 12, color: 'var(--ok)', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt0(g.totalNakl)} nakl.</span>
+                    <span style={{ fontSize: 12, color: 'var(--ok)', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt0(g.totalNakl)} hujjat</span>
                     <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{fmt0(g.totalSum)} so&apos;m</span>
                   </div>
                   {open && multi && (
                     <div style={{ marginLeft: 16, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {g.items.map((s: any) => (
-                        <div key={s.invoiceDate} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.05)', borderLeft: '2px solid #c4b5fd', borderRadius: 8, cursor: 'pointer' }}
-                          onClick={() => loadSession(s.invoiceDate)}>
-                          <div style={{ flex: 1, fontSize: 12, color: 'var(--muted)' }}>{s.invoiceDate}</div>
-                          <span style={{ fontSize: 11, color: 'var(--ok)', fontWeight: 700 }}>{fmt0(s.invoiceCount)} nakl.</span>
+                        <div key={s._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.05)', borderLeft: '2px solid #c4b5fd', borderRadius: 8, cursor: 'pointer' }}
+                          onClick={() => loadSession(s._id)}>
+                          <div style={{ flex: 1, fontSize: 12, color: 'var(--muted)' }}>{s.name || s.invoiceDate}</div>
+                          <span style={{ fontSize: 11, color: 'var(--ok)', fontWeight: 700 }}>{fmt0(s.invoiceCount)} hujjat</span>
                           <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(s.sumTotal)} so&apos;m</span>
-                          {isAdmin && <button className="iconbtn danger" type="button" onClick={e => { e.stopPropagation(); deleteSession(s.invoiceDate); }}><Trash2 size={13} /></button>}
+                          {isAdmin && <button className="iconbtn danger" type="button" onClick={e => { e.stopPropagation(); deleteSession(s._id, s.name); }}><Trash2 size={13} /></button>}
                         </div>
                       ))}
                     </div>
@@ -3208,7 +4049,8 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{h.plate} · {h.car}</div>
               </div>
               <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{new Date(h.printedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-              <button className="mini" type="button" onClick={() => { setDovFields(h); setSettingsView('doverennost'); }}>Yuklash</button>
+              <button className="mini" type="button" onClick={() => { setDovFields(h); setDovSaved(true); setSettingsView('doverennost'); }}>{T('tarix_load')}</button>
+              <button className="mini" type="button" style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }} onClick={() => { if (window.confirm(T('dov_del_confirm'))) deleteDovEntry(i); }}>{T('tarix_delete')}</button>
             </div>
           ))}
         </div>
@@ -3220,10 +4062,11 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
 // ─── Legacy UnifiedHistory (kept for reference, not used) ────────────────────
 function UnifiedHistory({ sessions, dovHistory, qaytganInvoices, vazvratRows, expandedDates, toggleDateGroup,
   loadSession, deleteSession, setDovFields, setSettingsView, isAdmin, fmtDateRu, fmt0, T }: {
-  sessions: any[]; dovHistory: any[]; qaytganInvoices: any[]; vazvratRows: any[];
+  sessions: import('@/types/domain').SessionSummary[]; dovHistory: import('@/types/domain').DovEntry[];
+  qaytganInvoices: import('@/types/domain').Invoice[]; vazvratRows: import('@/types/domain').VazvratRecord[];
   expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
-  loadSession: (d: string) => void; deleteSession: (d: string) => void;
-  setDovFields: (h: any) => void; setSettingsView: (v: any) => void;
+  loadSession: (d: string) => void; deleteSession: (d: string, name?: string) => void;
+  setDovFields: (h: import('@/types/domain').DovEntry) => void; setSettingsView: React.Dispatch<React.SetStateAction<SettingsView>>;
   isAdmin: boolean; fmtDateRu: (d: string) => string; fmt0: (n: number) => string; T: (k: string) => string;
 }) {
   // Build flat event list
@@ -3274,15 +4117,15 @@ function UnifiedHistory({ sessions, dovHistory, qaytganInvoices, vazvratRows, ex
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 5, marginLeft: multi ? 12 : 0, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
                   {multi && <span style={{ color: 'var(--muted)', fontWeight: 700, flexShrink: 0 }}>›</span>}
                   {/* Type badge */}
-                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: ks.color, background: ks.bg, borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>{ks.label}</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: ks.color, background: ks.bg, borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>{T(ks.labelKey)}</span>
 
                   {/* Content per kind */}
                   {ev.kind === 'nakl' && (<>
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>{ev.data.invoiceDate}</span>
-                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{ev.data.invoiceCount} nakl.</span>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{ev.data.name || ev.data.invoiceDate}</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{ev.data.invoiceCount} hujjat</span>
                     <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto' }}>{fmt0(ev.data.sumTotal)} so&apos;m</span>
-                    <button className="mini" type="button" onClick={() => loadSession(ev.data.invoiceDate)}>{T('lbl_restore')}</button>
-                    {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(ev.data.invoiceDate)}><Trash2 size={14} /></button>}
+                    <button className="mini" type="button" onClick={() => loadSession(ev.data._id)}>{T('lbl_restore')}</button>
+                    {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(ev.data._id, ev.data.name)}><Trash2 size={14} /></button>}
                   </>)}
 
                   {ev.kind === 'dov' && (<>
@@ -3350,7 +4193,7 @@ function AnalyticsPane({
 
   // ─── Shared date range for ALL tabs ───────────────────────────────────────
   const today = todayIso();
-  const [savdoFrom, setSavdoFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().slice(0, 10); });
+  const [savdoFrom, setSavdoFrom] = useState(today);
   const [savdoTo,   setSavdoTo]   = useState(today);
   const [vazvratRows, setVazvratRows] = useState<import('@/types/domain').VazvratRecord[]>([]);
   const [savdoInvoices, setSavdoInvoices] = useState<Invoice[]>([]);
@@ -3358,6 +4201,40 @@ function AnalyticsPane({
   const [savdoBusy, setSavdoBusy] = useState(false);
   const [savdoUploading, setSavdoUploading] = useState(false);
   const [savdoTab, setSavdoTab] = useState<'kunlik' | 'dokonlar' | 'mahsulotlar'>('kunlik');
+
+  // ─── Session-based invoices: FAQAT Tarixda saqlangan sessionlardan ─────────
+  const [sessionInvoices, setSessionInvoices] = useState<Invoice[]>([]);
+  const [sessionLoading, setSessionLoading] = useState(false);
+
+  async function loadSessionInvoices(from: string, to: string) {
+    if (!token) return;
+    // Tarixda shu sana oralig'ida saqlangan sessiyalarni top
+    const inRange = sessions.filter(s => s.invoiceDate >= from && s.invoiceDate <= to);
+    if (!inRange.length) { setSessionInvoices([]); return; }
+    setSessionLoading(true);
+    try {
+      const snaps = await Promise.all(inRange.map(s => api.session(token, s._id).catch(() => null)));
+      const merged: Invoice[] = [];
+      const seen = new Set<number>();
+      for (const rec of snaps) {
+        if (!rec?.snapshot?.invoices) continue;
+        for (const inv of rec.snapshot.invoices as Invoice[]) {
+          if (!seen.has(inv.invNo)) {
+            seen.add(inv.invNo);
+            merged.push({ ...inv, dateIso: inv.dateIso || rec.invoiceDate });
+          }
+        }
+      }
+      setSessionInvoices(merged);
+    } catch (e) { console.warn('[loadSessionInvoices] failed:', e); }
+    finally { setSessionLoading(false); }
+  }
+
+  // Sana o'zgarganda avtomatik yuklash
+  useEffect(() => {
+    void loadSessionInvoices(savdoFrom, savdoTo);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savdoFrom, savdoTo, sessions.length]);
 
   async function loadVazvrat() {
     if (!token) return;
@@ -3373,7 +4250,7 @@ function AnalyticsPane({
       setSavdoInvoices(allInvoices.filter(
         (inv) => inv.dateIso >= savdoFrom && inv.dateIso <= savdoTo && inv.status !== 'cancelled'
       ));
-    } catch { /* ignore */ } finally { setSavdoBusy(false); }
+    } catch (e) { console.warn('[loadSavdo] analytics load failed:', e); onToast('err', 'Statistikani yuklashda xato'); } finally { setSavdoBusy(false); }
   }
 
   async function handleVazvratExcel(file: File) {
@@ -3481,10 +4358,11 @@ function AnalyticsPane({
     } catch (e) { onToast('err', 'Xato: ' + String(e)); } finally { setSavdoUploading(false); }
   }
 
-  // Filter invoices by shared date range (for non-Savdo tabs)
-  const filteredInvoices = useMemo(() => invoices.filter(
-    (inv) => inv.dateIso >= savdoFrom && inv.dateIso <= savdoTo && inv.status !== 'cancelled'
-  ), [invoices, savdoFrom, savdoTo]);
+  // Filter invoices: FAQAT Tarixda saqlangan session snapshotidan, faqat delivered
+  const filteredInvoices = useMemo(
+    () => sessionInvoices.filter(inv => inv.status === 'delivered'),
+    [sessionInvoices]
+  );
 
   const filteredMarkets = useMemo(() => {
     const map: Record<string, { storeCode: string; label: string; qty: number; sum: number; count: number }> = {};
@@ -3510,15 +4388,20 @@ function AnalyticsPane({
   const fMaxMarketSum = filteredMarkets[0]?.sum || 1;
   const fMaxProductQty = filteredProductRows[0]?.givenQty || 1;
 
-  const aInit    = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.lines.reduce((ls, l) => ls + (l.init || 0), 0), 0), [filteredInvoices]);
-  const aGiven   = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumQty, 0), [filteredInvoices]);
+  // Keldi: init qty × VAT-inclusive unit price (= total/qty). Falls back to total when init=0.
+  const aInit    = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.lines.reduce((ls, l) => {
+    if (l.init > 0 && l.qty > 0) return ls + (l.init / l.qty) * l.total;
+    if (l.init > 0) return ls + l.init * (l.price || 0);
+    return ls + l.total;
+  }, 0), 0), [filteredInvoices]);
+  const aGiven   = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumTotal, 0), [filteredInvoices]);
   const aReduced = aInit - aGiven;
-  const aSum     = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumTotal, 0), [filteredInvoices]);
+  const aSum     = aGiven;
 
   return (
-    <section className="pane">
-      {/* ── Top bar: tabs + date range + refresh ── */}
-      <div className="analytics-topbar" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+    <section className="pane" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 54px)', overflow: 'hidden' }}>
+      {/* ── Top bar: tabs + date range + refresh — FREEZE ── */}
+      <div className="analytics-topbar" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap', flexShrink: 0 }}>
         <div className="analytics-tabs subtabs" style={{ position: 'static', margin: 0, padding: 0, background: 'transparent', flex: '1 1 auto' }}>
           <button className={tab === 'overview' ? 'active' : ''} type="button" onClick={() => setTab('overview')}>{T('analytics_title')}</button>
           <button className={tab === 'products' ? 'active' : ''} type="button" onClick={() => setTab('products')}>{T('lbl_product')}</button>
@@ -3537,7 +4420,7 @@ function AnalyticsPane({
                   <RefreshCcw size={12} /> {savdoBusy ? '…' : 'Yuklash'}
                 </button>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
-                  <FileText size={12} /> {savdoUploading ? '…' : 'Vazvrat Excel'}
+                  <FileText size={12} /> {savdoUploading ? '…' : T('pv_upload_btn')}
                   <input type="file" accept=".xlsx,.xls" style={{ position: 'absolute', opacity: 0, inset: 0, cursor: 'pointer' }}
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleVazvratExcel(f); e.target.value = ''; }} />
                 </label>
@@ -3551,14 +4434,14 @@ function AnalyticsPane({
       </div>
 
       {tab === 'overview' && (
-        <>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
           {/* ── KPI cards ── */}
           <div className="kpi-4-grid">
             {[
-              { label: 'Keldi',   val: fmt0(aInit),    sub: 'Jami zakaz dona', color: 'var(--ink)', accent: false },
-              { label: 'Kamaydi', val: fmt0(aReduced), sub: 'Yetkazilmagan',   color: aReduced > 0 ? '#dc2626' : 'var(--ok)', accent: false },
-              { label: 'Berildi', val: fmt0(aGiven),   sub: 'Yetkazilgan dona', color: 'var(--ok)', accent: false },
-              { label: 'Summa',   val: fmt0(aSum) + ' so\'m', sub: 'Jami aylanma', color: 'var(--ink)', accent: true },
+              { label: 'Keldi',   val: fmt0(aInit) + ' so\'m',    sub: 'Jami zakaz summasi', color: 'var(--ink)', accent: false },
+              { label: 'Kamaydi', val: fmt0(aReduced) + ' so\'m', sub: 'Farq (so\'mda)',      color: aReduced > 0 ? '#dc2626' : 'var(--ok)', accent: false },
+              { label: 'Berildi', val: fmt0(aGiven) + ' so\'m',   sub: 'Yetkazilgan summa',  color: 'var(--ok)', accent: false },
+              { label: 'Summa',   val: fmt0(aSum) + ' so\'m',     sub: 'Jami aylanma',       color: 'var(--ink)', accent: true },
             ].map(k => (
               <div key={k.label} style={{ padding: '14px 16px', borderRadius: 14, background: k.accent ? 'linear-gradient(135deg, #46bf72, #2ea855)' : 'var(--surface)', border: k.accent ? 'none' : '1px solid rgba(var(--ink-rgb),0.08)', boxShadow: k.accent ? '0 4px 16px rgba(70,191,114,0.25)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: k.accent ? 'rgba(255,255,255,0.75)' : 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
@@ -3611,13 +4494,13 @@ function AnalyticsPane({
               );
             })}
           </div>
-        </>
+        </div>
       )}
 
       {tab === 'products' && (
         filteredProductRows.length === 0
           ? <Empty title="Sana oralig'ida ma'lumot yo'q" />
-          : <div className="tablewrap">
+          : <div className="tablewrap" style={{ flex: 1, overflow: 'auto' }}>
               <table className="data">
                 <thead>
                   <tr>
@@ -3667,7 +4550,7 @@ function AnalyticsPane({
                             <td></td>
                             <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(mr.qty)}</td>
                             <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(mr.sum)}</td>
-                            <td style={{ color: 'var(--muted)', fontSize: 11 }}>{mr.invNos.length} nakl.</td>
+                            <td style={{ color: 'var(--muted)', fontSize: 11 }}>{mr.invNos.length} hujjat</td>
                           </tr>
                         ))}
                       </React.Fragment>
@@ -3681,7 +4564,7 @@ function AnalyticsPane({
       {tab === 'markets' && (
         filteredMarkets.length === 0
           ? <Empty title="Sana oralig'ida ma'lumot yo'q" />
-          : <div className="tablewrap">
+          : <div className="tablewrap" style={{ flex: 1, overflow: 'auto' }}>
               <table className="data">
                 <thead>
                   <tr>
@@ -3723,7 +4606,7 @@ function AnalyticsPane({
                                 <td></td>
                                 <td style={{ paddingLeft: 20, color: 'var(--muted)' }}>
                                   <span style={{ display: 'inline-block', transform: iOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', marginRight: 4, color: 'var(--accent)' }}>›</span>
-                                  Nakl. #{inv.invNo} <span style={{ color: 'var(--muted)', fontSize: 11 }}>· {inv.dateIso}</span>
+                                  Hujjat #{inv.invNo} <span style={{ color: 'var(--muted)', fontSize: 11 }}>· {inv.dateIso}</span>
                                 </td>
                                 <td></td>
                                 <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(inv.sumQty)}</td>
@@ -3753,7 +4636,7 @@ function AnalyticsPane({
 
       {tab === 'clients' && (
         customerStats.length ? (
-          <div className="tablewrap">
+          <div className="tablewrap" style={{ flex: 1, overflow: 'auto' }}>
             <table className="data">
               <thead>
                 <tr>
@@ -3795,7 +4678,7 @@ function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, se
   undeliveredFilter: { from: string; to: string };
   setUndeliveredFilter: (v: { from: string; to: string }) => void;
   setInvoiceDetail: (inv: Invoice) => void;
-  setRestoreModal: (v: any) => void;
+  setRestoreModal: (v: { invNo: number; date: string; lines: { sku: string; name: string; unit: string; price: number; qty: number; initQty: number }[] } | null) => void;
   fmt: (n: number) => string;
   todayIso: () => string;
 }) {
@@ -3877,8 +4760,11 @@ function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, se
 }
 
 function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoInvoices, savdoAnalytics, savdoTab, setSavdoTab, fmtDateRu, fmt0 }: {
-  sessions: any[]; vazvratRows: any[]; invoices: Invoice[]; savdoFrom: string; savdoTo: string;
-  savdoInvoices: Invoice[]; savdoAnalytics: any[]; savdoTab: string; setSavdoTab: (t: any) => void;
+  sessions: import('@/types/domain').SessionSummary[]; vazvratRows: import('@/types/domain').VazvratRecord[];
+  invoices: Invoice[]; savdoFrom: string; savdoTo: string;
+  savdoInvoices: Invoice[];
+  savdoAnalytics: { sku: string; name: string; berilganQty: number; berilganSum: number; vazvratQty: number; vazvratSum: number }[];
+  savdoTab: string; setSavdoTab: React.Dispatch<React.SetStateAction<'kunlik' | 'dokonlar' | 'mahsulotlar'>>;
   fmtDateRu: (d: string) => string; fmt0: (n: number) => string;
 }) {
   const sessionsInRange = sessions.filter(s => s.invoiceDate >= savdoFrom && s.invoiceDate <= savdoTo);
@@ -3926,7 +4812,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div className="kpis kpis-3">
         <Kpi label="BERILGAN" value={fmt0(totBerilgan)} />
-        <Kpi label="VAZVRAT"  value={fmt0(totVazvrat)} valueStyle={totVazvrat > 0 ? { color: 'var(--danger)' } : undefined} />
+        <Kpi label="QAYTARMA"  value={fmt0(totVazvrat)} valueStyle={totVazvrat > 0 ? { color: 'var(--danger)' } : undefined} />
         <Kpi label="SAVDO"    value={fmt0(totSavdo)} accent />
       </div>
       <div className="subtabs" style={{ marginBottom: 12 }}>
@@ -3939,7 +4825,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
       {savdoTab === 'kunlik' && (
         <div className="tablewrap">
           <table className="data">
-            <thead><tr><th>Sana</th><th className="right">Nakl.</th><th className="right">Berilgan</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
+            <thead><tr><th>Sana</th><th className="right">Hujjat</th><th className="right">Berilgan</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
             <tbody>
               {dayRows.map(([date, d]) => (
                 <tr key={date}>
@@ -3985,7 +4871,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
           <table className="data">
             <thead><tr><th>Mahsulot</th><th className="right">B.dona</th><th className="right">Berilgan</th><th className="right">V.dona</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
             <tbody>
-              {prodRows.map((r: any) => (
+              {prodRows.map((r) => (
                 <tr key={r.sku}>
                   <td title={r.sku}>{r.name}</td>
                   <td className="right mono">{r.berilganQty || '—'}</td>
@@ -4089,10 +4975,10 @@ function StatsPane({
               <tr>
                 <th>#</th>
                 <th>Mahsulot nomi</th>
-                <th style={{ textAlign: 'right' }}>Zakaz</th>
-                <th style={{ textAlign: 'right' }}>Kamaydi</th>
-                <th style={{ textAlign: 'right' }}>Berildi</th>
-                <th style={{ textAlign: 'right' }}>Summa (so'm)</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>ZAKAZ</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--danger)' }}>KAMAYDI</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--ok)' }}>BERILDI</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>SUMMA (SO'M)</th>
               </tr>
             </thead>
             <tbody>
@@ -4107,26 +4993,34 @@ function StatsPane({
                         <span className={`prod-chevron${isOpen ? ' open' : ''}`}>›</span>
                         {row.name}
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{fmt0(row.initTotal)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: row.reduced > 0 ? 'var(--danger)' : 'var(--muted)', fontWeight: row.reduced > 0 ? 700 : 400 }}>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700 }}>{fmt0(row.initTotal)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 13, color: row.reduced > 0 ? 'var(--danger)' : 'var(--muted)', fontWeight: row.reduced > 0 ? 800 : 400 }}>
                         {row.reduced > 0 ? `−${fmt0(row.reduced)}` : '—'}
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ok)', fontWeight: 700 }}>{fmt0(row.givenQty)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(row.givenSum)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--ok)', fontWeight: 800 }}>{fmt0(row.givenQty)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700 }}>{fmt0(row.givenSum)}</td>
                     </tr>
-                    {isOpen && invRows.map(inv => (
+                    {isOpen && invRows.map(inv => {
+                      const line = inv.lines[row.index];
+                      const subInit = line?.init || 0;
+                      const subQty = line?.qty || 0;
+                      const subReduced = subInit - subQty;
+                      return (
                       <tr key={`${row.index}-${inv.invNo}`} className="prod-sub-row">
                         <td />
-                        <td style={{ paddingLeft: 28, color: 'var(--muted)', fontSize: 12 }}>
-                          <span style={{ fontFamily: 'var(--mono)', color: 'var(--ok)', fontWeight: 700, marginRight: 8 }}>{inv.invNo}</span>
-                          {inv.market}
+                        <td style={{ paddingLeft: 28, fontSize: 12 }}>
+                          <span style={{ fontFamily: 'var(--mono)', color: 'var(--ok)', fontWeight: 700, marginRight: 6 }}>{inv.invNo}</span>
+                          <span style={{ color: 'var(--muted)' }}>{inv.market}</span>
                         </td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--muted)' }}>{fmt0(inv.lines[row.index]?.init || 0)}</td>
-                        <td />
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>{fmt0(inv.lines[row.index]?.qty || 0)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{fmt0(inv.lines[row.index]?.total || 0)}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600 }}>{fmt0(subInit)}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: subReduced > 0 ? 'var(--danger)' : 'var(--muted)', fontWeight: subReduced > 0 ? 700 : 400 }}>
+                          {subReduced > 0 ? `−${fmt0(subReduced)}` : '—'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>{fmt0(subQty)}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{fmt0(line?.total || 0)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </React.Fragment>
                 );
               })}
@@ -4143,15 +5037,17 @@ function StatsPane({
               <tr>
                 <th>#</th>
                 <th>Market nomi</th>
-                <th style={{ textAlign: 'right' }}>Hujjat soni</th>
+                <th style={{ textAlign: 'right' }}>Hujjat</th>
                 <th style={{ textAlign: 'right' }}>Dona</th>
                 <th style={{ textAlign: 'right' }}>Summa (so'm)</th>
+                <th style={{ textAlign: 'right' }}>Grafik</th>
               </tr>
             </thead>
             <tbody>
               {markets.map((m, i) => {
                 const isOpen = peekMarket === m.storeCode;
                 const mInvs = isOpen ? invoices.filter(inv => inv.storeCode === m.storeCode) : [];
+                const barPct = Math.round((m.sum / (markets[0]?.sum || 1)) * 100);
                 return (
                   <React.Fragment key={m.storeCode}>
                     <tr className={isOpen ? 'prod-expanded-row' : ''} style={{ cursor: 'pointer' }} onClick={() => setPeekMarket(isOpen ? null : m.storeCode)}>
@@ -4163,29 +5059,35 @@ function StatsPane({
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{m.count}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>{fmt0(m.qty)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(m.sum)}</td>
+                      <td style={{ width: 160, paddingRight: 16 }}>
+                        <div style={{ height: 8, borderRadius: 4, background: 'rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${barPct}%`, borderRadius: 4, background: 'var(--honey)', transition: 'width 0.3s' }} />
+                        </div>
+                      </td>
                     </tr>
                     {isOpen && mInvs.map(inv => {
                       const invOpen = peekInv === inv.invNo;
-                      const invLines = catalog.map((p, pi) => ({ name: p.name, qty: inv.lines[pi]?.qty || 0, price: inv.lines[pi]?.price || 0, total: inv.lines[pi]?.total || 0 })).filter(l => l.qty > 0);
+                      const invLines = catalog.map((p, pi) => ({ name: p.name, qty: inv.lines[pi]?.qty || 0, total: inv.lines[pi]?.total || 0 })).filter(l => l.qty > 0);
                       return (
                         <React.Fragment key={inv.invNo}>
-                          <tr className="prod-sub-row" style={{ cursor: 'pointer', ...(inv.status === 'cancelled' ? { opacity: 0.4 } : {}) }} onClick={() => setPeekInv(invOpen ? null : inv.invNo)}>
+                          <tr className="prod-sub-row" style={{ cursor: 'pointer' }} onClick={() => setPeekInv(invOpen ? null : inv.invNo)}>
                             <td />
-                            <td style={{ paddingLeft: 28, fontSize: 12 }}>
+                            <td style={{ paddingLeft: 28, fontSize: 12 }} colSpan={2}>
                               <span className={`prod-chevron${invOpen ? ' open' : ''}`} style={{ fontSize: 13 }}>›</span>
-                              <span style={{ fontFamily: 'var(--mono)', color: 'var(--ok)', fontWeight: 700, marginRight: 8 }}>{inv.invNo}</span>
-                              <span style={{ color: 'var(--muted)' }}>{inv.order}</span>
+                              <span style={{ fontFamily: 'var(--mono)', color: 'var(--ok)', fontWeight: 700, marginRight: 8 }}>№{inv.invNo}</span>
+                              <span style={{ color: 'var(--muted)', marginRight: 6 }}>{inv.dateIso}</span>
+                              {inv.order && <span style={{ color: 'var(--muted)', fontSize: 11 }}>{inv.order}</span>}
                             </td>
-                            <td />
                             <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>{fmt0(inv.sumQty)}</td>
                             <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(inv.sumTotal)}</td>
+                            <td />
                           </tr>
                           {invOpen && invLines.map(l => (
                             <tr key={l.name} className="prod-sub-row">
-                              <td colSpan={2} style={{ paddingLeft: 56, fontSize: 11, color: 'var(--muted)' }}>{l.name}</td>
-                              <td />
+                              <td colSpan={3} style={{ paddingLeft: 56, fontSize: 11, color: 'var(--muted)' }}>{l.name}</td>
                               <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ok)' }}>{fmt0(l.qty)}</td>
                               <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11 }}>{fmt0(l.total)}</td>
+                              <td />
                             </tr>
                           ))}
                         </React.Fragment>
@@ -4394,12 +5296,14 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_docs:'Hujjatlar', nav_dispatch:'Marshrut', nav_schedule:'Grafik',
     nav_stats:'Statistika', nav_ops:'Operatsiyalar', nav_clients:'Mijozlar',
     nav_analytics:'Analitika', nav_settings:'Sozlamalar',
-    nav_preferences:'Shaxsiy', pref_theme:'Mavzu', pref_theme_hint:'Yorug‘ yoki tungi ko‘rinish', pref_dark:'Tungi', pref_light:'Yorug‘',
-    pref_bg:'Orqa fon', pref_bg_hint:'Tayyor fon yoki o‘z rangingizni tanlang', pref_bg_custom:'O‘z rangim', pref_reset:'Tiklash',
-    pref_density:'Zichlik', pref_density_hint:'Element va matn o‘lchami', pref_compact:'Ixcham', pref_cozy:'O‘rtacha', pref_comfortable:'Keng',
+    nav_preferences:'Shaxsiy',
+    pref_bg:"Orqa fon", pref_bg_hint:"Oq yoki boshqa açiq rang", pref_bg_custom:"O'z rangim", pref_reset:'Tiklash',
+    pref_density:'Zichlik', pref_density_hint:"Qatorlar va elementlar orasidagi masofa",
+    pref_tight:'Eng ixcham', pref_compact:'Ixcham', pref_cozy:"O'rtacha", pref_comfortable:'Keng',
+    pref_accent:"Rang uslubi", pref_accent_hint:"Tugmalar va asosiy elementlar rangi",
     pref_lang:'Til', pref_lang_hint:'Interfeys tili',
     // topbar
-    lbl_invoices:'nakl.', lbl_pcs:'dona', lbl_sum:"so'm", lbl_unsaved:'saqlanmagan',
+    lbl_invoices:'hujjat', lbl_pcs:'dona', lbl_sum:"so'm", lbl_unsaved:'saqlanmagan',
     lbl_logout:'Chiqish', lbl_store:'Market', lbl_driver:'Haydovchi',
     lbl_print:'Chop etish', lbl_save:'Saqlash', lbl_add:"Qo'shish",
     lbl_cancel:'Bekor', lbl_date:'Sana', lbl_order:'Buyurtma',
@@ -4413,7 +5317,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     matrix_product:'Mahsulot', matrix_total:'Jami',
     docs_title:'Hujjatlar', docs_print_sel:'Tanlanganlarni chop',
     docs_empty:'Avval hujjat shakllantiring',
-    sap_title:'SAP import', sap_meta_ready:'nakladnoy tayyor', sap_meta_empty:'Excel yukla',
+    sap_title:'SAP import', sap_meta_ready:'hujjat tayyor', sap_meta_empty:'Excel yukla',
     sap_batch:'Partiya nomi',
     ops_title:'Operatsiyalar', ops_orders:'Buyurtmalar', ops_moves:'Harakatlar',
     ops_imports:'Importlar', ops_audit:'Audit',
@@ -4428,7 +5332,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     dispatch_title:'Marshrut', dispatch_empty:'Avval hujjat shakllantiring',
     schedule_title:'Yetkazib berish jadvali',
     schedule_upload:'Grafik yuklash', schedule_view_only:"Ko'rish rejimi",
-    stats_title:'Statistika', stats_invoices:'Nakladnoylar',
+    stats_title:'Statistika', stats_invoices:'Hujjatlar',
     stats_items:'Dona', stats_sum:'Summa', stats_avg:'O\'rtacha',
     analytics_title:'Analitika',
     settings_cat:'Mahsulotlar', settings_req:'Tafsilot',
@@ -4438,18 +5342,37 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_supplier:'Yetkazib beruvchi', settings_receiver:'Qabul qiluvchi',
     settings_contract:'Shartnoma',
     modal_manual:'Qo\'lda hujjat', modal_order:'Yangi buyurtma', modal_client:'Yangi mijoz',
+    // tarix
+    tarix_hujjat:'Hujjatlar', tarix_qaytarma:'Qaytarma', tarix_buyurtma:'Buyurtma', tarix_ishonchnoma:'Ishonchnoma',
+    tarix_qaytgan:'Qaytgan',
+    tarix_load:'Yuklash', tarix_delete:"O'chirish",
+    tarix_restored:"tiklandi",
+    // pivot / qaytarma
+    pv_dan:'Dan', pv_gacha:'Gacha', pv_mahsulot:'Mahsulot', pv_jami:'Jami',
+    pv_kpi_qaytarma:'Jami qaytarma', pv_kpi_mahsulot:'Mahsulot turlari',
+    pv_kpi_market:'Marketlar', pv_kpi_kunlar:'Kunlar',
+    pv_xil_tovar:'xil tovar', pv_ta_dokon:"ta do'kon", pv_ta_yozuv:'ta yozuv', pv_dona:'dona',
+    pv_empty:"Qaytarma tarixi yo'q",
+    pv_upload_btn:'Qaytarma Excel',
+    pv_del_all:"Barcha qaytarma yozuvlarini o'chirish?",
+    pv_del_date:"sanasidagi barcha qaytarmalarni o'chirish?",
+    // dov
+    dov_save:'Saqlash', dov_saved:'Saqlandi ✓', dov_print:'Chop etish',
+    dov_del_confirm:"Bu ishonchnomani tarixdan o'chirmoqchimisiz?",
     // days
     days:['Du','Se','Ch','Pa','Ju','Sh','Ya'],
     days_full:['Dushanba','Seshanba','Chorshanba','Payshanba','Juma','Shanba','Yakshanba'],
   },
   ru: {
     nav_orders:'Заказы', nav_register:'Реестр', nav_matrix:'Таблица',
-    nav_docs:'Hujjatlar', nav_dispatch:'Marshrut', nav_schedule:'График',
+    nav_docs:'Документы', nav_dispatch:'Маршрут', nav_schedule:'График',
     nav_stats:'Статистика', nav_ops:'Операции', nav_clients:'Клиенты',
     nav_analytics:'Аналитика', nav_settings:'Настройки',
-    nav_preferences:'Персонализация', pref_theme:'Тема', pref_theme_hint:'Светлый или тёмный режим', pref_dark:'Тёмная', pref_light:'Светлая',
-    pref_bg:'Фон', pref_bg_hint:'Готовый фон или свой цвет', pref_bg_custom:'Свой цвет', pref_reset:'Сбросить',
-    pref_density:'Плотность', pref_density_hint:'Размер элементов и текста', pref_compact:'Компактно', pref_cozy:'Обычно', pref_comfortable:'Просторно',
+    nav_preferences:'Настройки',
+    pref_bg:'Фон', pref_bg_hint:'Белый или светлый цвет фона', pref_bg_custom:'Свой цвет', pref_reset:'Сбросить',
+    pref_density:'Плотность', pref_density_hint:'Расстояние между строками и элементами',
+    pref_tight:'Очень плотно', pref_compact:'Компактно', pref_cozy:'Обычно', pref_comfortable:'Просторно',
+    pref_accent:'Цветовой стиль', pref_accent_hint:'Цвет кнопок и основных элементов',
     pref_lang:'Язык', pref_lang_hint:'Язык интерфейса',
     lbl_invoices:'накл.', lbl_pcs:'шт', lbl_sum:'сум', lbl_unsaved:'не сохранено',
     lbl_logout:'Выйти', lbl_store:'Магазин', lbl_driver:'Водитель',
@@ -4462,7 +5385,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     reg_meta_docs:'документов', reg_manual:'Вручную',
     matrix_title:'Матрица количества', hide_zeros:'Скрыть нули',
     matrix_product:'Товар', matrix_total:'Итого',
-    docs_title:'Hujjatlar', docs_print_sel:'Печать выбранных',
+    docs_title:'Документы', docs_print_sel:'Печать выбранных',
     docs_empty:'Сначала сформируйте накладные',
     sap_title:'SAP импорт', sap_meta_ready:'накладных готово', sap_meta_empty:'Загрузите Excel',
     sap_batch:'Название партии',
@@ -4476,7 +5399,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     ops_last_moves:'Последние движения',
     clients_title:'Клиенты', clients_meta:'клиентов', clients_empty:'Клиентов пока нет',
     clients_name:'Имя', clients_phone:'Телефон', clients_addr:'Адрес', clients_notes:'Примечания',
-    dispatch_title:'Marshrut', dispatch_empty:'Сначала сформируйте накладные',
+    dispatch_title:'Маршрут', dispatch_empty:'Сначала сформируйте накладные',
     schedule_title:'График доставки',
     schedule_upload:'Загрузить график', schedule_view_only:'Режим просмотра',
     stats_title:'Статистика', stats_invoices:'Накладных',
@@ -4489,17 +5412,37 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_supplier:'Поставщик', settings_receiver:'Получатель',
     settings_contract:'Договор',
     modal_manual:'Накладная вручную', modal_order:'Новый заказ', modal_client:'Новый клиент',
+    // tarix
+    tarix_hujjat:'Документы', tarix_qaytarma:'Возвраты', tarix_buyurtma:'Заказы', tarix_ishonchnoma:'Доверенность',
+    tarix_qaytgan:'Возврат',
+    tarix_load:'Загрузить', tarix_delete:'Удалить',
+    tarix_restored:'восстановлен',
+    // pivot / qaytarma
+    pv_dan:'С', pv_gacha:'По', pv_mahsulot:'Товар', pv_jami:'Итого',
+    pv_kpi_qaytarma:'Всего возвратов', pv_kpi_mahsulot:'Видов товара',
+    pv_kpi_market:'Магазинов', pv_kpi_kunlar:'Дней',
+    pv_xil_tovar:'видов', pv_ta_dokon:'магазинов', pv_ta_yozuv:'записей', pv_dona:'шт',
+    pv_empty:'Нет истории возвратов',
+    pv_upload_btn:'Возврат Excel',
+    pv_del_all:'Удалить все записи возвратов?',
+    pv_del_date:'удалить все возвраты за эту дату?',
+    // dov
+    dov_save:'Сохранить', dov_saved:'Сохранено ✓', dov_print:'Печать',
+    dov_del_confirm:'Удалить эту доверенность из истории?',
+    // days
     days:['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],
     days_full:['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'],
   },
   en: {
     nav_orders:'Orders', nav_register:'Registry', nav_matrix:'Table',
-    nav_docs:'Hujjatlar', nav_dispatch:'Dispatch', nav_schedule:'Schedule',
+    nav_docs:'Documents', nav_dispatch:'Dispatch', nav_schedule:'Schedule',
     nav_stats:'Statistics', nav_ops:'Operations', nav_clients:'Clients',
     nav_analytics:'Analytics', nav_settings:'Settings',
-    nav_preferences:'Preferences', pref_theme:'Theme', pref_theme_hint:'Light or dark appearance', pref_dark:'Dark', pref_light:'Light',
-    pref_bg:'Background', pref_bg_hint:'Pick a preset or your own color', pref_bg_custom:'Custom color', pref_reset:'Reset',
-    pref_density:'Density', pref_density_hint:'Size of elements and text', pref_compact:'Compact', pref_cozy:'Cozy', pref_comfortable:'Comfortable',
+    nav_preferences:'Preferences',
+    pref_bg:'Background', pref_bg_hint:'White or light background', pref_bg_custom:'Custom color', pref_reset:'Reset',
+    pref_density:'Density', pref_density_hint:'Row and element spacing',
+    pref_tight:'Ultra compact', pref_compact:'Compact', pref_cozy:'Normal', pref_comfortable:'Comfortable',
+    pref_accent:'Color style', pref_accent_hint:'Color of buttons and key elements',
     pref_lang:'Language', pref_lang_hint:'Interface language',
     lbl_invoices:'inv.', lbl_pcs:'pcs', lbl_sum:'UZS', lbl_unsaved:'unsaved',
     lbl_logout:'Logout', lbl_store:'Store', lbl_driver:'Driver',
@@ -4512,7 +5455,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     reg_meta_docs:'documents', reg_manual:'Manual',
     matrix_title:'Quantity Matrix', hide_zeros:'Hide zeros',
     matrix_product:'Product', matrix_total:'Total',
-    docs_title:'Hujjatlar', docs_print_sel:'Print selected',
+    docs_title:'Documents', docs_print_sel:'Print selected',
     docs_empty:'Generate invoices first',
     sap_title:'SAP Import', sap_meta_ready:'invoices ready', sap_meta_empty:'Upload Excel',
     sap_batch:'Batch name',
@@ -4539,6 +5482,24 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_supplier:'Supplier', settings_receiver:'Receiver',
     settings_contract:'Contract',
     modal_manual:'Manual invoice', modal_order:'New order', modal_client:'New client',
+    // tarix
+    tarix_hujjat:'Documents', tarix_qaytarma:'Returns', tarix_buyurtma:'Orders', tarix_ishonchnoma:'Power of Attorney',
+    tarix_qaytgan:'Returned',
+    tarix_load:'Load', tarix_delete:'Delete',
+    tarix_restored:'restored',
+    // pivot / returns
+    pv_dan:'From', pv_gacha:'To', pv_mahsulot:'Product', pv_jami:'Total',
+    pv_kpi_qaytarma:'Total returns', pv_kpi_mahsulot:'Product types',
+    pv_kpi_market:'Stores', pv_kpi_kunlar:'Days',
+    pv_xil_tovar:'types', pv_ta_dokon:'stores', pv_ta_yozuv:'records', pv_dona:'pcs',
+    pv_empty:'No return history',
+    pv_upload_btn:'Returns Excel',
+    pv_del_all:'Delete all return records?',
+    pv_del_date:'delete all returns for this date?',
+    // dov
+    dov_save:'Save', dov_saved:'Saved ✓', dov_print:'Print',
+    dov_del_confirm:'Remove this power of attorney from history?',
+    // days
     days:['Mo','Tu','We','Th','Fr','Sa','Su'],
     days_full:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
   },
@@ -4881,7 +5842,7 @@ function DispatchPane({
       }
     </style></head><body>
     <h2>${driver} — P${part}</h2>
-    <p>${dateFmt} · ${filteredInvoices.length} nakl. · ${grandTotal} dona</p>
+    <p>${dateFmt} · ${filteredInvoices.length} hujjat · ${grandTotal} dona</p>
     <table>
       <colgroup><col>${uniqueMarkets.map(() => `<col style="width:${CW}px">`).join('')}<col style="width:46px"></colgroup>
       <thead><tr><th style="text-align:left;vertical-align:bottom;padding:3px 5px;border:1px solid #aaa;background:#e8e8e8;font-size:8.5pt">${T('lbl_product')}</th>${diagTh}<th style="width:46px;vertical-align:bottom;padding:3px;border:1px solid #aaa;background:#d8d8d8;font-size:8.5pt">${T('lbl_total')}</th></tr></thead>

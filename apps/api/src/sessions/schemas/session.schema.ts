@@ -23,7 +23,7 @@ export class SessionVersion {
 
 @Schema({ timestamps: true })
 export class Session {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, index: true })
   invoiceDate: string;
 
   @Prop({ required: true })
@@ -44,8 +44,18 @@ export class Session {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   savedBy?: Types.ObjectId;
 
+  /** Unique session name, e.g. "2026-06-21 #1". Required for multi-session-per-day. */
   @Prop({ default: '' })
-  name?: string;
+  name: string;
+
+  /** Soft delete: set when admin deletes a session (goes to Arxiv) */
+  @Prop({ type: Date, default: null })
+  deletedAt?: Date | null;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', default: null })
+  deletedBy?: Types.ObjectId | null;
 }
 
 export const SessionSchema = SchemaFactory.createForClass(Session);
+// Compound unique: one session per date+name pair
+SessionSchema.index({ invoiceDate: 1, name: 1 }, { unique: true });

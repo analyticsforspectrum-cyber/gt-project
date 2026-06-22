@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Order, OrderDocument } from '../orders/schemas/order.schema';
 import { Invoice, InvoiceDocument } from '../invoices/schemas/invoice.schema';
 import { InventoryMovement, InventoryMovementDocument } from '../inventory/schemas/movement.schema';
+import { Session, SessionDocument } from '../sessions/schemas/session.schema';
 
 // Business timezone (Asia/Tashkent, UTC+5). All day/week/month boundaries are
 // computed in this zone so they don't shift with the server's UTC offset.
@@ -46,7 +47,8 @@ export class AnalyticsService {
   constructor(
     @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
     @InjectModel(Invoice.name) private readonly invoiceModel: Model<InvoiceDocument>,
-    @InjectModel(InventoryMovement.name) private readonly movementModel: Model<InventoryMovementDocument>
+    @InjectModel(InventoryMovement.name) private readonly movementModel: Model<InventoryMovementDocument>,
+    @InjectModel(Session.name) private readonly sessionModel: Model<SessionDocument>
   ) {}
 
   async dashboard() {
@@ -196,6 +198,63 @@ export class AnalyticsService {
       { $sort: { revenue: -1 } },
       { $project: { _id: 0, customer: '$_id', ordersCount: 1, revenue: 1, lastOrderDate: 1 } }
     ]);
+  }
+
+  /** GET /analytics/sessions-merged?dateFrom=&dateTo=
+   *  Returns each session with its invoice-level aggregates.
+   *  Replaces the need to load all sessions + all invoices separately in the frontend. */
+  async sessionsMerged(dateFrom?: string, dateTo?: string) {
+    const sessionMatch: Record<string, unknown> = {};
+    if (dateFrom || dateTo) {
+      sessionMatch.invoiceDate = {};
+      if (dateFrom) (sessionMatch.invoiceDate as Record<string, string>).$gte = dateFrom;
+      if (dateTo) (sessionMatch.invoiceDate as Record<string, string>).$lte = dateTo;
+    }
+
+    const invoiceMatch: Record<string, unknown> = {};
+    if (dateFrom || dateTo) {
+      invoiceMatch.dateIso = {};
+      if (dateFrom) (invoiceMatch.dateIso as Record<string, string>).$gte = dateFrom;
+      if (dateTo) (invoiceMatch.dateIso as Record<string, string>).$lte = dateTo;
+    }
+
+    const [sessions, invoiceAgg] = await Promise.all([
+      this.sessionModel
+        .find(sessionMatch)
+        .sort({ invoiceDate: -1 })
+        .select('invoiceDate savedAt invoiceCount sumTotal name savedBy')
+        .lean()
+        .exec(),
+      this.invoiceModel.aggregate([
+        { $match: invoiceMatch },
+        {
+          $group: {
+            _id: '$dateIso',
+            count: { $sum: 1 },
+            sumTotal: { $sum: '$sumTotal' },
+            sumQty: { $sum: '$sumQty' },
+            delivered: { $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] } },
+            pending: { $sum: { $cond: [{ $ne: ['$status', 'delivered'] }, 1, 0] } }
+          }
+        }
+      ])
+    ]);
+
+    const invoiceMap = new Map(invoiceAgg.map((r: any) => [r._id as string, r]));
+
+    return sessions.map((s: any) => {
+      const inv = invoiceMap.get(s.invoiceDate) ?? { count: 0, sumTotal: 0, sumQty: 0, delivered: 0, pending: 0 };
+      return {
+        invoiceDate: s.invoiceDate,
+        name: s.name ?? null,
+        savedAt: s.savedAt,
+        invoiceCount: inv.count || s.invoiceCount,
+        sumTotal: inv.sumTotal || s.sumTotal,
+        sumQty: inv.sumQty ?? 0,
+        delivered: inv.delivered ?? 0,
+        pending: inv.pending ?? 0
+      };
+    });
   }
 
   async userAnalytics(dateFrom?: string, dateTo?: string) {

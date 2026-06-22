@@ -39,4 +39,10 @@ export class VazvratController {
   deleteAll() {
     return this.vazvratService.deleteAll();
   }
+
+  /** Delete multiple dates at once */
+  @Post('delete-dates')
+  deleteByDates(@Body() body: { dates: string[] }) {
+    return this.vazvratService.deleteByDates(body.dates);
+  }
 }

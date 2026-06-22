@@ -30,7 +30,7 @@ export class Invoice {
   @Prop({ required: true, trim: true })
   label: string;
 
-  @Prop({ required: true, trim: true })
+  @Prop({ trim: true, default: '' })
   address: string;
 
   @Prop({ required: true, trim: true, index: true })

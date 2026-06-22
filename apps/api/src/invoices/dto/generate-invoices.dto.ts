@@ -1,4 +1,4 @@
-import { IsISO8601, IsNotEmpty, IsNumber, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsISO8601, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class GenerateInvoicesDto {
@@ -14,4 +14,9 @@ export class GenerateInvoicesDto {
 
   @IsISO8601({ strict: true })
   dateIso: string;
+
+  /** Agar true bo'lsa sessiya saqlanmaydi — faqat invoicelar generatsiya qilinadi */
+  @IsOptional()
+  @IsBoolean()
+  skipSession?: boolean;
 }

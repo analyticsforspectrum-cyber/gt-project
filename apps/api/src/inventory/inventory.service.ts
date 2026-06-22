@@ -19,6 +19,6 @@ export class InventoryService {
   }
 
   async list(): Promise<InventoryMovement[]> {
-    return this.movementModel.find().sort({ dateIso: -1, createdAt: -1 }).exec();
+    return this.movementModel.find().sort({ dateIso: -1, createdAt: -1 }).limit(200).exec();
   }
 }
