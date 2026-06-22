@@ -239,7 +239,7 @@ input:disabled, textarea:disabled, select:disabled { cursor: default; opacity: 0
   flex-direction: column;
   gap: 4px;
   padding: 14px 10px;
-  background: rgba(var(--shell-rgb),0.97);
+  background: rgba(var(--shell-rgb),1);
   border-right: 1px solid var(--soft-line);
   overflow-y: auto;
   overflow-x: hidden;
@@ -316,13 +316,11 @@ input:disabled, textarea:disabled, select:disabled { cursor: default; opacity: 0
   gap: 14px;
   padding: 0 20px;
   height: 54px;
-  background: rgba(var(--shell-rgb),0.82);
+  background: rgba(var(--shell-rgb),1);
   border-bottom: 1px solid rgba(var(--ink-rgb),0.07);
   position: sticky;
   top: 0;
   z-index: 40;
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
   box-shadow: 0 1px 0 rgba(var(--ink-rgb),0.06), 0 4px 24px rgba(0,0,0,0.08);
 }
 
@@ -677,14 +675,12 @@ input:focus, textarea:focus, select:focus {
 
 /* ─── PANE ───────────────────────────────────────────────────────────────── */
 .pane {
-  background: rgba(var(--shell-rgb),0.48);
+  background: rgba(var(--shell-rgb),1);
   border: 1px solid rgba(var(--ink-rgb),0.075);
   box-shadow: none;
   min-height: calc(100dvh - 160px);
   padding: 18px 20px 22px;
   border-radius: 12px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   animation: paneIn 0.20s cubic-bezier(0.25,0.46,0.45,0.94) both;
 }
 
@@ -857,7 +853,7 @@ input:focus, textarea:focus, select:focus {
 .tablewrap, .matrixwrap {
   overflow: auto;
   border: 1px solid rgba(var(--ink-rgb),0.09);
-  background: rgba(var(--shell-rgb),0.86);
+  background: rgba(var(--shell-rgb),1);
   border-radius: 10px;
   -webkit-overflow-scrolling: touch;
   max-height: calc(100dvh - 160px);
@@ -1993,7 +1989,7 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
 /* ─── SCHEDULE TABLE ─────────────────────────────────────────────────────── */
 .schedule-tablewrap {
   border: 1px solid rgba(var(--ink-rgb),0.15);
-  background: rgba(var(--shell-rgb),0.86);
+  background: rgba(var(--shell-rgb),1);
   border-radius: 10px;
 }
 /* Full grid lines */
