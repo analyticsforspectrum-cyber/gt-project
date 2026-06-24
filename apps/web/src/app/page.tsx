@@ -5412,7 +5412,8 @@ function DateRangePicker({ from, to, onChange, setFrom, setTo, inputStyle }: {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
 
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  // LOCAL date (timezone-safe) — toISOString() UTC qaytaradi va off-by-one beradi
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const todayStr = iso(new Date());
 
   const apply = React.useCallback((f: string, t: string) => {
