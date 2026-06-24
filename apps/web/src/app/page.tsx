@@ -131,11 +131,11 @@ export default function Home() {
   const [imports, setImports] = useState<ImportRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  // customers removed
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [productStats, setProductStats] = useState<ProductStat[]>([]);
   const [inventoryStats, setInventoryStats] = useState<InventoryStat[]>([]);
-  const [customerStats, setCustomerStats] = useState<CustomerStat[]>([]);
+  // customerStats removed
   // analyticsTab lives inside AnalyticsPane — removed from outer state
   const [orderFilters, setOrderFilters] = useState({ dateFrom: '', dateTo: '', customer: '', status: '' });
   const [orderCreateOpen, setOrderCreateOpen] = useState(false);
@@ -143,8 +143,7 @@ export default function Home() {
   const [newOrderDeliveryDate, setNewOrderDeliveryDate] = useState(todayIso());
   const [newOrderNotes, setNewOrderNotes] = useState('');
   const [newOrderItems, setNewOrderItems] = useState<Array<{ sku: string; name: string; unit: string; qty: number; price: number }>>([]);
-  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', address: '', notes: '' });
+  // newCustomer removed
   const [importFile, setImportFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [xlsSheets, setXlsSheets] = useState<string[]>([]);
@@ -385,7 +384,7 @@ const [manualOpen, setManualOpen] = useState(false);
         api.inventoryMovements(authToken),
         role === 'admin' ? api.imports(authToken) : Promise.resolve([] as ImportRecord[]),
         role === 'admin' ? api.auditLogs(authToken) : Promise.resolve([] as AuditLog[]),
-        api.customers(authToken),
+        Promise.resolve([]),
         api.dashboardStats(authToken).catch(() => null),
         api.queryVazvrat(authToken, '2020-01-01', new Date().toISOString().slice(0, 10)).catch(() => [] as import('@/types/domain').VazvratRecord[]),
       ]);
@@ -399,7 +398,7 @@ const [manualOpen, setManualOpen] = useState(false);
       setInventoryMovements(inventoryResult);
       setImports(importsResult);
       setAuditLogs(auditResult);
-      setCustomers(customersResult);
+      // customers removed
       if (statsResult) setDashboardStats(statsResult);
 
       // Auto-restore latest session so all views have consistent data with init values
@@ -1037,35 +1036,18 @@ const [manualOpen, setManualOpen] = useState(false);
     }
   }
 
-  async function createCustomer() {
-    if (!token || !newCustomer.name.trim()) {
-      showToast('err', 'Укажите имя клиента');
-      return;
-    }
-    try {
-      const result = await api.createCustomer(token, newCustomer);
-      setCustomers((previous) => [result, ...previous]);
-      setNewCustomerOpen(false);
-      setNewCustomer({ name: '', phone: '', address: '', notes: '' });
-      showToast('ok', 'Клиент создан');
-    } catch (error) {
-      showToast('err', getError(error));
-    }
-  }
 
   async function loadAnalytics() {
     if (!token) return;
     try {
-      const [stats, pStats, iStats, cStats] = await Promise.all([
+      const [stats, pStats, iStats] = await Promise.all([
         api.dashboardStats(token),
         api.analyticsProducts(token),
         api.analyticsInventory(token),
-        api.analyticsCustomers(token)
       ]);
       setDashboardStats(stats);
       setProductStats(pStats);
       setInventoryStats(iStats);
-      setCustomerStats(cStats);
 
       // Merge ALL saved sessions' invoices for analytics (use _id, not invoiceDate)
       try {
@@ -1405,7 +1387,6 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
           {!isAdmin && <Tab active={view === 'dispatch'}   icon={<Truck size={18} />}         label={T('nav_dispatch')}  onClick={() => setView('dispatch')} />}
           <Tab             active={view === 'schedule'}    icon={<MapIcon size={18} />}            label={T('nav_schedule')}  onClick={() => setView('schedule')} />
           {!isAdmin && <Tab active={view === 'stats'}      icon={<TrendingUp size={18} />}    label={T('nav_stats')}     onClick={() => setView('stats')} />}
-          {!isAdmin && <Tab active={view === 'customers'}  icon={<Users size={18} />}         label={T('nav_clients')}   onClick={() => setView('customers')} />}
           {isAdmin  && <Tab active={view === 'analytics'}  icon={<BarChart3 size={18} />}     label={T('nav_analytics')} onClick={() => { setView('analytics'); void loadAnalytics(); }} />}
           <Tab             active={view === 'undelivered'} icon={<AlertTriangle size={18} />} label="Qaytgan" onClick={() => setView('undelivered')}
             badge={invoices.filter(i => i.status === 'saved').length || undefined} />
@@ -2275,45 +2256,6 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
             </section>
           )}
 
-          {view === 'customers' && (
-            <section className="pane">
-              <PaneHead
-                title={T('clients_title')}
-                meta={`${customers.length} ${T('clients_meta')}`}
-                actions={
-                  <button className="small dark" type="button" onClick={() => setNewCustomerOpen(true)}>
-                    <Plus size={15} /> {T('lbl_add')}
-                  </button>
-                }
-              />
-              {customers.length ? (
-                <div className="tablewrap">
-                  <table className="data">
-                    <thead>
-                      <tr>
-                        <th>{T('clients_name')}</th>
-                        <th>{T('clients_phone')}</th>
-                        <th>{T('clients_addr')}</th>
-                        <th>{T('clients_notes')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customers.map((c) => (
-                        <tr key={c.id}>
-                          <td><b>{c.name}</b></td>
-                          <td className="mono">{c.phone || '—'}</td>
-                          <td>{c.address || '—'}</td>
-                          <td className="muted">{c.notes || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <Empty title={T('clients_empty')} />
-              )}
-            </section>
-          )}
 
           {view === 'analytics' && (
             <AnalyticsPane
@@ -2322,7 +2264,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
               sessions={sessions}
               dashboardStats={dashboardStats}
               productStats={productStats}
-              customerStats={customerStats}
+              customerStats={[]}
               token={token}
               onRefresh={loadAnalytics}
               onToast={showToast}
@@ -2885,7 +2827,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 <label className="field">
                   <span>{T('clients_name')}</span>
                   <input list="customer-list" value={newOrderCustomer} onChange={(e) => setNewOrderCustomer(e.target.value)} placeholder={T('clients_name')} />
-                  <datalist id="customer-list">{customers.map((c) => <option key={c.id} value={c.name} />)}</datalist>
+                  <datalist id="customer-list"></datalist>
                 </label>
                 <label className="field">
                   <span>{T('lbl_date')}</span>
@@ -2936,26 +2878,6 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
         </div>
       )}
 
-      {newCustomerOpen && (
-        <div className="modalBackdrop">
-          <div className="modal">
-            <div className="modalHead">
-              <h3>{T('modal_client')}</h3>
-              <button className="iconbtn" type="button" onClick={() => setNewCustomerOpen(false)}>×</button>
-            </div>
-            <div className="modalBody">
-              <label className="field"><span>{T('clients_name')}</span><input value={newCustomer.name} onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })} /></label>
-              <label className="field"><span>{T('clients_phone')}</span><input value={newCustomer.phone} onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })} /></label>
-              <label className="field"><span>{T('clients_addr')}</span><input value={newCustomer.address} onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })} /></label>
-              <label className="field"><span>{T('clients_notes')}</span><input value={newCustomer.notes} onChange={(e) => setNewCustomer({ ...newCustomer, notes: e.target.value })} /></label>
-            </div>
-            <div className="modalFoot">
-              <button className="small" type="button" onClick={() => setNewCustomerOpen(false)}>{T('lbl_cancel')}</button>
-              <button className="small dark" type="button" onClick={createCustomer}>{T('lbl_add')}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </>
   );
