@@ -2474,7 +2474,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 <button className={settingsView === 'sessions' ? 'active' : ''} type="button" onClick={() => setSettingsView('sessions')}>{T('settings_hist')}</button>
                 {isAdmin && <button className={settingsView === 'users' ? 'active' : ''} type="button" onClick={() => setSettingsView('users')}>{T('settings_access')}</button>}
                 <button className={(settingsView as string) === 'doverennost' ? 'active' : ''} type="button" onClick={() => setSettingsView('doverennost' as any)}>Ishonchnoma</button>
-                {isAdmin && <button className={(settingsView as string) === 'trash' ? 'active' : ''} type="button" onClick={() => setSettingsView('trash' as any)} style={{ color: '#ef4444' }}>🗑 Arxiv</button>}
+                {isAdmin && <button className={(settingsView as string) === 'trash' ? 'active' : ''} type="button" onClick={() => setSettingsView('trash' as any)} style={(settingsView as string) === 'trash' ? {} : { color: '#ef4444' }}>🗑 Arxiv</button>}
               </div>
 
               {settingsView === 'catalog' && (
