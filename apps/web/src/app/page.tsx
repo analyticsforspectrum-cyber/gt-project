@@ -4409,17 +4409,28 @@ function AnalyticsPane({
 
   return (
     <section className="pane" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 54px)', overflow: 'hidden' }}>
-      {/* ── Top bar: tabs + date range + refresh — FREEZE ── */}
-      <div className="analytics-topbar" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap', flexShrink: 0 }}>
-        <div className="analytics-tabs subtabs" style={{ position: 'static', margin: 0, padding: 0, background: 'transparent', flex: '1 1 auto' }}>
-          <button className={tab === 'overview' ? 'active' : ''} type="button" onClick={() => setTab('overview')}>{T('analytics_title')}</button>
-          <button className={tab === 'products' ? 'active' : ''} type="button" onClick={() => setTab('products')}>{T('lbl_product')}</button>
-          <button className={tab === 'markets' ? 'active' : ''} type="button" onClick={() => setTab('markets')}>{T('lbl_store')}</button>
-          <button className={tab === 'clients' ? 'active' : ''} type="button" onClick={() => setTab('clients')}>{T('clients_title')}</button>
-          <button className={tab === 'savdo' ? 'active' : ''} type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}>Savdo</button>
+
+      {/* ── FREEZE: Statistika header — KPI chips + Mahsulot/Market toggle ── */}
+      <div style={{ flexShrink: 0, borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', paddingBottom: 10, marginBottom: 0 }}>
+        {/* Row 1: Title + KPI chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.01em', marginRight: 4 }}>Statistika</span>
+          {[
+            { label: 'KELDI',         val: aBuyurtmaDona,  color: 'var(--ink)' },
+            { label: 'KAMAYDI',       val: aKamaydiDona,   color: aKamaydiDona > 0 ? '#d97706' : 'var(--ink)' },
+            { label: 'BERILDI',       val: aBerildiDona,   color: 'var(--ok)' },
+            { label: 'ZAKAZ SUMMA',   val: aBuyurtmaSum,   color: 'var(--ink)', sum: true },
+            { label: 'BERILGAN SUMMA',val: aBerildiSum,    color: 'var(--ok)', sum: true },
+          ].map(k => (
+            <div key={k.label} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.1)', borderRadius: 8, padding: '4px 10px' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: k.color, fontFamily: 'var(--mono)', letterSpacing: '-0.01em' }}>{fmt0(k.val)}</span>
+            </div>
+          ))}
         </div>
-        <div className="analytics-daterow" style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-          <DateRangePicker from={savdoFrom} to={savdoTo} setFrom={setSavdoFrom} setTo={setSavdoTo} />
+        {/* Row 2: DateRange + refresh + Mahsulot/Market/Savdo toggles */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <DateRangePicker from={savdoFrom} to={savdoTo} onChange={(f,t) => { setSavdoFrom(f); setSavdoTo(t); }} />
           {tab === 'savdo'
             ? <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
@@ -4430,27 +4441,27 @@ function AnalyticsPane({
                 <RefreshCcw size={13} />
               </button>
           }
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => setTab('products')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'products' ? 'rgba(46,168,85,0.09)' : 'var(--surface)', color: tab === 'products' ? 'var(--ok)' : 'var(--ink)' }}>
+              📦 Mahsulot <span style={{ background: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'products' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredProductRows.length}</span>
+            </button>
+            <button type="button" onClick={() => setTab('markets')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'markets' ? 'rgba(245,158,11,0.09)' : 'var(--surface)', color: tab === 'markets' ? '#b45309' : 'var(--ink)' }}>
+              🏪 Market <span style={{ background: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'markets' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredMarkets.length}</span>
+            </button>
+            <button type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'savdo' ? '#6366f1' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'savdo' ? 'rgba(99,102,241,0.09)' : 'var(--surface)', color: tab === 'savdo' ? '#4f46e5' : 'var(--ink)' }}>
+              📊 Savdo
+            </button>
+          </div>
         </div>
       </div>
 
       {tab === 'overview' && (
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {/* ── KPI cards — horizontal scroll on mobile ── */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
-            {[
-              { label: 'Buyurtma',     sum: aBuyurtmaSum,  dona: aBuyurtmaDona, color: 'var(--ink)',   accent: false },
-              { label: 'Kamaytirildi', sum: aKamaydiSum,   dona: aKamaydiDona,  color: aKamaydiSum > 0 ? '#d97706' : 'var(--ok)', accent: false },
-              { label: 'Berildi',      sum: aBerildiSum,   dona: aBerildiDona,  color: 'var(--ok)',   accent: false },
-              { label: 'Qaytarma',     sum: aQaytarmaSum,  dona: aQaytarmaDona, color: '#dc2626',     accent: false },
-              { label: 'Savdo',        sum: aSavdoSum,     dona: aSavdoDona,    color: 'var(--ink)',  accent: true  },
-            ].map(k => (
-              <div key={k.label} style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '12px 14px', borderRadius: 14, background: k.accent ? 'linear-gradient(135deg, #46bf72, #2ea855)' : 'var(--surface)', border: k.accent ? 'none' : '1px solid rgba(var(--ink-rgb),0.08)', boxShadow: k.accent ? '0 4px 16px rgba(70,191,114,0.22)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: k.accent ? 'rgba(255,255,255,0.75)' : 'var(--muted)', marginBottom: 5 }}>{k.label}</div>
-                <div style={{ fontSize: 15, fontWeight: 900, color: k.accent ? '#fff' : k.color, letterSpacing: '-0.02em', lineHeight: 1.15 }}>{fmt0(k.sum)}</div>
-                <div style={{ fontSize: 10, color: k.accent ? 'rgba(255,255,255,0.65)' : 'var(--muted)', marginTop: 3 }}>{fmt0(k.dona)} dona</div>
-              </div>
-            ))}
-          </div>
+          {/* legacy overview — redirect to products */}
+          {(() => { setTimeout(() => setTab('products'), 0); return null; })()}
           {/* ── Top-5 leaderboards ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
 
@@ -4536,12 +4547,12 @@ function AnalyticsPane({
               <table className="data">
                 <thead>
                   <tr>
-                    <th style={{ width: 24 }}></th>
+                    <th style={{ width: 24 }}>#</th>
                     <th>{T('lbl_product')}</th>
                     <th className="right">Zakaz</th>
-                    <th className="right">Berildi</th>
-                    <th className="right">Summa</th>
-                    <th>График</th>
+                    <th className="right" style={{ color: '#d97706' }}>Kamaydi</th>
+                    <th className="right" style={{ color: 'var(--ok)' }}>Berildi</th>
+                    <th className="right">Summa (so'm)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4562,18 +4573,14 @@ function AnalyticsPane({
                     return (
                       <React.Fragment key={row.product.sku}>
                         <tr onClick={() => toggleItem(pKey)} style={{ cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : undefined }}>
-                          <td style={{ textAlign: 'center', color: 'var(--accent)', fontWeight: 800, fontSize: 15, transition: 'transform 0.15s', paddingRight: 0 }}>
+                          <td style={{ textAlign: 'center', color: open ? 'var(--ok)' : 'var(--muted)', fontWeight: 700, fontSize: 12 }}>
                             <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>›</span>
                           </td>
                           <td><b>{row.product.name}</b></td>
                           <td className="right mono">{fmt0(row.initTotal)}</td>
-                          <td className="right mono">{fmt0(row.givenQty)}</td>
+                          <td className="right mono" style={{ color: (row.initTotal - row.givenQty) > 0 ? '#d97706' : 'var(--muted)' }}>{(row.initTotal - row.givenQty) > 0 ? fmt0(row.initTotal - row.givenQty) : '—'}</td>
+                          <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(row.givenQty)}</td>
                           <td className="right mono">{fmt0(row.givenSum)}</td>
-                          <td style={{ minWidth: 80 }}>
-                            <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
-                              <div style={{ width: `${(row.givenQty / fMaxProductQty) * 100}%`, height: '100%', background: '#46bf72', borderRadius: 4 }} />
-                            </div>
-                          </td>
                         </tr>
                         {open && marketRows.map(mr => (
                           <tr key={mr.market} style={{ background: 'rgba(var(--ink-rgb),0.02)', fontSize: 12 }}>
@@ -4600,12 +4607,11 @@ function AnalyticsPane({
               <table className="data">
                 <thead>
                   <tr>
-                    <th style={{ width: 24 }}></th>
+                    <th style={{ width: 24 }}>#</th>
                     <th>{T('lbl_store')}</th>
-                    <th className="right">Hujjat</th>
-                    <th className="right">{T('lbl_pcs')}</th>
-                    <th className="right">{T('lbl_sum')}</th>
-                    <th>График</th>
+                    <th className="right">Zakaz</th>
+                    <th className="right" style={{ color: 'var(--ok)' }}>Berildi</th>
+                    <th className="right">Summa (so'm)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4616,18 +4622,13 @@ function AnalyticsPane({
                     return (
                       <React.Fragment key={m.label}>
                         <tr onClick={() => toggleItem(mKey)} style={{ cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : undefined }}>
-                          <td style={{ textAlign: 'center', color: 'var(--accent)', fontWeight: 800, fontSize: 15, paddingRight: 0 }}>
+                          <td style={{ textAlign: 'center', color: open ? 'var(--ok)' : 'var(--muted)', fontWeight: 700, fontSize: 12 }}>
                             <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>›</span>
                           </td>
                           <td><b>{shortMkt(m.label)}</b></td>
-                          <td className="right mono">{m.count}</td>
-                          <td className="right mono">{fmt0(m.qty)}</td>
+                          <td className="right mono">{m.count} <span style={{ fontSize: 10, color: 'var(--muted)' }}>doc</span></td>
+                          <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(m.qty)}</td>
                           <td className="right mono">{fmt0(m.sum)}</td>
-                          <td style={{ minWidth: 80 }}>
-                            <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden', width: '100%' }}>
-                              <div style={{ width: `${(m.sum / fMaxMarketSum) * 100}%`, height: '100%', background: 'var(--honey)', borderRadius: 4 }} />
-                            </div>
-                          </td>
                         </tr>
                         {open && mInvoices.map(inv => {
                           const iKey = 'inv-' + inv.invNo;
@@ -5447,7 +5448,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_orders:'Buyurtmalar', nav_register:"Ro'yxat", nav_matrix:'Jadval',
     nav_docs:'Hujjatlar', nav_dispatch:'Marshrut', nav_schedule:'Grafik',
     nav_stats:'Statistika', nav_ops:'Operatsiyalar', nav_clients:'Mijozlar',
-    nav_analytics:'Analitika', nav_settings:'Sozlamalar',
+    nav_analytics:'Statistika', nav_settings:'Sozlamalar',
     nav_preferences:'Shaxsiy',
     pref_bg:"Orqa fon", pref_bg_hint:"Oq yoki boshqa açiq rang", pref_bg_custom:"O'z rangim", pref_reset:'Tiklash',
     pref_density:'Zichlik', pref_density_hint:"Qatorlar va elementlar orasidagi masofa",
@@ -5486,7 +5487,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     schedule_upload:'Grafik yuklash', schedule_view_only:"Ko'rish rejimi",
     stats_title:'Statistika', stats_invoices:'Hujjatlar',
     stats_items:'Dona', stats_sum:'Summa', stats_avg:'O\'rtacha',
-    analytics_title:'Analitika',
+    analytics_title:'Statistika',
     settings_cat:'Mahsulotlar', settings_req:'Tafsilot',
     settings_exc:'Istisno kunlar', settings_hist:'Tarix', settings_access:'Kirish',
     settings_cat_title:'Mahsulotlar', settings_req_title:'Tafsilot',
@@ -5556,7 +5557,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     schedule_upload:'Загрузить график', schedule_view_only:'Режим просмотра',
     stats_title:'Статистика', stats_invoices:'Накладных',
     stats_items:'Позиций', stats_sum:'Сумма', stats_avg:'Средний чек',
-    analytics_title:'Аналитика',
+    analytics_title:'Statistika',
     settings_cat:'Каталог', settings_req:'Реквизиты',
     settings_exc:'Исключения', settings_hist:'История', settings_access:'Доступ',
     settings_cat_title:'Каталог товаров', settings_req_title:'Реквизиты',
@@ -5626,7 +5627,7 @@ const I18N: Record<Lang, Record<string, string | string[]>> = {
     schedule_upload:'Upload schedule', schedule_view_only:'View only',
     stats_title:'Statistics', stats_invoices:'Invoices',
     stats_items:'Items', stats_sum:'Revenue', stats_avg:'Avg. check',
-    analytics_title:'Analytics',
+    analytics_title:'Statistika',
     settings_cat:'Catalog', settings_req:'Requisites',
     settings_exc:'Exceptions', settings_hist:'History', settings_access:'Access',
     settings_cat_title:'Product catalog', settings_req_title:'Requisites',
