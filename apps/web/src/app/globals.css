@@ -855,8 +855,8 @@ input:focus, textarea:focus, select:focus {
   border: 1px solid rgba(var(--ink-rgb),0.09);
   background: rgba(var(--shell-rgb),1);
   border-radius: 10px;
-  -webkit-overflow-scrolling: touch;
   max-height: calc(100dvh - 160px);
+  /* -webkit-overflow-scrolling:touch breaks position:sticky on iOS — omit */
 }
 
 table { border-collapse: collapse; }
@@ -1082,12 +1082,13 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
   position: sticky;
   top: 0;
   z-index: 3;
-  background: rgba(var(--surf-rgb),0.99);
+  background: rgba(var(--surf-rgb),1);
   color: rgba(var(--ink-rgb),0.82);
   padding: 7px 8px;
   vertical-align: bottom;
   white-space: nowrap;
   width: 1px;
+  will-change: transform;
 }
 
 .matrix th span, .matrix th small, .matrix th em { display: block; text-align: left; }
@@ -1099,15 +1100,30 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 .matrix .productcol {
   position: sticky;
   left: 0;
-  min-width: 240px;
-  max-width: 240px;
+  min-width: 200px;
+  max-width: 200px;
   z-index: 2;
-  background: inherit;
+  background: rgba(var(--shell-rgb),1);
   border-right: 2px solid rgba(var(--ink-rgb),0.30) !important;
+  will-change: transform;
 }
-:root[data-theme="light"] .matrix .productcol { border-right: 2px solid #8bbf9a !important; }
+:root[data-theme="light"] .matrix .productcol { border-right: 2px solid #8bbf9a !important; background: #f0faf4; }
 
-.matrix thead .productcol { z-index: 4; background: rgba(var(--surf-rgb),1); }
+/* Corner cell: freeze both axes */
+.matrix thead th.productcol {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  background: rgba(var(--surf-rgb),1);
+}
+:root[data-theme="light"] .matrix thead th.productcol { background: #dff0e8; }
+
+/* Row stripes bleed into frozen col */
+.matrix tbody tr.row-even td.productcol { background: rgba(var(--ok-rgb),0.16); }
+.matrix tbody tr.row-odd  td.productcol { background: rgba(var(--shell-rgb),1); }
+:root[data-theme="light"] .matrix tbody tr.row-even td.productcol { background: #d6f0e2; }
+:root[data-theme="light"] .matrix tbody tr.row-odd  td.productcol { background: #ffffff; }
 .matrix td.productcol { padding: 8px 11px; }
 .matrix td.productcol b, .matrix td.productcol span { display: block; }
 .matrix td.productcol span { color: var(--muted); font-family: var(--mono); font-size: 10px; }
@@ -1167,7 +1183,7 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 
 .matrix .totcol {
   position: sticky;
-  left: 240px;
+  left: 200px;
   z-index: 2;
   min-width: 58px;
   text-align: right;
@@ -1175,10 +1191,15 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
   font-family: var(--mono);
   font-size: 13px;
   border-right: 2px solid rgba(var(--ink-rgb),0.30);
-  background: inherit;
+  background: rgba(var(--shell-rgb),1);
   white-space: nowrap;
+  will-change: transform;
 }
-:root[data-theme="light"] .matrix .totcol { border-right: 2px solid #8bbf9a; }
+:root[data-theme="light"] .matrix .totcol { border-right: 2px solid #8bbf9a; background: #f0faf4; }
+.matrix tbody tr.row-even td.totcol { background: rgba(var(--ok-rgb),0.16); }
+.matrix tbody tr.row-odd  td.totcol { background: rgba(var(--shell-rgb),1); }
+:root[data-theme="light"] .matrix tbody tr.row-even td.totcol { background: #d6f0e2; }
+:root[data-theme="light"] .matrix tbody tr.row-odd  td.totcol { background: #ffffff; }
 .matrix thead .totcol { z-index: 4; background: rgba(var(--surf-rgb),1); }
 .matrix tbody tr.row-even .totcol     { background: #1a3326; }
 .matrix tbody tr.row-odd  .totcol     { background: rgba(var(--surf-rgb),1); }
