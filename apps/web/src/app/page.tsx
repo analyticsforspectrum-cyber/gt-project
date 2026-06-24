@@ -1436,18 +1436,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       </button>}
                       <button type="button" disabled={!filteredInvoices.length} onClick={exportXlsx}
                         style={{ background: filteredInvoices.length ? '#1d6f42' : '#888', color: '#fff', border: 'none', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, padding: '6px 14px', cursor: filteredInvoices.length ? 'pointer' : 'not-allowed', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <rect width="24" height="24" rx="4" fill="#185C37"/>
-                          <rect x="11" y="0" width="13" height="24" rx="2" fill="#21A366"/>
-                          <rect x="11" y="0" width="13" height="12" rx="2" fill="#33C481"/>
-                          <rect x="11" y="0" width="2" height="24" fill="#107C41"/>
-                          <path d="M3 6h8v12H3a1 1 0 01-1-1V7a1 1 0 011-1z" fill="#107C41"/>
-                          <text x="1.5" y="16.5" fontSize="9" fontWeight="800" fill="#fff" fontFamily="Arial,sans-serif">X</text>
-                          <line x1="14" y1="8" x2="22" y2="8" stroke="#fff" strokeWidth="1.2" opacity=".5"/>
-                          <line x1="14" y1="12" x2="22" y2="12" stroke="#fff" strokeWidth="1.2" opacity=".5"/>
-                          <line x1="14" y1="16" x2="22" y2="16" stroke="#fff" strokeWidth="1.2" opacity=".5"/>
-                          <line x1="18" y1="5" x2="18" y2="19" stroke="#fff" strokeWidth="1.2" opacity=".5"/>
-                        </svg>
+                        <ExcelIcon size={18} />
                         Excel
                       </button>
                     </div>
@@ -1898,7 +1887,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     }}
                   />
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: sapRaw ? 'rgba(70,191,114,0.15)' : 'rgba(var(--ink-rgb),0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <FileText size={18} style={{ color: sapRaw ? '#46bf72' : 'var(--muted)' }} />
+                    <ExcelIcon size={22} />
                   </div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 13, color: sapRaw ? '#46bf72' : 'var(--ink)' }}>{sapRaw ? '✓ Fayl yuklandi' : 'Excel faylni tanlang'}</div>
@@ -1983,8 +1972,8 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     <input type="file" accept=".xls,.xlsx" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
                       disabled={vazvratUploadBusy}
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadVazvratFromOrders(f); e.target.value = ''; }} />
-                    <div style={{ width: 36, height: 36, borderRadius: 9, background: 'rgba(var(--ink-rgb),0.07)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                      <Download size={17} style={{ opacity: 0.5 }} />
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: 'rgba(16,124,65,0.08)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <ExcelIcon size={22} />
                     </div>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 14 }}>Vazvrat Excel faylini tanlang</div>
@@ -4536,8 +4525,8 @@ function AnalyticsPane({
 
       {tab === 'overview' && (
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {/* ── KPI cards ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 14 }}>
+          {/* ── KPI cards — horizontal scroll on mobile ── */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
             {[
               { label: 'Buyurtma',     sum: aBuyurtmaSum,  dona: aBuyurtmaDona, color: 'var(--ink)',   accent: false },
               { label: 'Kamaytirildi', sum: aKamaydiSum,   dona: aKamaydiDona,  color: aKamaydiSum > 0 ? '#d97706' : 'var(--ok)', accent: false },
@@ -4545,7 +4534,7 @@ function AnalyticsPane({
               { label: 'Qaytarma',     sum: aQaytarmaSum,  dona: aQaytarmaDona, color: '#dc2626',     accent: false },
               { label: 'Savdo',        sum: aSavdoSum,     dona: aSavdoDona,    color: 'var(--ink)',  accent: true  },
             ].map(k => (
-              <div key={k.label} style={{ padding: '12px 14px', borderRadius: 14, background: k.accent ? 'linear-gradient(135deg, #46bf72, #2ea855)' : 'var(--surface)', border: k.accent ? 'none' : '1px solid rgba(var(--ink-rgb),0.08)', boxShadow: k.accent ? '0 4px 16px rgba(70,191,114,0.22)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div key={k.label} style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '12px 14px', borderRadius: 14, background: k.accent ? 'linear-gradient(135deg, #46bf72, #2ea855)' : 'var(--surface)', border: k.accent ? 'none' : '1px solid rgba(var(--ink-rgb),0.08)', boxShadow: k.accent ? '0 4px 16px rgba(70,191,114,0.22)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: k.accent ? 'rgba(255,255,255,0.75)' : 'var(--muted)', marginBottom: 5 }}>{k.label}</div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: k.accent ? '#fff' : k.color, letterSpacing: '-0.02em', lineHeight: 1.15 }}>{fmt0(k.sum)}</div>
                 <div style={{ fontSize: 10, color: k.accent ? 'rgba(255,255,255,0.65)' : 'var(--muted)', marginTop: 3 }}>{fmt0(k.dona)} dona</div>
@@ -4561,38 +4550,13 @@ function AnalyticsPane({
                 <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5MarketsBySum.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>🏆 Eng ko'p zakaz (top 5)</div>
                   {top5MarketsBySum.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Ma'lumot yo'q</div>}
-                  {top5MarketsBySum.map((m, i) => {
-                    const key = 'ldr-mktc-' + m.storeCode;
-                    const open = expandedItems.has(key);
-                    const mInvs = filteredInvoices.filter(inv => inv.storeCode === m.storeCode);
-                    return (
-                      <div key={m.storeCode} style={{ borderBottom: i < top5MarketsBySum.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
-                        <div onClick={() => toggleItem(key)} style={{ display: 'grid', gridTemplateColumns: '20px 18px 1fr 65px 90px', gap: 6, alignItems: 'center', padding: '9px 16px', cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : 'transparent' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
-                          <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
-                          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.label)}</span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(m.qty)} dona</span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right' }}>{fmt0(m.sum)}</span>
-                        </div>
-                        {open && (
-                          <div style={{ background: 'rgba(var(--ink-rgb),0.02)', borderTop: '1px solid rgba(var(--ink-rgb),0.04)' }}>
-                            {mInvs.map(inv => (
-                              <div key={inv.invNo} style={{ display: 'grid', gridTemplateColumns: '1fr 65px 90px', gap: 8, padding: '6px 16px 6px 54px', fontSize: 12, alignItems: 'center', borderBottom: '1px solid rgba(var(--ink-rgb),0.03)' }}>
-                                <span style={{ color: 'var(--muted)' }}>#{inv.invNo} · {inv.dateIso}</span>
-                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(inv.sumQty)} dona</span>
-                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600 }}>{fmt0(inv.sumTotal)}</span>
-                              </div>
-                            ))}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px 90px', gap: 8, padding: '6px 16px 8px 54px', fontSize: 12 }}>
-                              <span style={{ fontWeight: 700, color: 'var(--muted)' }}>Jami</span>
-                              <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 700 }}>{fmt0(m.qty)} dona</span>
-                              <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{fmt0(m.sum)}</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {top5MarketsBySum.map((m, i) => (
+                    <div key={m.storeCode} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 90px', gap: 6, alignItems: 'center', padding: '9px 16px', borderBottom: i < top5MarketsBySum.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.label)}</span>
+                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right' }}>{fmt0(m.sum)}</span>
+                    </div>
+                  ))}
                 </div>
               );
             })()}
@@ -4604,44 +4568,13 @@ function AnalyticsPane({
                 <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>⚠️ Eng ko'p qaytarma market (top 5)</div>
                   {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Qaytarma yo'q</div>}
-                  {top5.map((m, i) => {
-                    const key = 'ldr-vmkt-' + i;
-                    const open = expandedItems.has(key);
-                    const mVrs = vazvratRows.filter(vr => {
-                      const d = vr.date.slice(0, 10);
-                      return vr.marketCode === Object.keys(vazvratByMarket)[0] || vr.marketName === m.name;
-                    }).filter(vr => { const d = vr.date.slice(0, 10); return d >= savdoFrom && d <= savdoTo; });
-                    // Group by product
-                    const byProd: Record<string, { name: string; qty: number; total: number }> = {};
-                    for (const vr of vazvratRows.filter(vr => { const d = vr.date.slice(0,10); return vr.marketName === m.name && d >= savdoFrom && d <= savdoTo; })) {
-                      if (!byProd[vr.sapCode]) byProd[vr.sapCode] = { name: vr.productName, qty: 0, total: 0 };
-                      byProd[vr.sapCode].qty += vr.qty;
-                      byProd[vr.sapCode].total += vr.totalWithVat;
-                    }
-                    const prodRows = Object.values(byProd).sort((a,b) => b.qty - a.qty);
-                    return (
-                      <div key={m.name + i} style={{ borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
-                        <div onClick={() => toggleItem(key)} style={{ display: 'grid', gridTemplateColumns: '20px 18px 1fr 55px 80px', gap: 6, alignItems: 'center', padding: '9px 16px', cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : 'transparent' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#dc2626' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
-                          <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
-                          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.name)}</span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(m.qty)} dona</span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', color: '#dc2626' }}>{fmt0(m.total)}</span>
-                        </div>
-                        {open && prodRows.length > 0 && (
-                          <div style={{ background: 'rgba(var(--ink-rgb),0.02)', borderTop: '1px solid rgba(var(--ink-rgb),0.04)' }}>
-                            {prodRows.map(p => (
-                              <div key={p.name} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 80px', gap: 8, padding: '6px 16px 6px 54px', fontSize: 12, borderBottom: '1px solid rgba(var(--ink-rgb),0.03)' }}>
-                                <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(p.qty)} dona</span>
-                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>{fmt0(p.total)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {top5.map((m, i) => (
+                    <div key={m.name + i} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 80px', gap: 6, alignItems: 'center', padding: '9px 16px', borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#dc2626' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.name)}</span>
+                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', color: '#dc2626' }}>{fmt0(m.total)}</span>
+                    </div>
+                  ))}
                 </div>
               );
             })()}
@@ -4652,42 +4585,14 @@ function AnalyticsPane({
                 <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5ProductsByQty.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>📦 Eng ko'p sotilgan tovar (top 5)</div>
                   {top5ProductsByQty.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Ma'lumot yo'q</div>}
-                  {top5ProductsByQty.map((r, i) => {
-                    const key = 'ldr-prod-' + r.product.sku;
-                    const open = expandedItems.has(key);
-                    // per-market breakdown
-                    const byMkt: Record<string, { market: string; qty: number; sum: number }> = {};
-                    for (const inv of filteredInvoices) {
-                      const line = inv.lines.find(l => l.sku === r.product.sku);
-                      if (!line || !line.qty) continue;
-                      if (!byMkt[inv.storeCode]) byMkt[inv.storeCode] = { market: inv.market, qty: 0, sum: 0 };
-                      byMkt[inv.storeCode].qty += line.qty;
-                      byMkt[inv.storeCode].sum += line.total;
-                    }
-                    const mktRows = Object.values(byMkt).sort((a,b) => b.qty - a.qty);
-                    return (
-                      <div key={r.product.sku} style={{ borderBottom: i < top5ProductsByQty.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
-                        <div onClick={() => toggleItem(key)} style={{ display: 'grid', gridTemplateColumns: '20px 18px 1fr 55px 80px', gap: 6, alignItems: 'center', padding: '9px 16px', cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : 'transparent' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
-                          <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
-                          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.product.name}</span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(r.givenQty)} dona</span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right' }}>{fmt0(r.givenSum)}</span>
-                        </div>
-                        {open && (
-                          <div style={{ background: 'rgba(var(--ink-rgb),0.02)', borderTop: '1px solid rgba(var(--ink-rgb),0.04)' }}>
-                            {mktRows.map(mr => (
-                              <div key={mr.market} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 80px', gap: 8, padding: '6px 16px 6px 54px', fontSize: 12, borderBottom: '1px solid rgba(var(--ink-rgb),0.03)' }}>
-                                <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortMkt(mr.market)}</span>
-                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(mr.qty)} dona</span>
-                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600 }}>{fmt0(mr.sum)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {top5ProductsByQty.map((r, i) => (
+                    <div key={r.product.sku} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 45px 80px', gap: 6, alignItems: 'start', padding: '9px 16px', borderBottom: i < top5ProductsByQty.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center', paddingTop: 2 }}>{i + 1}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{r.product.name}</span>
+                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(r.givenQty)}</span>
+                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right' }}>{fmt0(r.givenSum)}</span>
+                    </div>
+                  ))}
                 </div>
               );
             })()}
@@ -4699,39 +4604,14 @@ function AnalyticsPane({
                 <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>🔄 Eng ko'p qaytarma tovar (top 5)</div>
                   {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Qaytarma yo'q</div>}
-                  {top5.map((p, i) => {
-                    const key = 'ldr-vprod-' + i;
-                    const open = expandedItems.has(key);
-                    const byMkt: Record<string, { name: string; qty: number; total: number }> = {};
-                    for (const vr of vazvratRows.filter(vr => { const d = vr.date.slice(0,10); return vr.productName === p.name && d >= savdoFrom && d <= savdoTo; })) {
-                      if (!byMkt[vr.marketCode]) byMkt[vr.marketCode] = { name: vr.marketName, qty: 0, total: 0 };
-                      byMkt[vr.marketCode].qty += vr.qty;
-                      byMkt[vr.marketCode].total += vr.totalWithVat;
-                    }
-                    const mktRows = Object.values(byMkt).sort((a,b) => b.qty - a.qty);
-                    return (
-                      <div key={p.name + i} style={{ borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
-                        <div onClick={() => toggleItem(key)} style={{ display: 'grid', gridTemplateColumns: '20px 18px 1fr 55px 80px', gap: 6, alignItems: 'center', padding: '9px 16px', cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : 'transparent' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f97316' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
-                          <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
-                          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(p.qty)} dona</span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', color: '#f97316' }}>{fmt0(p.total)}</span>
-                        </div>
-                        {open && mktRows.length > 0 && (
-                          <div style={{ background: 'rgba(var(--ink-rgb),0.02)', borderTop: '1px solid rgba(var(--ink-rgb),0.04)' }}>
-                            {mktRows.map(mr => (
-                              <div key={mr.name} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 80px', gap: 8, padding: '6px 16px 6px 54px', fontSize: 12, borderBottom: '1px solid rgba(var(--ink-rgb),0.03)' }}>
-                                <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortMkt(mr.name)}</span>
-                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(mr.qty)} dona</span>
-                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600, color: '#f97316' }}>{fmt0(mr.total)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {top5.map((p, i) => (
+                    <div key={p.name + i} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 45px 80px', gap: 6, alignItems: 'start', padding: '9px 16px', borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f97316' : 'var(--muted)', textAlign: 'center', paddingTop: 2 }}>{i + 1}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{p.name}</span>
+                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(p.qty)}</span>
+                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', color: '#f97316' }}>{fmt0(p.total)}</span>
+                    </div>
+                  ))}
                 </div>
               );
             })()}
@@ -5519,6 +5399,39 @@ function updateCatalogDraft(
   patch: Partial<CatalogProduct>
 ): CatalogProduct[] {
   return current.map((product, productIndex) => (productIndex === index ? { ...product, ...patch } : product));
+}
+
+// ─── Excel 365 logo SVG ───────────────────────────────────────────────────────
+function ExcelIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+      <defs>
+        <linearGradient id="xg1" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#18884F"/>
+          <stop offset="100%" stopColor="#107C41"/>
+        </linearGradient>
+        <linearGradient id="xg2" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#33C481"/>
+          <stop offset="50%" stopColor="#21A366"/>
+          <stop offset="100%" stopColor="#107C41"/>
+        </linearGradient>
+      </defs>
+      {/* White sheet background */}
+      <rect x="10" y="1" width="13" height="22" rx="2" fill="#fff"/>
+      {/* Grid lines */}
+      <line x1="10" y1="7"  x2="23" y2="7"  stroke="#E0E0E0" strokeWidth="0.6"/>
+      <line x1="10" y1="12" x2="23" y2="12" stroke="#E0E0E0" strokeWidth="0.6"/>
+      <line x1="10" y1="17" x2="23" y2="17" stroke="#E0E0E0" strokeWidth="0.6"/>
+      <line x1="16.5" y1="1" x2="16.5" y2="23" stroke="#E0E0E0" strokeWidth="0.6"/>
+      {/* Green document overlay */}
+      <rect x="10" y="1" width="13" height="22" rx="2" fill="url(#xg2)" opacity="0.15"/>
+      {/* Left green panel */}
+      <rect x="0" y="3" width="14" height="18" rx="2" fill="url(#xg1)"/>
+      {/* X letter */}
+      <text x="2.2" y="16.5" fontSize="11" fontWeight="900" fill="#fff" fontFamily="Segoe UI,Arial,sans-serif"
+        style={{ letterSpacing: '-1px' }}>X</text>
+    </svg>
+  );
 }
 
 function getError(error: unknown): string {
