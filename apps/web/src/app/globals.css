@@ -2439,8 +2439,17 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
   /* ── Settings forms ── */
   .two { grid-template-columns: 1fr; }
   .userCreate { grid-template-columns: 1fr; }
-  .sessionRow { grid-template-columns: 1fr auto; gap: 6px; }
-  .sessionRow > span:nth-child(3) { display: none; }
+  .sessionRow {
+    grid-template-columns: 1fr auto auto;
+    grid-template-rows: auto auto;
+    gap: 4px 8px;
+    padding: 10px 14px;
+  }
+  .sessionRow b { grid-column: 1; grid-row: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sessionRow .sess-badge { grid-column: 1; grid-row: 2; justify-self: start; }
+  .sessionRow .sess-sum { grid-column: 1; grid-row: 2; display: none; }
+  .sessionRow button.mini { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+  .sessionRow button.iconbtn { grid-column: 3; grid-row: 1 / 3; align-self: center; }
 
   /* ── Manual products modal ── */
   .manualProducts label { grid-template-columns: 1fr 76px 76px; gap: 6px; }

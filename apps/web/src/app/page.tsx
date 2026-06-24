@@ -153,7 +153,10 @@ export default function Home() {
   const [xlsWorkbook, setXlsWorkbook] = useState<any>(null);
   const [invoiceDetail, setInvoiceDetail] = useState<Invoice | null>(null);
   const [undeliverModal, setUndeliverModal] = useState<{ invNo: number; comment: string } | null>(null);
-  const [undeliveredFilter, setUndeliveredFilter] = useState<{ from: string; to: string }>({ from: '', to: '' });
+  const [undeliveredFilter, setUndeliveredFilter] = useState<{ from: string; to: string }>(() => {
+    const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 3);
+    return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+  });
   const [restoreModal, setRestoreModal] = useState<{
     invNo: number;
     date: string;
@@ -417,7 +420,7 @@ const [manualOpen, setManualOpen] = useState(false);
                 api.invoices(authToken),
                 api.listCancelledInvoices(authToken).catch(() => [] as Invoice[]),
               ]);
-              setAllDbInvoices(dbInvoices);
+              // setAllDbInvoices faqat Analytics tabida yuklanadi (loadAnalytics da)
               const statusMap: Record<number, Invoice['status']> = {};
               for (const d of dbInvoices) statusMap[d.invNo] = d.status;
               for (const d of cancelledInvoices) statusMap[d.invNo] = 'cancelled';
@@ -745,7 +748,7 @@ const [manualOpen, setManualOpen] = useState(false);
       // Sync status + undeliverComment + undeliveredAt from DB
       try {
         const dbInvoices = await api.invoices(token);
-        setAllDbInvoices(dbInvoices);
+        // setAllDbInvoices faqat Analytics tabida yuklanadi
         const dbByInvNo: Record<number, Invoice> = {};
         for (const dbInv of dbInvoices) { dbByInvNo[dbInv.invNo] = dbInv; }
         setInvoices((prev) => prev.map((inv) => {
@@ -1427,12 +1430,27 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       currentDate={dateIso}
                       onSelect={(d) => loadSession(d)}
                     />
-                    {!isAdmin && <button className="small dark" type="button" onClick={() => setManualOpen(true)}>
-                      <Plus size={15} /> {T('reg_manual')}
-                    </button>}
-                    <button className="small" type="button" disabled={!filteredInvoices.length} onClick={exportXlsx}>
-                      <Download size={15} /> Excel
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                      {!isAdmin && <button className="small dark" type="button" onClick={() => setManualOpen(true)} style={{ flex: 1 }}>
+                        <Plus size={15} /> {T('reg_manual')}
+                      </button>}
+                      <button type="button" disabled={!filteredInvoices.length} onClick={exportXlsx}
+                        style={{ background: filteredInvoices.length ? '#1d6f42' : '#888', color: '#fff', border: 'none', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, padding: '6px 14px', cursor: filteredInvoices.length ? 'pointer' : 'not-allowed', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <rect width="24" height="24" rx="4" fill="#185C37"/>
+                          <rect x="11" y="0" width="13" height="24" rx="2" fill="#21A366"/>
+                          <rect x="11" y="0" width="13" height="12" rx="2" fill="#33C481"/>
+                          <rect x="11" y="0" width="2" height="24" fill="#107C41"/>
+                          <path d="M3 6h8v12H3a1 1 0 01-1-1V7a1 1 0 011-1z" fill="#107C41"/>
+                          <text x="1.5" y="16.5" fontSize="9" fontWeight="800" fill="#fff" fontFamily="Arial,sans-serif">X</text>
+                          <line x1="14" y1="8" x2="22" y2="8" stroke="#fff" strokeWidth="1.2" opacity=".5"/>
+                          <line x1="14" y1="12" x2="22" y2="12" stroke="#fff" strokeWidth="1.2" opacity=".5"/>
+                          <line x1="14" y1="16" x2="22" y2="16" stroke="#fff" strokeWidth="1.2" opacity=".5"/>
+                          <line x1="18" y1="5" x2="18" y2="19" stroke="#fff" strokeWidth="1.2" opacity=".5"/>
+                        </svg>
+                        Excel
+                      </button>
+                    </div>
                   </>
                 }
               />
@@ -1935,7 +1953,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     <FileText size={15} /> Buyurtma yuklash
                   </button>
                   <button type="button" disabled={busy || !invoices.length || !sessionSuffix.trim()} onClick={() => saveCurrentSession()}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, border: '1.5px solid rgba(var(--ink-rgb),0.15)', cursor: busy || !invoices.length || !sessionSuffix.trim() ? 'not-allowed' : 'pointer', opacity: busy || !invoices.length || !sessionSuffix.trim() ? 0.4 : 1, background: 'rgba(var(--ink-rgb),0.04)', color: 'var(--ink)' }}>
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, border: 'none', cursor: busy || !invoices.length || !sessionSuffix.trim() ? 'not-allowed' : 'pointer', opacity: busy || !invoices.length || !sessionSuffix.trim() ? 0.4 : 1, background: '#107C41', color: '#fff' }}>
                     <Save size={15} /> {T('lbl_save')}
                   </button>
                 </div>
@@ -2311,7 +2329,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
 
           {view === 'analytics' && (
             <AnalyticsPane
-              invoices={allDbInvoices.length > 0 ? allDbInvoices : invoices}
+              invoices={invoices}
               catalog={catalog}
               sessions={sessions}
               dashboardStats={dashboardStats}
@@ -2472,25 +2490,20 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
 
               {settingsView === 'catalog' && (
                 <>
-                  <PaneHead
-                    title=""
-                    meta={`${catalogDraft.length} ta mahsulot`}
-                    actions={
-                      isAdmin ? (
-                        <>
-                          <button className="small dark" type="button" onClick={() => setCatalogDraft((previous) => [...previous, { sku: '', name: T('lbl_product'), unit: T('lbl_unit'), price: 0 }])}>
-                            <Plus size={15} /> {T('lbl_add')}
-                          </button>
-                          <button className="small" type="button" onClick={saveCatalogDraft}>
-                            <Save size={15} /> {T('lbl_save')}
-                          </button>
-                          <button className="small" type="button" onClick={resetCatalog}>
-                            <RefreshCcw size={15} />
-                          </button>
-                        </>
-                      ) : null
-                    }
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0 10px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, color: 'var(--muted)', flex: 1 }}>{catalogDraft.length} ta mahsulot</span>
+                    {isAdmin && <>
+                      <button className="small dark" type="button" onClick={() => setCatalogDraft((previous) => [...previous, { sku: '', name: T('lbl_product'), unit: T('lbl_unit'), price: 0 }])}>
+                        <Plus size={14} /> {T('lbl_add')}
+                      </button>
+                      <button className="small" type="button" onClick={saveCatalogDraft} style={{ background: '#107C41', color: '#fff', border: 'none' }}>
+                        <Save size={14} /> {T('lbl_save')}
+                      </button>
+                      <button className="iconbtn" type="button" onClick={resetCatalog} title="Yangilash">
+                        <RefreshCcw size={14} />
+                      </button>
+                    </>}
+                  </div>
                   <div className="tablewrap">
                     <table className="data editable" style={{ tableLayout: 'auto', width: 'max-content', minWidth: '100%' }}>
                       <thead>
@@ -2544,7 +2557,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     actions={
                       isAdmin ? (
                         <>
-                          <button className="small dark" type="button" onClick={saveRequisites}>
+                          <button className="small" type="button" onClick={saveRequisites} style={{ background: '#107C41', color: '#fff', border: 'none' }}>
                             <Save size={15} /> {T('lbl_save')}
                           </button>
                           <button className="small" type="button" onClick={resetRequisites}>
@@ -3611,7 +3624,9 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
     return [...s].sort((a, b) => b.localeCompare(a));
   }, [vazvratRows]);
   const todayPv = todayIso();
-  const [pvFrom, setPvFrom] = React.useState(todayPv);
+  // Default: last 30 days so past sessions are visible
+  const thirtyDaysAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
+  const [pvFrom, setPvFrom] = React.useState(thirtyDaysAgo);
   const [pvTo, setPvTo] = React.useState(todayPv);
 
   // ── Vazvrat date-picker delete panel ──
@@ -3725,11 +3740,16 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
 
   const [tab, setTab] = React.useState<TarixTab>('nakl');
 
+  const filteredSessions = React.useMemo(() =>
+    sessions.filter(s => (!pvFrom || s.invoiceDate >= pvFrom) && (!pvTo || s.invoiceDate <= pvTo)),
+    [sessions, pvFrom, pvTo]
+  );
+
   const TABS: { key: TarixTab; label: string; count: number; color: string }[] = [
-    { key: 'nakl',    label: T('tarix_hujjat'),      count: sessions.length,     color: '#2563eb' },
-    { key: 'vazvrat', label: T('tarix_qaytarma'),    count: vazvratRows.length,  color: '#d97706' },
-    { key: 'zakas',   label: T('tarix_buyurtma'),    count: sessions.length,     color: '#7c3aed' },
-    { key: 'dov',     label: T('tarix_ishonchnoma'), count: dovHistory.length,   color: '#059669' },
+    { key: 'nakl',    label: T('tarix_hujjat'),      count: filteredSessions.length, color: '#2563eb' },
+    { key: 'vazvrat', label: T('tarix_qaytarma'),    count: vazvratRows.length,      color: '#d97706' },
+    { key: 'zakas',   label: T('tarix_buyurtma'),    count: filteredSessions.length, color: '#7c3aed' },
+    { key: 'dov',     label: T('tarix_ishonchnoma'), count: dovHistory.length,       color: '#059669' },
   ];
 
   return (
@@ -3749,33 +3769,32 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
             </button>
           ))}
         </div>
-        {/* Refresh + date range — right side */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Refresh + date range — wraps on mobile */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>
           <button type="button" onClick={refreshSessions}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--berry)', border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(var(--berry-rgb,180,0,80),0.28)', letterSpacing: '0.01em' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--berry)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(var(--berry-rgb,180,0,80),0.28)', whiteSpace: 'nowrap' }}>
             <RefreshCcw size={13} /> Yangilash
           </button>
-
           {/* Date range */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 10, padding: '5px 10px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 10, padding: '5px 8px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
             <input type="date" value={pvFrom} onChange={e => setPvFrom(e.target.value)}
-              style={{ fontSize: 13, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer' }} />
-            <span style={{ color: 'rgba(var(--ink-rgb),0.3)', padding: '0 4px' }}>—</span>
+              style={{ fontSize: 12, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer', width: 0, flex: 1, minWidth: '120px' }} />
+            <span style={{ color: 'rgba(var(--ink-rgb),0.3)', flexShrink: 0 }}>—</span>
             <input type="date" value={pvTo} onChange={e => setPvTo(e.target.value)}
-              style={{ fontSize: 13, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer' }} />
-            {(pvFrom !== todayPv || pvTo !== todayPv) && (
-              <button type="button" onClick={() => { setPvFrom(todayPv); setPvTo(todayPv); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16, lineHeight: 1, padding: '0 2px' }}>×</button>
+              style={{ fontSize: 12, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer', width: 0, flex: 1, minWidth: '120px' }} />
+            {(pvFrom !== thirtyDaysAgo || pvTo !== todayPv) && (
+              <button type="button" onClick={() => { setPvFrom(thirtyDaysAgo); setPvTo(todayPv); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
             )}
           </div>
         </div>
       </div>
 
       {/* Nakladnoy tab */}
-      {tab === 'nakl' && (
-        sessions.length === 0 ? <Empty title="Hujjat tarixi yo'q" /> :
+      {tab === 'nakl' && (() => {
+        return filteredSessions.length === 0 ? <Empty title="Hujjat tarixi yo'q" /> :
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          {sessions.map(s => {
+          {filteredSessions.map(s => {
             return (
               <div key={s._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #2563eb', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -3788,8 +3807,8 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
               </div>
             );
           })}
-        </div>
-      )}
+        </div>;
+      })()}
 
       {/* Vazvrat tab — Pivot table */}
       {tab === 'vazvrat' && (() => {
@@ -3986,7 +4005,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
       {tab === 'zakas' && (() => {
         // Group sessions by base date (first 10 chars of invoiceDate)
         const dateMap = new Map<string, { dateKey: string; items: any[]; totalNakl: number; totalSum: number }>();
-        for (const s of sessions) {
+        for (const s of filteredSessions) {
           const dk = (s.invoiceDate || '').slice(0, 10);
           if (!dateMap.has(dk)) dateMap.set(dk, { dateKey: dk, items: [], totalNakl: 0, totalSum: 0 });
           const g = dateMap.get(dk)!;
@@ -4199,34 +4218,52 @@ function AnalyticsPane({
   // ─── Session-based invoices: FAQAT Tarixda saqlangan sessionlardan ─────────
   const [sessionInvoices, setSessionInvoices] = useState<Invoice[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
+  // invNo -> { initSum, initQty } from session snapshot
+  const [snapInitMap, setSnapInitMap] = useState<Map<number, { sum: number; qty: number }>>(new Map());
 
   async function loadSessionInvoices(from: string, to: string) {
     if (!token) return;
-    // Tarixda shu sana oralig'ida saqlangan sessiyalarni top
-    const inRange = sessions.filter(s => s.invoiceDate >= from && s.invoiceDate <= to);
-    if (!inRange.length) { setSessionInvoices([]); return; }
     setSessionLoading(true);
     try {
-      const snaps = await Promise.all(inRange.map(s => api.session(token, s._id).catch(() => null)));
-      const merged: Invoice[] = [];
-      const seen = new Set<number>();
+      // MANBA: faqat Tarix tabidagi sessiyalar (snapshot)
+      // Live DB ishlatilmaydi — foydalanuvchi Tarixda ko'rgan narsasi analitika manbai
+      const inRange = sessions.filter(s => s.invoiceDate >= from && s.invoiceDate <= to);
+      const snaps = inRange.length
+        ? await Promise.all(inRange.map(s => api.session(token, s._id).catch(() => null)))
+        : [];
+
+      const invoiceMap = new Map<number, Invoice>();
+      const newSnapMap = new Map<number, { sum: number; qty: number }>();
+
       for (const rec of snaps) {
         if (!rec?.snapshot?.invoices) continue;
+        const sessionDate = rec.invoiceDate as string;
         for (const inv of rec.snapshot.invoices as Invoice[]) {
-          if (!seen.has(inv.invNo)) {
-            seen.add(inv.invNo);
-            merged.push({ ...inv, dateIso: inv.dateIso || rec.invoiceDate });
+          // Berildi = snapshot dagi joriy holat
+          if (!invoiceMap.has(inv.invNo)) {
+            invoiceMap.set(inv.invNo, { ...inv, dateIso: inv.dateIso || sessionDate });
           }
+          // Buyurtma = SAP boshlang'ich miqdor (init field yoki qty)
+          const initQty = inv.lines.reduce((s: number, l: Invoice['lines'][0]) => s + (l.init || l.qty || 0), 0);
+          const initSum = inv.lines.reduce((s: number, l: Invoice['lines'][0]) => {
+            const iq = l.init || l.qty || 0;
+            const price = l.qty > 0 ? l.total / l.qty : (l.price || 0);
+            return s + iq * price;
+          }, 0);
+          newSnapMap.set(inv.invNo, { qty: initQty, sum: initSum || inv.sumTotal });
         }
       }
-      setSessionInvoices(merged);
+
+      setSnapInitMap(newSnapMap);
+      setSessionInvoices([...invoiceMap.values()]);
     } catch (e) { console.warn('[loadSessionInvoices] failed:', e); }
     finally { setSessionLoading(false); }
   }
 
-  // Sana o'zgarganda avtomatik yuklash
+  // Sana o'zgarganda avtomatik yuklash (invoices + vazvrat)
   useEffect(() => {
     void loadSessionInvoices(savdoFrom, savdoTo);
+    void loadVazvrat();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savdoFrom, savdoTo, sessions.length]);
 
@@ -4234,16 +4271,24 @@ function AnalyticsPane({
     if (!token) return;
     setSavdoBusy(true);
     try {
-      const [rows, allInvoices, analytics] = await Promise.all([
+      // Per-date yukla (200 limit muammosini hal qiladi)
+      const dates: string[] = [];
+      const cur2 = new Date(savdoFrom); const end2 = new Date(savdoTo);
+      while (cur2 <= end2) { dates.push(cur2.toISOString().slice(0, 10)); cur2.setDate(cur2.getDate() + 1); }
+
+      const [rows, analytics, ...dayResults] = await Promise.all([
         api.queryVazvrat(token, savdoFrom, savdoTo),
-        api.invoices(token),
         api.vazvratAnalytics(token, savdoFrom, savdoTo),
+        ...dates.map(d => api.invoices(token, d).catch(() => [] as Invoice[])),
       ]);
       setVazvratRows(rows);
       setSavdoAnalytics(analytics);
-      setSavdoInvoices(allInvoices.filter(
-        (inv) => inv.dateIso >= savdoFrom && inv.dateIso <= savdoTo && inv.status !== 'cancelled'
-      ));
+      const allInvoices: Invoice[] = [];
+      const seen = new Set<number>();
+      for (const list of dayResults as Invoice[][]) {
+        for (const inv of list) { if (!seen.has(inv.invNo)) { seen.add(inv.invNo); allInvoices.push(inv); } }
+      }
+      setSavdoInvoices(allInvoices);
     } catch (e) { console.warn('[loadSavdo] analytics load failed:', e); onToast('err', 'Statistikani yuklashda xato'); } finally { setSavdoBusy(false); }
   }
 
@@ -4352,9 +4397,9 @@ function AnalyticsPane({
     } catch (e) { onToast('err', 'Xato: ' + String(e)); } finally { setSavdoUploading(false); }
   }
 
-  // Filter invoices: FAQAT Tarixda saqlangan session snapshotidan, faqat delivered
+  // sessionInvoices — live status/sumTotal + snapshot init
   const filteredInvoices = useMemo(
-    () => sessionInvoices.filter(inv => inv.status === 'delivered'),
+    () => sessionInvoices.filter(inv => inv.status !== 'cancelled'),
     [sessionInvoices]
   );
 
@@ -4367,30 +4412,99 @@ function AnalyticsPane({
       map[inv.storeCode].count += 1;
     }
     return Object.values(map).sort((a, b) => b.sum - a.sum);
-  }, [filteredInvoices, savdoFrom, savdoTo]);
+  }, [filteredInvoices]);
 
   const filteredProductRows = useMemo(() => {
-    return catalog.map((product, index) => {
-      const initTotal = filteredInvoices.reduce((acc, inv) => acc + (inv.lines[index]?.init || 0), 0);
-      const givenQty = filteredInvoices.reduce((acc, inv) => acc + (inv.lines[index]?.qty || 0), 0);
-      const givenSum = filteredInvoices.reduce((acc, inv) => acc + (inv.lines[index]?.total || 0), 0);
-      return { product, initTotal, givenQty, givenSum };
-    }).filter((r) => r.initTotal > 0).sort((a, b) => b.givenQty - a.givenQty);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredInvoices, catalog, savdoFrom, savdoTo]);
+    // Invoice lines dan to'g'ridan-to'g'ri o'qi — catalog bo'sh bo'lsa ham ishlaydi
+    const map: Record<string, { product: { sku: string; name: string; unit: string; price: number }; initTotal: number; givenQty: number; givenSum: number }> = {};
+    for (const inv of filteredInvoices) {
+      for (const line of (inv.lines || [])) {
+        if (!line.sku || !(line.qty > 0)) continue;
+        if (!map[line.sku]) {
+          const cat = catalog.find(p => p.sku === line.sku);
+          map[line.sku] = { product: { sku: line.sku, name: cat?.name || (line as any).name || line.sku, unit: cat?.unit || (line as any).unit || '', price: cat?.price || line.price || 0 }, initTotal: 0, givenQty: 0, givenSum: 0 };
+        }
+        map[line.sku].givenQty += line.qty;
+        map[line.sku].givenSum += line.total || 0;
+        map[line.sku].initTotal += line.init || line.qty;
+      }
+    }
+    return Object.values(map).filter(r => r.givenQty > 0).sort((a, b) => b.givenQty - a.givenQty);
+  }, [filteredInvoices, catalog]);
 
   const fMaxMarketSum = filteredMarkets[0]?.sum || 1;
   const fMaxProductQty = filteredProductRows[0]?.givenQty || 1;
 
-  // Keldi: init qty × VAT-inclusive unit price (= total/qty). Falls back to total when init=0.
-  const aInit    = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.lines.reduce((ls, l) => {
-    if (l.init > 0 && l.qty > 0) return ls + (l.init / l.qty) * l.total;
-    if (l.init > 0) return ls + l.init * (l.price || 0);
-    return ls + l.total;
-  }, 0), 0), [filteredInvoices]);
-  const aGiven   = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumTotal, 0), [filteredInvoices]);
-  const aReduced = aInit - aGiven;
-  const aSum     = aGiven;
+  // Top-5 leaderboards for overview
+  const top5MarketsByCount = useMemo(() =>
+    [...filteredMarkets].sort((a, b) => b.count - a.count).slice(0, 5),
+    [filteredMarkets]);
+  const top5MarketsBySum = useMemo(() =>
+    [...filteredMarkets].sort((a, b) => b.sum - a.sum).slice(0, 5),
+    [filteredMarkets]);
+
+  // Vazvrat by market (filtered by date range)
+  const vazvratByMarket = useMemo(() => {
+    const map: Record<string, { name: string; qty: number; total: number }> = {};
+    for (const vr of vazvratRows) {
+      const d = vr.date.slice(0, 10);
+      if (d < savdoFrom || d > savdoTo) continue;
+      if (!map[vr.marketCode]) map[vr.marketCode] = { name: vr.marketName, qty: 0, total: 0 };
+      map[vr.marketCode].qty += vr.qty;
+      map[vr.marketCode].total += vr.totalWithVat;
+    }
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  }, [vazvratRows, savdoFrom, savdoTo]);
+
+  // Vazvrat by product
+  const vazvratByProduct = useMemo(() => {
+    const map: Record<string, { name: string; qty: number; total: number }> = {};
+    for (const vr of vazvratRows) {
+      const d = vr.date.slice(0, 10);
+      if (d < savdoFrom || d > savdoTo) continue;
+      if (!map[vr.sapCode]) map[vr.sapCode] = { name: vr.productName, qty: 0, total: 0 };
+      map[vr.sapCode].qty += vr.qty;
+      map[vr.sapCode].total += vr.totalWithVat;
+    }
+    return Object.values(map).sort((a, b) => b.qty - a.qty);
+  }, [vazvratRows, savdoFrom, savdoTo]);
+
+  const top5ProductsByQty = useMemo(() => filteredProductRows.slice(0, 5), [filteredProductRows]);
+
+  // Berildi = haqiqiy yetkazilgan (live DB)
+  const aBerildiSum  = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumTotal, 0), [filteredInvoices]);
+  const aBerildiDona = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumQty, 0), [filteredInvoices]);
+
+  // Buyurtma = snapshot'dan SAP original; manual hujjatlar har doim sumTotal (snapshot ishonchsiz)
+  const aBuyurtmaDona = useMemo(() => {
+    if (!snapInitMap.size) return aBerildiDona;
+    return filteredInvoices.reduce((s, inv) => {
+      if (inv.manual) return s + inv.sumQty; // qo'lda: buyurtma = berildi
+      return s + (snapInitMap.get(inv.invNo)?.qty ?? inv.sumQty);
+    }, 0);
+  }, [filteredInvoices, snapInitMap, aBerildiDona]);
+  const aBuyurtmaSum  = useMemo(() => {
+    if (!snapInitMap.size) return aBerildiSum;
+    return filteredInvoices.reduce((s, inv) => {
+      if (inv.manual) return s + inv.sumTotal; // qo'lda: buyurtma = berildi
+      return s + (snapInitMap.get(inv.invNo)?.sum ?? inv.sumTotal);
+    }, 0);
+  }, [filteredInvoices, snapInitMap, aBerildiSum]);
+
+  // Kamaytirildi = Buyurtma - Berildi
+  const aKamaydiSum  = aBuyurtmaSum - aBerildiSum;
+  const aKamaydiDona = aBuyurtmaDona - aBerildiDona;
+
+  // Qaytarma
+  const aQaytarmaSum  = vazvratByMarket.reduce((s, m) => s + m.total, 0);
+  const aQaytarmaDona = vazvratByMarket.reduce((s, m) => s + m.qty, 0);
+
+  // Savdo = Berildi - Qaytarma
+  const aSavdoSum  = aBerildiSum - aQaytarmaSum;
+  const aSavdoDona = aBerildiDona - aQaytarmaDona;
+
+  const aGiven = aBerildiSum;
+  const aSum   = aSavdoSum;
 
   return (
     <section className="pane" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 54px)', overflow: 'hidden' }}>
@@ -4408,17 +4522,10 @@ function AnalyticsPane({
           <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
           <input type="date" value={savdoTo} onChange={(e) => setSavdoTo(e.target.value)} style={{ width: 130 }} />
           {tab === 'savdo'
-            ? <>
-                <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
-                  <RefreshCcw size={12} /> {savdoBusy ? '…' : 'Yuklash'}
-                </button>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
-                  <FileText size={12} /> {savdoUploading ? '…' : T('pv_upload_btn')}
-                  <input type="file" accept=".xlsx,.xls" style={{ position: 'absolute', opacity: 0, inset: 0, cursor: 'pointer' }}
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleVazvratExcel(f); e.target.value = ''; }} />
-                </label>
-              </>
+            ? <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
+                <RefreshCcw size={12} /> {savdoBusy ? '…' : 'Yuklash'}
+              </button>
             : <button type="button" onClick={onRefresh}
                 style={{ display: 'inline-flex', alignItems: 'center', padding: '5px 8px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
                 <RefreshCcw size={13} />
@@ -4430,63 +4537,204 @@ function AnalyticsPane({
       {tab === 'overview' && (
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {/* ── KPI cards ── */}
-          <div className="kpi-4-grid">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 14 }}>
             {[
-              { label: 'Keldi',   val: fmt0(aInit) + ' so\'m',    sub: 'Jami zakaz summasi', color: 'var(--ink)', accent: false },
-              { label: 'Kamaydi', val: fmt0(aReduced) + ' so\'m', sub: 'Farq (so\'mda)',      color: aReduced > 0 ? '#dc2626' : 'var(--ok)', accent: false },
-              { label: 'Berildi', val: fmt0(aGiven) + ' so\'m',   sub: 'Yetkazilgan summa',  color: 'var(--ok)', accent: false },
-              { label: 'Summa',   val: fmt0(aSum) + ' so\'m',     sub: 'Jami aylanma',       color: 'var(--ink)', accent: true },
+              { label: 'Buyurtma',     sum: aBuyurtmaSum,  dona: aBuyurtmaDona, color: 'var(--ink)',   accent: false },
+              { label: 'Kamaytirildi', sum: aKamaydiSum,   dona: aKamaydiDona,  color: aKamaydiSum > 0 ? '#d97706' : 'var(--ok)', accent: false },
+              { label: 'Berildi',      sum: aBerildiSum,   dona: aBerildiDona,  color: 'var(--ok)',   accent: false },
+              { label: 'Qaytarma',     sum: aQaytarmaSum,  dona: aQaytarmaDona, color: '#dc2626',     accent: false },
+              { label: 'Savdo',        sum: aSavdoSum,     dona: aSavdoDona,    color: 'var(--ink)',  accent: true  },
             ].map(k => (
-              <div key={k.label} style={{ padding: '14px 16px', borderRadius: 14, background: k.accent ? 'linear-gradient(135deg, #46bf72, #2ea855)' : 'var(--surface)', border: k.accent ? 'none' : '1px solid rgba(var(--ink-rgb),0.08)', boxShadow: k.accent ? '0 4px 16px rgba(70,191,114,0.25)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: k.accent ? 'rgba(255,255,255,0.75)' : 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: k.accent ? '#fff' : k.color, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{k.val}</div>
-                <div style={{ fontSize: 11, color: k.accent ? 'rgba(255,255,255,0.65)' : 'var(--muted)', marginTop: 4 }}>{k.sub}</div>
+              <div key={k.label} style={{ padding: '12px 14px', borderRadius: 14, background: k.accent ? 'linear-gradient(135deg, #46bf72, #2ea855)' : 'var(--surface)', border: k.accent ? 'none' : '1px solid rgba(var(--ink-rgb),0.08)', boxShadow: k.accent ? '0 4px 16px rgba(70,191,114,0.22)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: k.accent ? 'rgba(255,255,255,0.75)' : 'var(--muted)', marginBottom: 5 }}>{k.label}</div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: k.accent ? '#fff' : k.color, letterSpacing: '-0.02em', lineHeight: 1.15 }}>{fmt0(k.sum)}</div>
+                <div style={{ fontSize: 10, color: k.accent ? 'rgba(255,255,255,0.65)' : 'var(--muted)', marginTop: 3 }}>{fmt0(k.dona)} dona</div>
               </div>
             ))}
           </div>
-          <h3 style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--muted)', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{T('lbl_store')}</h3>
-          <div className="market-overview" style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 620 }}>
-            {filteredMarkets.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13 }}>Sana oralig'ida ma'lumot yo'q</div>}
-            {filteredMarkets.map((m) => {
-              const mKey = 'ov-mkt-' + m.label;
-              const open = expandedItems.has(mKey);
-              const mInvoices = filteredInvoices.filter(inv => inv.storeCode === m.storeCode);
+          {/* ── Top-5 leaderboards ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+
+            {/* 1. Eng ko'p zakaz: top 5 market by sum */}
+            {(() => {
               return (
-                <div key={m.label}>
-                  <div onClick={() => toggleItem(mKey)} style={{ display: 'grid', gridTemplateColumns: '18px minmax(120px,200px) 1fr 90px', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 8, background: open ? 'rgba(var(--ink-rgb),0.04)' : 'transparent' }}>
-                    <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 14, transition: 'transform 0.15s', display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
-                    <div style={{ overflow: 'hidden' }}>
-                      <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.label)}</span>
-                      <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{m.count} ta nakl</span>
-                    </div>
-                    <div style={{ background: 'rgba(var(--hi-rgb),0.08)', borderRadius: 4, height: 12, overflow: 'hidden' }}>
-                      <div style={{ width: `${(m.sum / fMaxMarketSum) * 100}%`, height: '100%', background: '#46bf72', borderRadius: 4 }} />
-                    </div>
-                    <span className="mono" style={{ textAlign: 'right', fontSize: 12 }}>{fmt0(m.sum)}</span>
-                  </div>
-                  {open && (
-                    <div style={{ marginLeft: 26, marginBottom: 4, borderLeft: '2px solid rgba(var(--ink-rgb),0.08)', paddingLeft: 10 }}>
-                      {mInvoices.map(inv => (
-                        <div key={inv.invNo} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 80px 90px', gap: 8, fontSize: 12, padding: '3px 4px', borderRadius: 6, alignItems: 'center' }}>
-                          <span style={{ color: 'var(--muted)', fontFamily: 'var(--mono)' }}>#{inv.invNo}</span>
-                          <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.dateIso}</span>
-                          <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(inv.sumQty)} dona</span>
-                          <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600 }}>{fmt0(inv.sumTotal)}</span>
+                <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5MarketsBySum.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>🏆 Eng ko'p zakaz (top 5)</div>
+                  {top5MarketsBySum.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Ma'lumot yo'q</div>}
+                  {top5MarketsBySum.map((m, i) => {
+                    const key = 'ldr-mktc-' + m.storeCode;
+                    const open = expandedItems.has(key);
+                    const mInvs = filteredInvoices.filter(inv => inv.storeCode === m.storeCode);
+                    return (
+                      <div key={m.storeCode} style={{ borderBottom: i < top5MarketsBySum.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
+                        <div onClick={() => toggleItem(key)} style={{ display: 'grid', gridTemplateColumns: '20px 18px 1fr 65px 90px', gap: 6, alignItems: 'center', padding: '9px 16px', cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : 'transparent' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
+                          <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.label)}</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(m.qty)} dona</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right' }}>{fmt0(m.sum)}</span>
                         </div>
-                      ))}
-                      {mInvoices.length > 1 && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 80px 90px', gap: 8, fontSize: 12, padding: '4px 4px 2px', borderTop: '1px solid rgba(var(--ink-rgb),0.08)', marginTop: 2 }}>
-                          <span />
-                          <span style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 11 }}>Jami</span>
-                          <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 700 }}>{fmt0(m.qty)} dona</span>
-                          <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{fmt0(m.sum)}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        {open && (
+                          <div style={{ background: 'rgba(var(--ink-rgb),0.02)', borderTop: '1px solid rgba(var(--ink-rgb),0.04)' }}>
+                            {mInvs.map(inv => (
+                              <div key={inv.invNo} style={{ display: 'grid', gridTemplateColumns: '1fr 65px 90px', gap: 8, padding: '6px 16px 6px 54px', fontSize: 12, alignItems: 'center', borderBottom: '1px solid rgba(var(--ink-rgb),0.03)' }}>
+                                <span style={{ color: 'var(--muted)' }}>#{inv.invNo} · {inv.dateIso}</span>
+                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(inv.sumQty)} dona</span>
+                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600 }}>{fmt0(inv.sumTotal)}</span>
+                              </div>
+                            ))}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 65px 90px', gap: 8, padding: '6px 16px 8px 54px', fontSize: 12 }}>
+                              <span style={{ fontWeight: 700, color: 'var(--muted)' }}>Jami</span>
+                              <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 700 }}>{fmt0(m.qty)} dona</span>
+                              <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{fmt0(m.sum)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
-            })}
+            })()}
+
+            {/* 2. Eng ko'p vazvrat market */}
+            {(() => {
+              const top5 = vazvratByMarket.slice(0, 5);
+              return (
+                <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>⚠️ Eng ko'p qaytarma market (top 5)</div>
+                  {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Qaytarma yo'q</div>}
+                  {top5.map((m, i) => {
+                    const key = 'ldr-vmkt-' + i;
+                    const open = expandedItems.has(key);
+                    const mVrs = vazvratRows.filter(vr => {
+                      const d = vr.date.slice(0, 10);
+                      return vr.marketCode === Object.keys(vazvratByMarket)[0] || vr.marketName === m.name;
+                    }).filter(vr => { const d = vr.date.slice(0, 10); return d >= savdoFrom && d <= savdoTo; });
+                    // Group by product
+                    const byProd: Record<string, { name: string; qty: number; total: number }> = {};
+                    for (const vr of vazvratRows.filter(vr => { const d = vr.date.slice(0,10); return vr.marketName === m.name && d >= savdoFrom && d <= savdoTo; })) {
+                      if (!byProd[vr.sapCode]) byProd[vr.sapCode] = { name: vr.productName, qty: 0, total: 0 };
+                      byProd[vr.sapCode].qty += vr.qty;
+                      byProd[vr.sapCode].total += vr.totalWithVat;
+                    }
+                    const prodRows = Object.values(byProd).sort((a,b) => b.qty - a.qty);
+                    return (
+                      <div key={m.name + i} style={{ borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
+                        <div onClick={() => toggleItem(key)} style={{ display: 'grid', gridTemplateColumns: '20px 18px 1fr 55px 80px', gap: 6, alignItems: 'center', padding: '9px 16px', cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : 'transparent' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#dc2626' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
+                          <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.name)}</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(m.qty)} dona</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', color: '#dc2626' }}>{fmt0(m.total)}</span>
+                        </div>
+                        {open && prodRows.length > 0 && (
+                          <div style={{ background: 'rgba(var(--ink-rgb),0.02)', borderTop: '1px solid rgba(var(--ink-rgb),0.04)' }}>
+                            {prodRows.map(p => (
+                              <div key={p.name} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 80px', gap: 8, padding: '6px 16px 6px 54px', fontSize: 12, borderBottom: '1px solid rgba(var(--ink-rgb),0.03)' }}>
+                                <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(p.qty)} dona</span>
+                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>{fmt0(p.total)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* 3. Eng ko'p sotilgan tovar */}
+            {(() => {
+              return (
+                <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5ProductsByQty.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>📦 Eng ko'p sotilgan tovar (top 5)</div>
+                  {top5ProductsByQty.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Ma'lumot yo'q</div>}
+                  {top5ProductsByQty.map((r, i) => {
+                    const key = 'ldr-prod-' + r.product.sku;
+                    const open = expandedItems.has(key);
+                    // per-market breakdown
+                    const byMkt: Record<string, { market: string; qty: number; sum: number }> = {};
+                    for (const inv of filteredInvoices) {
+                      const line = inv.lines.find(l => l.sku === r.product.sku);
+                      if (!line || !line.qty) continue;
+                      if (!byMkt[inv.storeCode]) byMkt[inv.storeCode] = { market: inv.market, qty: 0, sum: 0 };
+                      byMkt[inv.storeCode].qty += line.qty;
+                      byMkt[inv.storeCode].sum += line.total;
+                    }
+                    const mktRows = Object.values(byMkt).sort((a,b) => b.qty - a.qty);
+                    return (
+                      <div key={r.product.sku} style={{ borderBottom: i < top5ProductsByQty.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
+                        <div onClick={() => toggleItem(key)} style={{ display: 'grid', gridTemplateColumns: '20px 18px 1fr 55px 80px', gap: 6, alignItems: 'center', padding: '9px 16px', cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : 'transparent' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
+                          <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.product.name}</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(r.givenQty)} dona</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right' }}>{fmt0(r.givenSum)}</span>
+                        </div>
+                        {open && (
+                          <div style={{ background: 'rgba(var(--ink-rgb),0.02)', borderTop: '1px solid rgba(var(--ink-rgb),0.04)' }}>
+                            {mktRows.map(mr => (
+                              <div key={mr.market} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 80px', gap: 8, padding: '6px 16px 6px 54px', fontSize: 12, borderBottom: '1px solid rgba(var(--ink-rgb),0.03)' }}>
+                                <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortMkt(mr.market)}</span>
+                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(mr.qty)} dona</span>
+                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600 }}>{fmt0(mr.sum)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* 4. Eng ko'p qaytarma tovar */}
+            {(() => {
+              const top5 = vazvratByProduct.slice(0, 5);
+              return (
+                <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>🔄 Eng ko'p qaytarma tovar (top 5)</div>
+                  {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Qaytarma yo'q</div>}
+                  {top5.map((p, i) => {
+                    const key = 'ldr-vprod-' + i;
+                    const open = expandedItems.has(key);
+                    const byMkt: Record<string, { name: string; qty: number; total: number }> = {};
+                    for (const vr of vazvratRows.filter(vr => { const d = vr.date.slice(0,10); return vr.productName === p.name && d >= savdoFrom && d <= savdoTo; })) {
+                      if (!byMkt[vr.marketCode]) byMkt[vr.marketCode] = { name: vr.marketName, qty: 0, total: 0 };
+                      byMkt[vr.marketCode].qty += vr.qty;
+                      byMkt[vr.marketCode].total += vr.totalWithVat;
+                    }
+                    const mktRows = Object.values(byMkt).sort((a,b) => b.qty - a.qty);
+                    return (
+                      <div key={p.name + i} style={{ borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
+                        <div onClick={() => toggleItem(key)} style={{ display: 'grid', gridTemplateColumns: '20px 18px 1fr 55px 80px', gap: 6, alignItems: 'center', padding: '9px 16px', cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : 'transparent' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f97316' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
+                          <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(p.qty)} dona</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', color: '#f97316' }}>{fmt0(p.total)}</span>
+                        </div>
+                        {open && mktRows.length > 0 && (
+                          <div style={{ background: 'rgba(var(--ink-rgb),0.02)', borderTop: '1px solid rgba(var(--ink-rgb),0.04)' }}>
+                            {mktRows.map(mr => (
+                              <div key={mr.name} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 80px', gap: 8, padding: '6px 16px 6px 54px', fontSize: 12, borderBottom: '1px solid rgba(var(--ink-rgb),0.03)' }}>
+                                <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortMkt(mr.name)}</span>
+                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', color: 'var(--muted)' }}>{fmt0(mr.qty)} dona</span>
+                                <span style={{ fontFamily: 'var(--mono)', textAlign: 'right', fontWeight: 600, color: '#f97316' }}>{fmt0(mr.total)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -4694,9 +4942,6 @@ function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, se
             <input type="date" value={undeliveredFilter.from} onChange={e => setUndeliveredFilter({ ...undeliveredFilter, from: e.target.value })} style={{ width: 140 }} />
             <span style={{ fontSize: 12, color: 'var(--muted)' }}>gacha:</span>
             <input type="date" value={undeliveredFilter.to} onChange={e => setUndeliveredFilter({ ...undeliveredFilter, to: e.target.value })} style={{ width: 140 }} />
-            {(undeliveredFilter.from || undeliveredFilter.to) && (
-              <button className="iconbtn" type="button" onClick={() => setUndeliveredFilter({ from: '', to: '' })} title="Tozalash">✕</button>
-            )}
           </div>
         }
       />
@@ -4761,12 +5006,13 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
   savdoTab: string; setSavdoTab: React.Dispatch<React.SetStateAction<'kunlik' | 'dokonlar' | 'mahsulotlar'>>;
   fmtDateRu: (d: string) => string; fmt0: (n: number) => string;
 }) {
-  const sessionsInRange = sessions.filter(s => s.invoiceDate >= savdoFrom && s.invoiceDate <= savdoTo);
+  // Live invoicelardan hisoblash (session stale bo'lishi mumkin)
   const dayMap: Record<string, { berilgan: number; vazvrat: number; count: number }> = {};
-  for (const s of sessionsInRange) {
-    if (!dayMap[s.invoiceDate]) dayMap[s.invoiceDate] = { berilgan: 0, vazvrat: 0, count: 0 };
-    dayMap[s.invoiceDate].berilgan += s.sumTotal;
-    dayMap[s.invoiceDate].count += s.invoiceCount;
+  for (const inv of savdoInvoices) {
+    const d = inv.dateIso;
+    if (!dayMap[d]) dayMap[d] = { berilgan: 0, vazvrat: 0, count: 0 };
+    dayMap[d].berilgan += inv.sumTotal;
+    dayMap[d].count += 1;
   }
   for (const vr of vazvratRows) {
     if (!dayMap[vr.date]) dayMap[vr.date] = { berilgan: 0, vazvrat: 0, count: 0 };
@@ -4787,7 +5033,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
     }
   }
   const dayRows = Object.entries(dayMap).sort(([a],[b]) => a.localeCompare(b));
-  const totBerilgan = sessionsInRange.reduce((s, sess) => s + sess.sumTotal, 0);
+  const totBerilgan = savdoInvoices.reduce((s, inv) => s + inv.sumTotal, 0);
   const totVazvrat  = vazvratRows.reduce((s, vr) => s + vr.totalWithVat, 0);
   const totSavdo    = totBerilgan - totVazvrat;
   const mktMap: Record<string, { code: string; name: string; berilgan: number; vazvrat: number }> = {};
@@ -4834,7 +5080,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
             </tbody>
             {dayRows.length > 0 && <tfoot><tr>
               <td style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 11, padding: '8px 12px' }}>JAMI</td>
-              <td className="right mono" style={{ fontWeight: 700 }}>{sessionsInRange.reduce((s,x)=>s+x.invoiceCount,0)}</td>
+              <td className="right mono" style={{ fontWeight: 700 }}>{savdoInvoices.length}</td>
               <td className="right mono" style={{ fontWeight: 700 }}>{fmt0(totBerilgan)}</td>
               <td className="right mono" style={{ fontWeight: 700, color: totVazvrat > 0 ? 'var(--danger)' : undefined }}>{fmt0(totVazvrat)}</td>
               <td className="right mono" style={{ fontWeight: 800, color: totSavdo < 0 ? 'var(--danger)' : 'var(--ok)' }}>{fmt0(totSavdo)}</td>

@@ -194,7 +194,7 @@ export class InvoiceEngineService {
    * Canonical per-line money computation. All code paths (generate, manual,
    * edit) must go through this so cost/vat/total round identically.
    */
-  buildLineFromInput(input: { sku: string; name: string; unit: string; qty: number; price: number }): InvoiceLine {
+  buildLineFromInput(input: { sku: string; name: string; unit: string; qty: number; price: number; init?: number }): InvoiceLine {
     const cost = this.round2(input.qty * input.price);
     const vat = this.round2(cost * VAT);
     return {
@@ -206,7 +206,7 @@ export class InvoiceEngineService {
       cost,
       vat,
       total: this.round2(cost + vat),
-      init: input.qty
+      init: input.init ?? input.qty   // SAP boshlang'ich miqdorni saqlaydi
     };
   }
 
