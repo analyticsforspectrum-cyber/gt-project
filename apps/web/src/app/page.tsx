@@ -1788,6 +1788,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                                     <input
                                       data-row={rowIdx}
                                       data-col={colIdx}
+                                      onFocus={(e) => e.target.select()}
                                       value={line?.qty ?? ''}
                                       onChange={(event) => {
                                         const val = parseNum(event.target.value);
@@ -1928,7 +1929,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>Sessiya nomi <span style={{ color: '#ef4444' }}>*</span></div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(var(--ink-rgb),0.04)', border: `1px solid ${!sessionSuffix.trim() ? 'rgba(239,68,68,0.5)' : 'rgba(var(--ink-rgb),0.09)'}`, borderRadius: 10, padding: '2px 10px 2px 4px' }}>
                     <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)', background: 'rgba(var(--ink-rgb),0.06)', borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap' }}>{dateIso}</span>
-                    <input type="text" placeholder="nom kiriting (majburiy)" value={sessionSuffix} onChange={(e) => setSessionSuffix(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13 }} />
+                    <input type="text" placeholder="— nom kiriting (majburiy)" value={sessionSuffix} onChange={(e) => setSessionSuffix(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13 }} />
                   </div>
                 </div>
 
