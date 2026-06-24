@@ -4786,7 +4786,7 @@ function AnalyticsPane({
       {/* ─── SAVDO TAB ─────────────────────────────────────────────── */}
       {tab === 'savdo' && <SavdoTab
         sessions={sessions} vazvratRows={vazvratRows} invoices={invoices}
-        savdoFrom={savdoFrom} savdoTo={savdoTo} savdoInvoices={savdoInvoices}
+        savdoFrom={savdoFrom} savdoTo={savdoTo} savdoInvoices={filteredInvoices}
         savdoAnalytics={savdoAnalytics} savdoTab={savdoTab} setSavdoTab={setSavdoTab}
         fmtDateRu={fmtDateRu} fmt0={fmt0}
       />}
@@ -4926,7 +4926,24 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
     mktMap[vr.marketCode].vazvrat += vr.totalWithVat;
   }
   const mktRows = Object.values(mktMap).sort((a,b) => (b.berilgan-b.vazvrat)-(a.berilgan-a.vazvrat));
-  const prodRows = savdoAnalytics;
+  // Mahsulotlar: session invoicelardan hisoblash (savdoAnalytics live emas)
+  const prodMap: Record<string, { sku: string; name: string; berilganQty: number; berilganSum: number; vazvratQty: number; vazvratSum: number }> = {};
+  for (const inv of savdoInvoices) {
+    for (const line of (inv.lines || [])) {
+      if (!line.sku || !(line.qty > 0)) continue;
+      if (!prodMap[line.sku]) prodMap[line.sku] = { sku: line.sku, name: (line as any).name || line.sku, berilganQty: 0, berilganSum: 0, vazvratQty: 0, vazvratSum: 0 };
+      prodMap[line.sku].berilganQty += line.qty;
+      prodMap[line.sku].berilganSum += line.total || 0;
+    }
+  }
+  for (const vr of vazvratRows) {
+    const k = vr.sapCode;
+    if (!k) continue;
+    if (!prodMap[k]) prodMap[k] = { sku: k, name: vr.productName || k, berilganQty: 0, berilganSum: 0, vazvratQty: 0, vazvratSum: 0 };
+    prodMap[k].vazvratQty += vr.qty || 0;
+    prodMap[k].vazvratSum += vr.totalWithVat || 0;
+  }
+  const prodRows = Object.values(prodMap).sort((a, b) => b.berilganSum - a.berilganSum);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
