@@ -3758,19 +3758,19 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
             </button>
           ))}
         </div>
-        {/* Refresh + date range — wraps on mobile */}
+        {/* Refresh + date range */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>
           <button type="button" onClick={refreshSessions}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--berry)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(var(--berry-rgb,180,0,80),0.28)', whiteSpace: 'nowrap' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--berry)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(var(--berry-rgb,180,0,80),0.28)', whiteSpace: 'nowrap', flexShrink: 0 }}>
             <RefreshCcw size={13} /> Yangilash
           </button>
           {/* Date range */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 10, padding: '5px 8px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 10, padding: '5px 8px', flexShrink: 0 }}>
             <input type="date" value={pvFrom} onChange={e => setPvFrom(e.target.value)}
-              style={{ fontSize: 12, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer', width: 0, flex: 1, minWidth: '120px' }} />
-            <span style={{ color: 'rgba(var(--ink-rgb),0.3)', flexShrink: 0 }}>—</span>
+              style={{ fontSize: 12, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer', width: 130 }} />
+            <span style={{ color: 'rgba(var(--ink-rgb),0.3)', flexShrink: 0, padding: '0 2px' }}>—</span>
             <input type="date" value={pvTo} onChange={e => setPvTo(e.target.value)}
-              style={{ fontSize: 12, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer', width: 0, flex: 1, minWidth: '120px' }} />
+              style={{ fontSize: 12, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer', width: 130 }} />
             {(pvFrom !== thirtyDaysAgo || pvTo !== todayPv) && (
               <button type="button" onClick={() => { setPvFrom(thirtyDaysAgo); setPvTo(todayPv); }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
