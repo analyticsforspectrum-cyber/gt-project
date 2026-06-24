@@ -2286,7 +2286,7 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
   /* + Do'kon button */
   .manual-topbar > button:first-of-type { flex-shrink: 0; font-size: 11px; padding: 4px 10px; }
   /* spacer — force line break to 2nd row */
-  .manual-topbar > div[style*="flex: 1"] { flex: 0 0 100%; height: 0; padding: 0; margin: 0; }
+  .manual-topbar-spacer { flex: 0 0 100% !important; height: 0; padding: 0; margin: 0; }
   /* Jami sum, Cancel, Submit — second row */
   .manual-topbar > span { flex: 1; font-size: 12px; }
   .manual-topbar > button:not(:first-of-type) { flex: 1; font-size: 12px; min-height: 34px; }

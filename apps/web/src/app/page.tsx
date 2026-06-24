@@ -2774,7 +2774,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 <button type="button" className="small" onClick={() => setManualStores([...manualStores, emptyStoreRow()])}>
                   + Do&apos;kon
                 </button>
-                <div style={{ flex: 1 }} />
+                <div className="manual-topbar-spacer" style={{ flex: 1 }} />
                 {(() => {
                   let grandTotal = 0;
                   for (const col of manualStores) {
@@ -2794,8 +2794,8 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   ) : null;
                 })()}
                 <button className="small" type="button" onClick={() => { setManualOpen(false); setManualStores([emptyStoreRow()]); }} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.35)' }}>{T('lbl_cancel')}</button>
-                <button className="small" type="button" onClick={createManualInvoice} disabled={busy} style={{ background: busy ? undefined : '#16a34a', color: '#fff', borderColor: '#16a34a', opacity: busy ? 0.5 : 1 }}>
-                  {busy ? '...' : `✓ Qo'shish (${manualStores.filter(r => r.storeCode.trim()).length} ta do'kon)`}
+                <button className="small manual-submit-btn" type="button" onClick={createManualInvoice} disabled={busy} style={{ background: busy ? undefined : '#16a34a', color: '#fff', borderColor: '#16a34a', opacity: busy ? 0.5 : 1 }}>
+                  {busy ? '...' : `✓ Qo'shish (${manualStores.filter(r => r.storeCode.trim()).length} ta)`}
                 </button>
               </div>
 
