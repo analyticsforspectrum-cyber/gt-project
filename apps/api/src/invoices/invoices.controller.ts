@@ -83,9 +83,7 @@ export class InvoicesController {
     return this.invoicesService.setStatus(Number(invNo), 'delivered', user);
   }
 
-  /** Undeliver — admin only */
   @Patch(':invNo/undeliver')
-  @Roles('admin')
   undeliver(
     @Param('invNo') invNo: string,
     @Body() dto: UndeliverDto,

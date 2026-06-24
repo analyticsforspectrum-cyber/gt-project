@@ -2492,14 +2492,14 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     }
                   />
                   <div className="tablewrap">
-                    <table className="data editable" style={{ tableLayout: 'auto', width: '100%' }}>
+                    <table className="data editable" style={{ tableLayout: 'auto', width: 'max-content', minWidth: '100%' }}>
                       <thead>
                         <tr>
-                          <th style={{ width: '180px' }}>SKU</th>
-                          <th>{T('lbl_product')}</th>
-                          <th style={{ width: '60px' }}>{T('lbl_unit')}</th>
-                          <th className="right" style={{ width: '120px' }}>{T('lbl_price')}</th>
-                          <th className="right" style={{ width: '120px' }}>NDS ({T('lbl_price')}+12%)</th>
+                          <th style={{ whiteSpace: 'nowrap' }}>SKU</th>
+                          <th style={{ whiteSpace: 'nowrap' }}>{T('lbl_product')}</th>
+                          <th style={{ whiteSpace: 'nowrap' }}>{T('lbl_unit')}</th>
+                          <th className="right" style={{ whiteSpace: 'nowrap' }}>{T('lbl_price')}</th>
+                          <th className="right" style={{ whiteSpace: 'nowrap' }}>NDS (+12%)</th>
                           {isAdmin && <th style={{ width: '40px' }} />}
                         </tr>
                       </thead>
@@ -2507,16 +2507,16 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                         {catalogDraft.map((product, index) => (
                           <tr key={product.id || index}>
                             <td>
-                              <input disabled={!isAdmin} value={product.sku} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { sku: event.target.value }))} />
+                              <input disabled={!isAdmin} value={product.sku} size={Math.max(10, product.sku?.length || 0)} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { sku: event.target.value }))} />
                             </td>
                             <td>
-                              <input disabled={!isAdmin} value={product.name} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { name: event.target.value }))} />
+                              <input disabled={!isAdmin} value={product.name} size={Math.max(18, product.name?.length || 0)} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { name: event.target.value }))} />
                             </td>
                             <td>
-                              <input disabled={!isAdmin} value={product.unit} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { unit: event.target.value }))} />
+                              <input disabled={!isAdmin} value={product.unit} size={4} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { unit: event.target.value }))} />
                             </td>
                             <td>
-                              <input className="right" disabled={!isAdmin} value={fmt0(product.price)} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { price: parseNum(event.target.value) }))} />
+                              <input className="right" disabled={!isAdmin} value={fmt0(product.price)} size={Math.max(8, fmt0(product.price).length)} onChange={(event) => setCatalogDraft(updateCatalogDraft(catalogDraft, index, { price: parseNum(event.target.value) }))} />
                             </td>
                             <td className="right mono" style={{ color: 'var(--ink-2)', fontSize: 13 }}>
                               {product.price ? fmt0(Math.round(product.price * 1.12)) : '—'}
@@ -2805,8 +2805,8 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       <th className="manual-prodcol">Mahsulot</th>
                       {manualStores.map((col, ci) => (
                         <React.Fragment key={ci}>
-                          <th className="manual-storecol" style={{ borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', width: 54, textAlign: 'center', verticalAlign: 'bottom', paddingBottom: 4 }}>
-                            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>Son</div>
+                          <th className="manual-storecol" style={{ borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', width: 46, textAlign: 'center', verticalAlign: 'bottom', padding: '3px 2px' }}>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Son</div>
                           </th>
                           <th className="manual-storecol" style={{ borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', borderRight: '2px solid rgba(var(--ink-rgb),0.10)', width: 80, textAlign: 'center', verticalAlign: 'bottom', paddingBottom: 4 }}>
                             <div style={{ marginBottom: 3 }}>
@@ -2848,21 +2848,15 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                             };
                             return (
                               <React.Fragment key={ci}>
-                                <td style={{ padding: '3px 6px', textAlign: 'center', width: 90, background: hasQty ? 'rgba(5,150,105,0.05)' : undefined }}>
-                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(var(--ink-rgb),0.05)', borderRadius: 20, padding: '2px 4px', border: hasQty ? '1px solid rgba(5,150,105,0.3)' : '1px solid rgba(var(--ink-rgb),0.1)' }}>
-                                    <button type="button" onClick={() => update('qty', String(Math.max(0, parseNum(qtyVal) - 1)))}
-                                      style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: parseNum(qtyVal) > 0 ? 'pointer' : 'default', background: parseNum(qtyVal) > 0 ? '#ef4444' : 'rgba(var(--ink-rgb),0.08)', color: parseNum(qtyVal) > 0 ? '#fff' : 'var(--muted)', fontSize: 16, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>−</button>
-                                    <input type="number" min={0} value={qtyVal} onChange={(e) => update('qty', e.target.value)}
-                                      className="manual-qty-input"
-                                      style={{ width: 32, textAlign: 'center', fontSize: 13, fontWeight: hasQty ? 700 : 400, color: hasQty ? 'var(--ok)' : 'var(--muted)', fontFamily: 'var(--mono)', background: 'transparent', border: 'none', outline: 'none' }} />
-                                    <button type="button" onClick={() => update('qty', String(parseNum(qtyVal) + 1))}
-                                      style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#16a34a', color: '#fff', fontSize: 16, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>+</button>
-                                  </div>
+                                <td style={{ padding: '1px 3px', textAlign: 'center', width: 46, background: hasQty ? 'rgba(5,150,105,0.05)' : undefined }}>
+                                  <input type="number" min={0} value={qtyVal} onChange={(e) => update('qty', e.target.value)}
+                                    className="manual-qty-input"
+                                    style={{ width: 40, textAlign: 'center', fontSize: 13, fontWeight: hasQty ? 700 : 400, color: hasQty ? 'var(--ok)' : 'var(--muted)', fontFamily: 'var(--mono)', background: hasQty ? 'rgba(5,150,105,0.08)' : 'rgba(var(--ink-rgb),0.04)', border: hasQty ? '1px solid rgba(5,150,105,0.35)' : '1px solid rgba(var(--ink-rgb),0.1)', borderRadius: 6, outline: 'none', padding: '2px 2px' }} />
                                 </td>
-                                <td style={{ padding: '3px 4px', textAlign: 'right', width: 80, borderRight: '2px solid rgba(var(--ink-rgb),0.10)', background: hasQty ? 'rgba(5,150,105,0.05)' : undefined }}>
+                                <td style={{ padding: '2px 3px', textAlign: 'right', width: 70, borderRight: '2px solid rgba(var(--ink-rgb),0.10)', background: hasQty ? 'rgba(5,150,105,0.05)' : undefined }}>
                                   <input type="text" inputMode="numeric" placeholder={defaultPrice.toLocaleString('ru-RU')}
                                     value={priceVal} onChange={(e) => update('price', e.target.value.replace(/\s/g, ''))}
-                                    style={{ width: 72, textAlign: 'right', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 6, padding: '4px 4px', fontSize: 12, background: 'transparent', outline: 'none', color: priceVal && parseNum(priceVal) !== defaultPrice ? 'var(--honey)' : 'var(--muted)' }} />
+                                    style={{ width: 64, textAlign: 'right', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 5, padding: '3px 3px', fontSize: 11, background: 'transparent', outline: 'none', color: priceVal && parseNum(priceVal) !== defaultPrice ? 'var(--honey)' : 'var(--muted)' }} />
                                 </td>
                               </React.Fragment>
                             );
@@ -5700,7 +5694,6 @@ function SchedulePane({
                 <th className="sched-freeze sched-freeze-2">{T('lbl_store')}</th>
                 <th className="sched-freeze sched-freeze-3">{T('lbl_driver')}</th>
                 {dayNames.map((d, i) => <th key={i} className={`sched-day${i === dow ? ' today-col' : ''}`}>{d}</th>)}
-                <th>Бугун</th>
               </tr>
             </thead>
             <tbody>
@@ -5708,21 +5701,15 @@ function SchedulePane({
                 const todayOk = row.days[dow];
                 const inInvoices = invoices.some((inv) => inv.storeCode === row.storeCode);
                 return (
-                  <tr key={i} style={!inInvoices ? { opacity: 0.4 } : undefined}>
+                  <tr key={i}>
                     <td className="sched-freeze sched-freeze-1" style={{ fontSize: 12, color: 'var(--muted)' }}>{row.storeCode}</td>
-                    <td className="sched-freeze sched-freeze-2"><b>{row.market}</b></td>
+                    <td className="sched-freeze sched-freeze-2"><span className="sched-code-inline">{row.storeCode}</span><b>{row.market.replace(/^Korzinka\s*[-–]\s*/i, '')}</b></td>
                     <td className="sched-freeze sched-freeze-3">{row.driver}</td>
                     {row.days.map((on, di) => (
                       <td key={di} className="sched-day" style={{ background: di === dow && on ? 'rgba(34,197,94,0.15)' : di === dow && !on ? 'rgba(239,68,68,0.08)' : '' }}>
-                        {on ? <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓</span> : <span style={{ color: '#ccc' }}>·</span>}
+                        {on ? <span>✅</span> : <span style={{ color: '#ccc' }}>·</span>}
                       </td>
                     ))}
-                    <td style={{ textAlign: 'center' }}>
-                      {isException ? <span style={{ color: 'var(--ok)' }}>истисно</span> :
-                       todayOk ? <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓ бор</span> :
-                       inInvoices ? <span style={{ color: 'var(--danger)', fontWeight: 700 }}>⚠ йўқ</span> :
-                       <span className="muted">—</span>}
-                    </td>
                   </tr>
                 );
               })}
@@ -5773,6 +5760,13 @@ function DispatchPane({
         return { storeCode: inv.storeCode, market: inv.market, defaultDriver: sr?.driver ?? '' };
       });
   }, [invoices, scheduleRows]);
+
+  // Total visible part columns → equal width
+  const totalPartCols = useMemo(() =>
+    drivers.reduce((s, _, di) => hiddenDrivers.has(di) ? s : s + (driverPartCounts[di] ?? 1), 0),
+  [drivers, hiddenDrivers, driverPartCounts]);
+  const marketColW = 160;
+  const partColW = Math.max(36, Math.floor((Math.min(window.innerWidth, 700) - marketColW) / Math.max(1, totalPartCols)));
 
   function assign(storeCode: string, driverIdx: number, part: number) {
     setDispatchMap({ ...dispatchMap, [storeCode]: { driverIdx, part } });
@@ -5875,7 +5869,7 @@ function DispatchPane({
             <table className="data dispatchTable">
               <thead className="dispatch-thead">
                 <tr>
-                  <th className="dispatch-name-cell" rowSpan={2} style={{ minWidth: 220, position: 'sticky', left: 0, zIndex: 5, top: 0 }}>
+                  <th className="dispatch-name-cell" rowSpan={2} style={{ minWidth: marketColW, width: marketColW, position: 'sticky', left: 0, zIndex: 5, top: 0 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.10em', textTransform: 'uppercase', color: 'var(--muted)' }}>{T('lbl_store')}</span>
                   </th>
                   {drivers.map((d, di) => {
@@ -5884,7 +5878,7 @@ function DispatchPane({
                     const clr = DISPATCH_COLORS[di % DISPATCH_COLORS.length];
                     const isExtra = di >= baseDrivers.length;
                     return (
-                      <th key={di} colSpan={partCount} style={{ textAlign: 'center', borderLeft: '2px solid rgba(0,0,0,0.18)', background: clr.header, color: clr.text, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 3, padding: '8px 10px', height: 40, verticalAlign: 'middle' }}>
+                      <th key={di} colSpan={partCount} style={{ textAlign: 'center', width: partColW * partCount, borderLeft: '2px solid rgba(0,0,0,0.18)', background: clr.header, color: clr.text, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 3, padding: '3px 6px', height: 28, verticalAlign: 'middle' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                           <input
                             value={d}
@@ -5926,7 +5920,7 @@ function DispatchPane({
                       const partNo = pi + 1;
                       const hasMarkets = markets.some((m) => dispatchMap[m.storeCode]?.driverIdx === di && dispatchMap[m.storeCode]?.part === partNo);
                       return (
-                        <th key={`${di}-${pi}`} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: clr.dot, borderLeft: pi === 0 ? '2px solid rgba(0,0,0,0.15)' : undefined, whiteSpace: 'nowrap', padding: '3px 4px', height: 28 }}>
+                        <th key={`${di}-${pi}`} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: clr.dot, width: partColW, minWidth: partColW, maxWidth: partColW, borderLeft: pi === 0 ? '2px solid rgba(0,0,0,0.15)' : undefined, whiteSpace: 'nowrap', padding: '2px 2px', height: 20 }}>
                           {hasMarkets ? (
                             <button className="linklike" type="button" onClick={() => printDriverPart(di, partNo)} style={{ fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 2, color: clr.dot }}>
                               <Printer size={11} /> P{partNo}
@@ -5948,9 +5942,9 @@ function DispatchPane({
                       <td title={`${mkt.storeCode}-${mkt.market.replace(/\s*\/\d+$/, '')}${mkt.defaultDriver ? ' · ' + mkt.defaultDriver : ''}`}
                         className="dispatch-name-cell"
                         style={{ position: 'sticky', left: 0, zIndex: 2 }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.2 }}>
-                          <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', fontFamily: 'var(--sans)', letterSpacing: '-0.01em' }}>
-                            {mkt.market.replace(/\s*\/\d+$/, '')}<span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: 11, marginLeft: 4 }}>({mkt.storeCode})</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, lineHeight: 1.2 }}>
+                          <span style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', fontFamily: 'var(--sans)', letterSpacing: '-0.01em' }}>
+                            {mkt.market.replace(/\s*\/\d+$/, '')}<span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: 10, marginLeft: 3 }}>({mkt.storeCode})</span>
                           </span>
                         </div>
                       </td>
@@ -5977,7 +5971,7 @@ function DispatchPane({
                               <span
                                 className="dispatch-dot"
                                 style={{
-                                  width: 18, height: 18, borderRadius: '50%',
+                                  width: 20, height: 20, borderRadius: '50%',
                                   border: `1.5px solid ${checked ? clr.dot : 'rgba(var(--hi-rgb),0.20)'}`,
                                   background: checked ? clr.dot : 'transparent',
                                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
