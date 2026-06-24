@@ -1995,11 +1995,9 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 return (
                   <div style={{ marginTop: 8 }}>
                     {/* Date filter */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>Sana:</span>
-                      <input type="date" value={histFrom} onChange={e => setHistFrom(e.target.value)} style={{ width: 130, fontSize: 12, padding: '4px 8px' }} />
-                      <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
-                      <input type="date" value={histTo} onChange={e => setHistTo(e.target.value)} style={{ width: 130, fontSize: 12, padding: '4px 8px' }} />
+                      <DateRangePicker from={histFrom} to={histTo} setFrom={setHistFrom} setTo={setHistTo} />
                       <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filteredSessions.length} ta sessiya</span>
                     </div>
                     <div className="sessionList">
@@ -2111,8 +2109,9 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   <button className="mini" style={{ marginLeft: 10 }} type="button" onClick={() => setOrderCreateOpen(true)}>+ {T('ops_new_order')}</button>
                 </h3>
                 <div style={{ display: 'flex', gap: 8, padding: '8px 14px', flexWrap: 'wrap' }}>
-                  <input placeholder={T('lbl_date')} type="date" value={orderFilters.dateFrom} onChange={(e) => setOrderFilters({ ...orderFilters, dateFrom: e.target.value })} style={{ width: 140 }} />
-                  <input placeholder={T('lbl_date')} type="date" value={orderFilters.dateTo} onChange={(e) => setOrderFilters({ ...orderFilters, dateTo: e.target.value })} style={{ width: 140 }} />
+                  <DateRangePicker from={orderFilters.dateFrom} to={orderFilters.dateTo}
+                    setFrom={v => setOrderFilters({ ...orderFilters, dateFrom: v })}
+                    setTo={v => setOrderFilters({ ...orderFilters, dateTo: v })} />
                   <input placeholder={T('clients_name')} value={orderFilters.customer} onChange={(e) => setOrderFilters({ ...orderFilters, customer: e.target.value })} style={{ width: 160 }} />
                   <select value={orderFilters.status} onChange={(e) => setOrderFilters({ ...orderFilters, status: e.target.value })} style={{ width: 140 }}>
                     <option value="">{T('ops_all_statuses')}</option>
@@ -3766,17 +3765,8 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
             <RefreshCcw size={13} /> Yangilash
           </button>
           {/* Date range */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 10, padding: '5px 8px', flexShrink: 0 }}>
-            <input type="date" value={pvFrom} onChange={e => setPvFrom(e.target.value)}
-              style={{ fontSize: 12, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer', width: 130 }} />
-            <span style={{ color: 'rgba(var(--ink-rgb),0.3)', flexShrink: 0, padding: '0 2px' }}>—</span>
-            <input type="date" value={pvTo} onChange={e => setPvTo(e.target.value)}
-              style={{ fontSize: 12, fontWeight: 500, border: 'none', background: 'transparent', color: 'var(--ink)', outline: 'none', cursor: 'pointer', width: 130 }} />
-            {(pvFrom !== thirtyDaysAgo || pvTo !== todayPv) && (
-              <button type="button" onClick={() => { setPvFrom(thirtyDaysAgo); setPvTo(todayPv); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
-            )}
-          </div>
+          <DateRangePicker from={pvFrom} to={pvTo} setFrom={setPvFrom} setTo={setPvTo}
+            inputStyle={{ fontSize: 12, fontWeight: 500, border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 8, padding: '4px 6px', background: 'var(--surface)', color: 'var(--ink)' }} />
         </div>
       </div>
 
@@ -4508,9 +4498,7 @@ function AnalyticsPane({
           <button className={tab === 'savdo' ? 'active' : ''} type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}>Savdo</button>
         </div>
         <div className="analytics-daterow" style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-          <input type="date" value={savdoFrom} onChange={(e) => setSavdoFrom(e.target.value)} style={{ width: 130 }} />
-          <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
-          <input type="date" value={savdoTo} onChange={(e) => setSavdoTo(e.target.value)} style={{ width: 130 }} />
+          <DateRangePicker from={savdoFrom} to={savdoTo} setFrom={setSavdoFrom} setTo={setSavdoTo} />
           {tab === 'savdo'
             ? <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
@@ -4818,12 +4806,9 @@ function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, se
         title="Yetkazilmagan hujjatlar"
         meta={`${undeliveredList.length} / ${all.length} ta`}
         actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>dan:</span>
-            <input type="date" value={undeliveredFilter.from} onChange={e => setUndeliveredFilter({ ...undeliveredFilter, from: e.target.value })} style={{ width: 140 }} />
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>gacha:</span>
-            <input type="date" value={undeliveredFilter.to} onChange={e => setUndeliveredFilter({ ...undeliveredFilter, to: e.target.value })} style={{ width: 140 }} />
-          </div>
+          <DateRangePicker from={undeliveredFilter.from} to={undeliveredFilter.to}
+            setFrom={v => setUndeliveredFilter({ ...undeliveredFilter, from: v })}
+            setTo={v => setUndeliveredFilter({ ...undeliveredFilter, to: v })} />
         }
       />
       {undeliveredList.length === 0 ? (
@@ -5417,6 +5402,73 @@ function updateCatalogDraft(
   patch: Partial<CatalogProduct>
 ): CatalogProduct[] {
   return current.map((product, productIndex) => (productIndex === index ? { ...product, ...patch } : product));
+}
+
+// ─── Reusable date range picker with presets ──────────────────────────────────
+function DateRangePicker({ from, to, setFrom, setTo, inputStyle }: {
+  from: string; to: string;
+  setFrom: (v: string) => void; setTo: (v: string) => void;
+  inputStyle?: React.CSSProperties;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const todayStr = iso(new Date());
+
+  const presets: { label: string; from: string; to: string }[] = React.useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const dayOfWeek = now.getDay() || 7;
+    const monDate = new Date(now); monDate.setDate(now.getDate() - dayOfWeek + 1);
+    const prevMonthStart = new Date(y, m - 1, 1);
+    const prevMonthEnd   = new Date(y, m, 0);
+    return [
+      { label: 'Bugun',       from: todayStr,           to: todayStr },
+      { label: 'Bu hafta',    from: iso(monDate),        to: todayStr },
+      { label: 'Bu oy',       from: iso(new Date(y,m,1)), to: todayStr },
+      { label: "O'tgan oy",   from: iso(prevMonthStart), to: iso(prevMonthEnd) },
+    ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayStr]);
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const activeLabel = presets.find(p => p.from === from && p.to === to)?.label;
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+        style={{ width: 130, ...inputStyle }} />
+      <span style={{ color: 'var(--muted)', fontSize: 12, flexShrink: 0 }}>—</span>
+      <input type="date" value={to} onChange={e => setTo(e.target.value)}
+        style={{ width: 130, ...inputStyle }} />
+      {/* preset dropdown trigger */}
+      <button type="button" onClick={() => setOpen(o => !o)}
+        title={activeLabel ?? 'Tez tanlash'}
+        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, border: '1px solid rgba(var(--ink-rgb),0.14)', borderRadius: 8, background: open ? 'rgba(var(--ink-rgb),0.06)' : 'var(--surface)', cursor: 'pointer', fontSize: 13, color: activeLabel ? 'var(--ok)' : 'var(--muted)', flexShrink: 0 }}>
+        ▾
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 1200, background: 'var(--surface)', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.18)', border: '1px solid rgba(var(--ink-rgb),0.1)', minWidth: 160, padding: '6px 0' }}>
+          {presets.map(p => (
+            <div key={p.label} onClick={() => { setFrom(p.from); setTo(p.to); setOpen(false); }}
+              style={{ padding: '9px 16px', cursor: 'pointer', fontSize: 13, fontWeight: from === p.from && to === p.to ? 700 : 400, color: from === p.from && to === p.to ? 'var(--ok)' : 'inherit', background: from === p.from && to === p.to ? 'rgba(var(--ok-rgb,46,168,85),0.07)' : 'transparent' }}>
+              {p.label}
+            </div>
+          ))}
+          <div style={{ borderTop: '1px solid rgba(var(--ink-rgb),0.08)', margin: '4px 0' }} />
+          <div style={{ padding: '9px 16px', fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>Boshqa oraliq</div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Excel 365 logo SVG ───────────────────────────────────────────────────────
