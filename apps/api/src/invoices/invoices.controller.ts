@@ -48,9 +48,8 @@ export class InvoicesController {
     return this.invoicesService.manual(dto, user);
   }
 
-  /** Update invoice — admin only */
+  /** Update invoice — any authenticated user */
   @Patch(':invNo')
-  @Roles('admin')
   update(@Param('invNo') invNo: string, @Body() dto: UpdateInvoiceDto, @CurrentUser() user: PublicUser) {
     return this.invoicesService.update(Number(invNo), dto as any, user);
   }
@@ -76,9 +75,7 @@ export class InvoicesController {
     return this.invoicesService.hardDelete(Number(invNo));
   }
 
-  /** Mark delivered — admin only */
   @Patch(':invNo/deliver')
-  @Roles('admin')
   deliver(@Param('invNo') invNo: string, @CurrentUser() user: PublicUser) {
     return this.invoicesService.setStatus(Number(invNo), 'delivered', user);
   }
