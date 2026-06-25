@@ -3813,17 +3813,6 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
               )}
             </div>
 
-            {/* KPI cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
-              {kpi.map(k => (
-                <div key={k.label} style={{ padding: '12px 16px', borderRadius: 12, background: k.bg, border: `1px solid ${k.color}22`, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: k.color, textTransform: 'uppercase', letterSpacing: '0.04em', opacity: 0.85 }}>{k.label}</span>
-                  <span style={{ fontSize: 20, fontWeight: 800, color: k.color, lineHeight: 1.1 }}>{k.value}</span>
-                  <span style={{ fontSize: 11, color: k.color, opacity: 0.65 }}>{k.sub}</span>
-                </div>
-              ))}
-            </div>
-
             {filtered.length === 0 && <Empty title={T('pv_empty')} />}
           </>
         );
