@@ -4671,13 +4671,13 @@ function AnalyticsPane({
                         return (
                           <th key={m} title={m} style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', background:'var(--surface)', boxSizing:'border-box' }}>
                             <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'rgba(var(--ink-rgb),0.2)', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
-                            <div style={{ position:'absolute', bottom:14, left:21, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
+                            <div style={{ position:'absolute', bottom:4, left:'50%', transformOrigin:'center bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
                           </th>
                         );
                       })}
-                      <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', borderLeft:'2px solid rgba(217,119,6,0.35)', background:'rgba(217,119,6,0.05)' }}>
-                        <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'rgba(217,119,6,0.35)', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
-                        <div style={{ position:'absolute', bottom:14, left:21, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
+                      <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', borderLeft:'2px solid #e8a825', background:'#fffbf0' }}>
+                        <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'#e8a825', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
+                        <div style={{ position:'absolute', bottom:4, left:'50%', transformOrigin:'center bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
                       </th>
                     </tr>
                   </thead>
@@ -4692,7 +4692,7 @@ function AnalyticsPane({
                           {markets.map(m => { const c=pivot[p]?.[m]; return (
                             <td key={m} style={{ ...tdS, color: c ? 'var(--ink)' : 'rgba(var(--ink-rgb),0.15)' }} title={c ? `${c.qty} dona · ${fmt0(c.sum)} so'm` : '—'}>{c ? c.qty : '—'}</td>
                           );})}
-                          <td style={{ ...tdS, fontWeight:800, color:'#d97706', borderLeft:'2px solid rgba(217,119,6,0.25)', background:'rgba(217,119,6,0.04)', minWidth:90 }} title={`${rt.qty} dona · ${fmt0(rt.sum)} so'm`}>
+                          <td style={{ ...tdS, fontWeight:800, color:'#d97706', borderLeft:'2px solid #e8a825', background:'#fffbf0', minWidth:90 }} title={`${rt.qty} dona · ${fmt0(rt.sum)} so'm`}>
                             {rt.qty} <span style={{ fontSize:10, fontWeight:400, color:'rgba(217,119,6,0.7)' }}>({fmt0(rt.sum)})</span>
                           </td>
                         </tr>
@@ -4703,9 +4703,9 @@ function AnalyticsPane({
                     <tr style={{ borderTop:'2px solid rgba(var(--ink-rgb),0.12)' }}>
                       <td style={{ ...tdS, ...stCol, background:'var(--surface)', fontWeight:700, zIndex:25, borderRight:'2px solid rgba(var(--ink-rgb),0.2)' }}>Jami</td>
                       {markets.map(m => { const ct=colTotals[m]??{qty:0,sum:0}; return (
-                        <td key={m} style={{ ...tdS, fontWeight:700, background:'rgba(217,119,6,0.06)', color:'#d97706' }} title={`${ct.qty} dona · ${fmt0(ct.sum)} so'm`}>{ct.qty}</td>
+                        <td key={m} style={{ ...tdS, fontWeight:700, background:'#fffbf0', color:'#d97706' }} title={`${ct.qty} dona · ${fmt0(ct.sum)} so'm`}>{ct.qty}</td>
                       );})}
-                      <td style={{ ...tdS, fontWeight:800, background:'rgba(217,119,6,0.12)', color:'#d97706', borderLeft:'2px solid rgba(217,119,6,0.2)' }}>
+                      <td style={{ ...tdS, fontWeight:800, background:'#fff3d0', color:'#d97706', borderLeft:'2px solid #e8a825' }}>
                         {grandQty} <span style={{ fontSize:10, fontWeight:400 }}>({fmt0(grandSum)})</span>
                       </td>
                     </tr>
