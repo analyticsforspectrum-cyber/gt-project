@@ -3824,80 +3824,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
               ))}
             </div>
 
-            {products.length === 0 ? <Empty title={T('pv_empty')} /> : (
-              <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid rgba(var(--ink-rgb),0.09)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-                <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: 12 }}>
-                  <thead style={{ position: 'sticky', top: 0, zIndex: 15 }}>
-                    <tr>
-                      <th style={{ ...thStyle, ...stickyCol, zIndex: 25, fontSize: 12, background: 'var(--surface-2, #f5f5f7)' }}>{T('pv_mahsulot')}</th>
-                      {markets.map(m => {
-                        const short = m
-                          .replace(/^Korzinka\s*[-–]\s*/i, '')
-                          .replace(/^Супермаркет\s*/i, '')
-                          .replace(/^Магазин\s*/i, '');
-                        return (
-                          <th key={m} title={m} style={{ width: 42, minWidth: 42, padding: 0, height: 140, position: 'relative', overflow: 'visible', border: 'none', borderBottom: '1px solid #c8c8cc', background: 'var(--surface-2,#f6f6f8)', boxSizing: 'border-box' }}>
-                            {/* diagonal line: bottom-left → top-right */}
-                            <div style={{ position: 'absolute', bottom: 0, left: 0, width: 1, height: 200, background: '#a8a8b0', transformOrigin: 'left bottom', transform: 'rotate(45deg)', pointerEvents: 'none', zIndex: 1 }} />
-                            {/* text: anchored at bottom-left of cell, rotated -45°, offset to center of band */}
-                            <div style={{ position: 'absolute', bottom: 14, left: 35, transformOrigin: 'left bottom', transform: 'rotate(-45deg)', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 600, lineHeight: 1, color: 'var(--ink)', zIndex: 2 }}>
-                              {short}
-                            </div>
-                          </th>
-                        );
-                      })}
-                      <th style={{ width: 42, minWidth: 42, padding: 0, height: 140, position: 'relative', overflow: 'visible', border: 'none', borderBottom: '1px solid #c8c8cc', borderLeft: '2px solid rgba(217,119,6,0.25)', background: 'rgba(217,119,6,0.04)', boxSizing: 'border-box' }}>
-                        <div style={{ position: 'absolute', bottom: 0, left: 0, width: 1, height: 200, background: 'rgba(217,119,6,0.3)', transformOrigin: 'left bottom', transform: 'rotate(45deg)', pointerEvents: 'none', zIndex: 1 }} />
-                        <div style={{ position: 'absolute', bottom: 14, left: 35, transformOrigin: 'left bottom', transform: 'rotate(-45deg)', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 700, lineHeight: 1, color: '#d97706', zIndex: 2 }}>
-                          {T('pv_jami')}
-                        </div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((p, pi) => {
-                      const rt = rowTotals[p] ?? { qty: 0, sum: 0 };
-                      return (
-                        <tr key={p} style={{ background: pi % 2 === 0 ? 'transparent' : 'rgba(var(--ink-rgb),0.018)' }}>
-                          <td style={{ ...tdStyle, ...stickyCol, background: pi % 2 === 0 ? 'var(--surface)' : 'var(--surface-1, #f9f9fb)' }}
-                            title={p}>{p.length > 38 ? p.slice(0, 36) + '…' : p}</td>
-                          {markets.map(m => {
-                            const c = pivot[p]?.[m];
-                            return (
-                              <td key={m} style={{ ...tdStyle, color: c ? 'var(--ink)' : 'rgba(var(--ink-rgb),0.15)' }}
-                                title={c ? `${c.qty} dona · ${fmt0(c.sum)} so'm` : '—'}>
-                                {c ? c.qty : '—'}
-                              </td>
-                            );
-                          })}
-                          <td style={{ ...tdStyle, fontWeight: 800, color: '#d97706', borderLeft: '2px solid rgba(217,119,6,0.25)', background: 'rgba(217,119,6,0.04)', minWidth: 90 }}
-                            title={`${rt.qty} dona · ${fmt0(rt.sum)} so'm`}>
-                            {rt.qty} <span style={{ fontSize: 10, fontWeight: 400, color: 'rgba(217,119,6,0.7)' }}>({fmt0(rt.sum)})</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 15 }}>
-                    <tr style={{ borderTop: '2px solid rgba(var(--ink-rgb),0.12)' }}>
-                      <td style={{ ...tdStyle, ...stickyCol, background: 'var(--surface-2, #f5f5f7)', fontWeight: 700, zIndex: 25 }}>{T('pv_jami')}</td>
-                      {markets.map(m => {
-                        const ct = colTotals[m] ?? { qty: 0, sum: 0 };
-                        return (
-                          <td key={m} style={{ ...tdStyle, fontWeight: 700, background: 'rgba(217,119,6,0.06)', color: '#d97706' }}
-                            title={`${ct.qty} dona · ${fmt0(ct.sum)} so'm`}>
-                            {ct.qty}
-                          </td>
-                        );
-                      })}
-                      <td style={{ ...tdStyle, fontWeight: 800, background: 'rgba(217,119,6,0.12)', color: '#d97706', borderLeft: '2px solid rgba(217,119,6,0.2)' }}>
-                        {grandQty} <span style={{ fontSize: 10, fontWeight: 400 }}>({fmt0(grandSum)})</span>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+            {filtered.length === 0 && <Empty title={T('pv_empty')} />}
           </>
         );
       })()}
@@ -4101,7 +4028,7 @@ function AnalyticsPane({
   onToast: (kind: 'ok' | 'err' | 'info', text: string) => void;
   T?: (k: string) => string;
 }) {
-  const [tab, setTab] = useState<'overview' | 'products' | 'markets' | 'clients' | 'savdo'>('overview');
+  const [tab, setTab] = useState<'overview' | 'products' | 'markets' | 'clients' | 'savdo' | 'qaytarma'>('overview');
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const toggleItem = (key: string) => setExpandedItems(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
@@ -4454,6 +4381,10 @@ function AnalyticsPane({
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'savdo' ? '#6366f1' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'savdo' ? 'rgba(99,102,241,0.09)' : 'var(--surface)', color: tab === 'savdo' ? '#4f46e5' : 'var(--ink)' }}>
               📊 Savdo
             </button>
+            <button type="button" onClick={() => { setTab('qaytarma'); void loadVazvrat(); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'qaytarma' ? 'rgba(217,119,6,0.09)' : 'var(--surface)', color: tab === 'qaytarma' ? '#b45309' : 'var(--ink)' }}>
+              ↩️ Qaytarma <span style={{ background: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'qaytarma' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{vazvratRows.length}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -4693,6 +4624,107 @@ function AnalyticsPane({
           </div>
         ) : <Empty title={T('clients_empty')} />
       )}
+
+      {/* ─── QAYTARMA PIVOT TAB ─────────────────────────────────────── */}
+      {tab === 'qaytarma' && (() => {
+        const from = savdoFrom;
+        const to   = savdoTo;
+        const filtered = vazvratRows.filter(v => {
+          const d = v.date.slice(0, 10);
+          return (!from || d >= from) && (!to || d <= to);
+        });
+        const products = [...new Set(filtered.map(v => v.productName))].sort();
+        const markets  = [...new Set(filtered.map(v => v.marketName || v.marketCode))].sort();
+        type PCell = { qty: number; sum: number };
+        const pivot: Record<string, Record<string, PCell>> = {};
+        const colTotals: Record<string, PCell> = {};
+        const rowTotals: Record<string, PCell> = {};
+        let grandQty = 0; let grandSum = 0;
+        for (const v of filtered) {
+          const p = v.productName; const m = v.marketName || v.marketCode;
+          if (!pivot[p]) pivot[p] = {};
+          if (!pivot[p][m]) pivot[p][m] = { qty: 0, sum: 0 };
+          pivot[p][m].qty += v.qty; pivot[p][m].sum += v.totalWithVat;
+          if (!rowTotals[p]) rowTotals[p] = { qty: 0, sum: 0 };
+          rowTotals[p].qty += v.qty; rowTotals[p].sum += v.totalWithVat;
+          if (!colTotals[m]) colTotals[m] = { qty: 0, sum: 0 };
+          colTotals[m].qty += v.qty; colTotals[m].sum += v.totalWithVat;
+          grandQty += v.qty; grandSum += v.totalWithVat;
+        }
+        const thS: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface-2,#f5f5f7)', border: '1px solid #c8c8cc', textAlign: 'center' };
+        const tdS: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid #c8c8cc', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
+        const stCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 180, maxWidth: 260 };
+        const kpi = [
+          { label: 'JAMI QAYTARMA', value: `${grandQty} dona`, sub: fmt0(grandSum) + ' so\'m', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
+          { label: 'MAHSULOT TURLARI', value: products.length, sub: 'xil tovar', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+          { label: 'MARKETLAR', value: markets.length, sub: 'ta do\'kon', color: '#0891b2', bg: 'rgba(8,145,178,0.08)' },
+          { label: 'YOZUVLAR', value: filtered.length, sub: 'ta qayd', color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+        ];
+        return (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, flexShrink: 0 }}>
+              {kpi.map(k => (
+                <div key={k.label} style={{ padding: '12px 16px', borderRadius: 12, background: k.bg, border: `1px solid ${k.color}22`, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: k.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: k.color, lineHeight: 1.1 }}>{k.value}</span>
+                  <span style={{ fontSize: 11, color: k.color, opacity: 0.65 }}>{k.sub}</span>
+                </div>
+              ))}
+            </div>
+            {products.length === 0 ? <Empty title="Sana oralig'ida qaytarma yo'q" /> : (
+              <div style={{ flex: 1, overflowX: 'auto', overflowY: 'auto', borderRadius: 12, border: '1px solid rgba(var(--ink-rgb),0.09)' }}>
+                <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: 12 }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 15 }}>
+                    <tr>
+                      <th style={{ ...thS, ...stCol, zIndex: 25 }}>Mahsulot</th>
+                      {markets.map(m => {
+                        const short = m.replace(/^Korzinka\s*[-–]\s*/i,'').replace(/^Супермаркет\s*/i,'').replace(/^Магазин\s*/i,'');
+                        return (
+                          <th key={m} title={m} style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', background:'var(--surface-2,#f6f6f8)' }}>
+                            <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'#a8a8b0', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
+                            <div style={{ position:'absolute', bottom:14, left:35, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
+                          </th>
+                        );
+                      })}
+                      <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', borderLeft:'2px solid rgba(217,119,6,0.25)', background:'rgba(217,119,6,0.04)' }}>
+                        <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'rgba(217,119,6,0.3)', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
+                        <div style={{ position:'absolute', bottom:14, left:35, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((p, pi) => {
+                      const rt = rowTotals[p] ?? { qty:0, sum:0 };
+                      return (
+                        <tr key={p} style={{ background: pi%2===0 ? 'transparent' : 'rgba(var(--ink-rgb),0.018)' }}>
+                          <td style={{ ...tdS, ...stCol, background: pi%2===0 ? 'var(--surface)' : 'var(--surface-1,#f9f9fb)' }} title={p}>{p.length>38 ? p.slice(0,36)+'…' : p}</td>
+                          {markets.map(m => { const c=pivot[p]?.[m]; return (
+                            <td key={m} style={{ ...tdS, color: c ? 'var(--ink)' : 'rgba(var(--ink-rgb),0.15)' }} title={c ? `${c.qty} dona · ${fmt0(c.sum)} so'm` : '—'}>{c ? c.qty : '—'}</td>
+                          );})}
+                          <td style={{ ...tdS, fontWeight:800, color:'#d97706', borderLeft:'2px solid rgba(217,119,6,0.25)', background:'rgba(217,119,6,0.04)', minWidth:90 }} title={`${rt.qty} dona · ${fmt0(rt.sum)} so'm`}>
+                            {rt.qty} <span style={{ fontSize:10, fontWeight:400, color:'rgba(217,119,6,0.7)' }}>({fmt0(rt.sum)})</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot style={{ position:'sticky', bottom:0, zIndex:15 }}>
+                    <tr style={{ borderTop:'2px solid rgba(var(--ink-rgb),0.12)' }}>
+                      <td style={{ ...tdS, ...stCol, background:'var(--surface-2,#f5f5f7)', fontWeight:700, zIndex:25 }}>Jami</td>
+                      {markets.map(m => { const ct=colTotals[m]??{qty:0,sum:0}; return (
+                        <td key={m} style={{ ...tdS, fontWeight:700, background:'rgba(217,119,6,0.06)', color:'#d97706' }} title={`${ct.qty} dona · ${fmt0(ct.sum)} so'm`}>{ct.qty}</td>
+                      );})}
+                      <td style={{ ...tdS, fontWeight:800, background:'rgba(217,119,6,0.12)', color:'#d97706', borderLeft:'2px solid rgba(217,119,6,0.2)' }}>
+                        {grandQty} <span style={{ fontSize:10, fontWeight:400 }}>({fmt0(grandSum)})</span>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ─── SAVDO TAB ─────────────────────────────────────────────── */}
       {tab === 'savdo' && <SavdoTab
