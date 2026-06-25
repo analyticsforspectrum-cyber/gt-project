@@ -2835,3 +2835,10 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
 /* Hide Netlify dev badge */
 div[data-netlify-identity-menu],
 netlify-identity-widget { display: none !important; }
+
+/* ── Qaytarma KPI grid — mobile 2 col ── */
+@media (max-width: 600px) {
+  .qaytarma-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}

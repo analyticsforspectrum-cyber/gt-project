@@ -4652,12 +4652,14 @@ function AnalyticsPane({
         ];
         return (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, flexShrink: 0 }}>
+            <div className="qaytarma-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, flexShrink: 0 }}>
               {kpi.map(k => (
-                <div key={k.label} style={{ padding: '12px 16px', borderRadius: 12, background: k.bg, border: `1px solid ${k.color}22`, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: k.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</span>
-                  <span style={{ fontSize: 20, fontWeight: 800, color: k.color, lineHeight: 1.1 }}>{k.value}</span>
-                  <span style={{ fontSize: 11, color: k.color, opacity: 0.65 }}>{k.sub}</span>
+                <div key={k.label} style={{ padding: '10px 14px', borderRadius: 12, background: k.bg, border: `1px solid ${k.color}33`, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: k.color, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{k.label}</span>
+                    <span style={{ fontSize: 22, fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.value}</span>
+                    <span style={{ fontSize: 10, color: k.color, opacity: 0.65, whiteSpace: 'nowrap' }}>{k.sub}</span>
+                  </div>
                 </div>
               ))}
             </div>
