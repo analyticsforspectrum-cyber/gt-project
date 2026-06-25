@@ -4642,7 +4642,8 @@ function AnalyticsPane({
         }
         const thS: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
         const tdS: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
-        const stCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 200, maxWidth: 200, willChange: 'transform' };
+        const PROD_W = 220;
+        const stCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', width: PROD_W, minWidth: PROD_W, maxWidth: PROD_W, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', willChange: 'transform' };
         const kpi = [
           { label: 'JAMI QAYTARMA', value: `${grandQty} dona`, sub: fmt0(grandSum) + ' so\'m', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
           { label: 'MAHSULOT TURLARI', value: products.length, sub: 'xil tovar', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
@@ -4665,7 +4666,7 @@ function AnalyticsPane({
                 <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: 12 }}>
                   <thead style={{ position: 'sticky', top: 0, zIndex: 15 }}>
                     <tr>
-                      <th style={{ ...thS, ...stCol, zIndex: 25, background: 'var(--surface)', borderRight: '2px solid rgba(var(--ink-rgb),0.25)' }}>Mahsulot</th>
+                      <th style={{ ...thS, ...stCol, zIndex: 25, background: 'var(--surface)', borderRight: '2px solid rgba(var(--ink-rgb),0.25)', overflow: 'hidden' }}>Mahsulot</th>
                       {markets.map(m => {
                         const short = m.replace(/^Korzinka\s*[-–]\s*/i,'').replace(/^Супермаркет\s*/i,'').replace(/^Магазин\s*/i,'');
                         return (
