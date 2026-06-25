@@ -4672,13 +4672,13 @@ function AnalyticsPane({
                         return (
                           <th key={m} title={m} style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', background:'var(--surface)', boxSizing:'border-box' }}>
                             <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'rgba(var(--ink-rgb),0.2)', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
-                            <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%) rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2, textAlign:'center' }}>{short}</div>
+                            <div style={{ position:'absolute', bottom:14, left:14, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
                           </th>
                         );
                       })}
                       <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', borderLeft:'2px solid #e8a825', background:'#fffbf0' }}>
                         <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'#e8a825', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
-                        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%) rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2, textAlign:'center' }}>Jami</div>
+                        <div style={{ position:'absolute', bottom:14, left:14, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
                       </th>
                     </tr>
                   </thead>
