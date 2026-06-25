@@ -3743,9 +3743,9 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
           grandQty += v.qty; grandSum += v.totalWithVat;
         }
 
-        const thStyle: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface-2, #f5f5f7)', border: '1px solid #c8c8cc', textAlign: 'center' };
-        const tdStyle: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid #c8c8cc', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
-        const stickyCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 180, maxWidth: 260 };
+        const thStyle: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
+        const tdStyle: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
+        const stickyCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 200, maxWidth: 200, willChange: 'transform' };
 
         const activeDays = allDates.filter(d => (!from||d>=from)&&(!to||d<=to)).length;
         const kpi = [
@@ -4640,9 +4640,9 @@ function AnalyticsPane({
           colTotals[m].qty += v.qty; colTotals[m].sum += v.totalWithVat;
           grandQty += v.qty; grandSum += v.totalWithVat;
         }
-        const thS: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface-2,#f5f5f7)', border: '1px solid #c8c8cc', textAlign: 'center' };
-        const tdS: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid #c8c8cc', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
-        const stCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 180, maxWidth: 260 };
+        const thS: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
+        const tdS: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
+        const stCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 200, maxWidth: 200, willChange: 'transform' };
         const kpi = [
           { label: 'JAMI QAYTARMA', value: `${grandQty} dona`, sub: fmt0(grandSum) + ' so\'m', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
           { label: 'MAHSULOT TURLARI', value: products.length, sub: 'xil tovar', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
@@ -4665,28 +4665,29 @@ function AnalyticsPane({
                 <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: 12 }}>
                   <thead style={{ position: 'sticky', top: 0, zIndex: 15 }}>
                     <tr>
-                      <th style={{ ...thS, ...stCol, zIndex: 25 }}>Mahsulot</th>
+                      <th style={{ ...thS, ...stCol, zIndex: 25, background: 'var(--surface)', borderRight: '2px solid rgba(var(--ink-rgb),0.2)' }}>Mahsulot</th>
                       {markets.map(m => {
                         const short = m.replace(/^Korzinka\s*[-–]\s*/i,'').replace(/^Супермаркет\s*/i,'').replace(/^Магазин\s*/i,'');
                         return (
-                          <th key={m} title={m} style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', background:'var(--surface-2,#f6f6f8)' }}>
-                            <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'#a8a8b0', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
-                            <div style={{ position:'absolute', bottom:14, left:35, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
+                          <th key={m} title={m} style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid rgba(var(--ink-rgb),0.12)', background:'var(--surface)', boxSizing:'border-box' }}>
+                            <div style={{ position:'absolute', inset:0, borderLeft:'1px solid rgba(var(--ink-rgb),0.12)' }} />
+                            <div style={{ position:'absolute', bottom:4, left:'50%', transformOrigin:'center bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
                           </th>
                         );
                       })}
-                      <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', borderLeft:'2px solid rgba(217,119,6,0.25)', background:'rgba(217,119,6,0.04)' }}>
-                        <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'rgba(217,119,6,0.3)', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
-                        <div style={{ position:'absolute', bottom:14, left:35, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
+                      <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid rgba(var(--ink-rgb),0.12)', borderLeft:'2px solid rgba(217,119,6,0.35)', background:'rgba(217,119,6,0.05)' }}>
+                        <div style={{ position:'absolute', bottom:4, left:'50%', transformOrigin:'center bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     {products.map((p, pi) => {
+                      const bg0 = 'var(--surface)';
+                      const bg1 = 'rgba(var(--ink-rgb),0.03)';
                       const rt = rowTotals[p] ?? { qty:0, sum:0 };
                       return (
-                        <tr key={p} style={{ background: pi%2===0 ? 'transparent' : 'rgba(var(--ink-rgb),0.018)' }}>
-                          <td style={{ ...tdS, ...stCol, background: pi%2===0 ? 'var(--surface)' : 'var(--surface-1,#f9f9fb)' }} title={p}>{p.length>38 ? p.slice(0,36)+'…' : p}</td>
+                        <tr key={p} style={{ background: pi%2===0 ? bg0 : bg1 }}>
+                          <td style={{ ...tdS, ...stCol, background: pi%2===0 ? bg0 : bg1, borderRight: '2px solid rgba(var(--ink-rgb),0.2)' }} title={p}>{p.length>38 ? p.slice(0,36)+'…' : p}</td>
                           {markets.map(m => { const c=pivot[p]?.[m]; return (
                             <td key={m} style={{ ...tdS, color: c ? 'var(--ink)' : 'rgba(var(--ink-rgb),0.15)' }} title={c ? `${c.qty} dona · ${fmt0(c.sum)} so'm` : '—'}>{c ? c.qty : '—'}</td>
                           );})}
@@ -4699,7 +4700,7 @@ function AnalyticsPane({
                   </tbody>
                   <tfoot style={{ position:'sticky', bottom:0, zIndex:15 }}>
                     <tr style={{ borderTop:'2px solid rgba(var(--ink-rgb),0.12)' }}>
-                      <td style={{ ...tdS, ...stCol, background:'var(--surface-2,#f5f5f7)', fontWeight:700, zIndex:25 }}>Jami</td>
+                      <td style={{ ...tdS, ...stCol, background:'var(--surface)', fontWeight:700, zIndex:25, borderRight:'2px solid rgba(var(--ink-rgb),0.2)' }}>Jami</td>
                       {markets.map(m => { const ct=colTotals[m]??{qty:0,sum:0}; return (
                         <td key={m} style={{ ...tdS, fontWeight:700, background:'rgba(217,119,6,0.06)', color:'#d97706' }} title={`${ct.qty} dona · ${fmt0(ct.sum)} so'm`}>{ct.qty}</td>
                       );})}
