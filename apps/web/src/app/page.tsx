@@ -4670,22 +4670,20 @@ function AnalyticsPane({
                       {markets.map(m => {
                         const short = m.replace(/^Korzinka\s*[-–]\s*/i,'').replace(/^Супермаркет\s*/i,'').replace(/^Магазин\s*/i,'');
                         return (
-                          <th key={m} title={m} style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', background:'var(--surface)', boxSizing:'border-box' }}>
-                            <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'rgba(var(--ink-rgb),0.2)', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
-                            <div style={{ position:'absolute', bottom:14, left:14, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
+                          <th key={m} title={m} style={{ padding:'8px 6px', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', background:'var(--surface)', border:'none', borderBottom:'1px solid rgba(var(--ink-rgb),0.15)', borderRight:'1px solid rgba(var(--ink-rgb),0.08)', textAlign:'center', verticalAlign:'middle' }}>
+                            {short}
                           </th>
                         );
                       })}
-                      <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', borderLeft:'2px solid #e8a825', background:'#fffbf0' }}>
-                        <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'#e8a825', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
-                        <div style={{ position:'absolute', bottom:14, left:14, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
+                      <th style={{ padding:'8px 10px', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', background:'#fffbf0', border:'none', borderBottom:'1px solid rgba(var(--ink-rgb),0.15)', borderLeft:'2px solid #e8a825', textAlign:'center', verticalAlign:'middle' }}>
+                        Jami
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     {products.map((p, pi) => {
                       const bg0 = 'var(--surface)';
-                      const bg1 = 'rgba(var(--ink-rgb),0.03)';
+                      const bg1 = 'var(--surface-hi, #1d2737)';
                       const rt = rowTotals[p] ?? { qty:0, sum:0 };
                       return (
                         <tr key={p} style={{ background: pi%2===0 ? bg0 : bg1 }}>
