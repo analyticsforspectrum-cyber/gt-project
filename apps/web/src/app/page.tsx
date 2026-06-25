@@ -4665,18 +4665,19 @@ function AnalyticsPane({
                 <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: 12 }}>
                   <thead style={{ position: 'sticky', top: 0, zIndex: 15 }}>
                     <tr>
-                      <th style={{ ...thS, ...stCol, zIndex: 25, background: 'var(--surface)', borderRight: '2px solid rgba(var(--ink-rgb),0.2)' }}>Mahsulot</th>
+                      <th style={{ ...thS, ...stCol, zIndex: 25, background: 'var(--surface)', borderRight: '2px solid rgba(var(--ink-rgb),0.25)' }}>Mahsulot</th>
                       {markets.map(m => {
                         const short = m.replace(/^Korzinka\s*[-–]\s*/i,'').replace(/^Супермаркет\s*/i,'').replace(/^Магазин\s*/i,'');
                         return (
-                          <th key={m} title={m} style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid rgba(var(--ink-rgb),0.12)', background:'var(--surface)', boxSizing:'border-box' }}>
-                            <div style={{ position:'absolute', inset:0, borderLeft:'1px solid rgba(var(--ink-rgb),0.12)' }} />
-                            <div style={{ position:'absolute', bottom:4, left:'50%', transformOrigin:'center bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
+                          <th key={m} title={m} style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', background:'var(--surface)', boxSizing:'border-box' }}>
+                            <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'rgba(var(--ink-rgb),0.2)', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
+                            <div style={{ position:'absolute', bottom:14, left:21, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', zIndex:2 }}>{short}</div>
                           </th>
                         );
                       })}
-                      <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid rgba(var(--ink-rgb),0.12)', borderLeft:'2px solid rgba(217,119,6,0.35)', background:'rgba(217,119,6,0.05)' }}>
-                        <div style={{ position:'absolute', bottom:4, left:'50%', transformOrigin:'center bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
+                      <th style={{ width:42, minWidth:42, padding:0, height:140, position:'relative', overflow:'visible', border:'none', borderBottom:'1px solid #c8c8cc', borderLeft:'2px solid rgba(217,119,6,0.35)', background:'rgba(217,119,6,0.05)' }}>
+                        <div style={{ position:'absolute', bottom:0, left:0, width:1, height:200, background:'rgba(217,119,6,0.35)', transformOrigin:'left bottom', transform:'rotate(45deg)', pointerEvents:'none', zIndex:1 }} />
+                        <div style={{ position:'absolute', bottom:14, left:21, transformOrigin:'left bottom', transform:'rotate(-45deg)', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', zIndex:2 }}>Jami</div>
                       </th>
                     </tr>
                   </thead>
