@@ -4344,34 +4344,34 @@ function AnalyticsPane({
             </div>
           ))}
         </div>
-        {/* Row 2: DateRange + refresh + Mahsulot/Market/Savdo toggles */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {/* Row 2: DateRange + refresh + toggles — horizontal scroll on mobile */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto', paddingBottom: 2, flexWrap: 'nowrap' }}>
           <DateRangePicker from={savdoFrom} to={savdoTo} onChange={(f,t) => { setSavdoFrom(f); setSavdoTo(t); }} />
           {tab === 'savdo'
             ? <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
+                style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
                 <RefreshCcw size={12} /> {savdoBusy ? '…' : 'Yuklash'}
               </button>
             : <button type="button" onClick={onRefresh}
-                style={{ display: 'inline-flex', alignItems: 'center', padding: '5px 8px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
+                style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', padding: '5px 8px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
                 <RefreshCcw size={13} />
               </button>
           }
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
             <button type="button" onClick={() => setTab('products')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'products' ? 'rgba(46,168,85,0.09)' : 'var(--surface)', color: tab === 'products' ? 'var(--ok)' : 'var(--ink)' }}>
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'products' ? 'rgba(46,168,85,0.09)' : 'var(--surface)', color: tab === 'products' ? 'var(--ok)' : 'var(--ink)' }}>
               📦 Mahsulot <span style={{ background: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'products' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredProductRows.length}</span>
             </button>
             <button type="button" onClick={() => setTab('markets')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'markets' ? 'rgba(245,158,11,0.09)' : 'var(--surface)', color: tab === 'markets' ? '#b45309' : 'var(--ink)' }}>
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'markets' ? 'rgba(245,158,11,0.09)' : 'var(--surface)', color: tab === 'markets' ? '#b45309' : 'var(--ink)' }}>
               🏪 Market <span style={{ background: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'markets' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredMarkets.length}</span>
             </button>
             <button type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'savdo' ? '#6366f1' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'savdo' ? 'rgba(99,102,241,0.09)' : 'var(--surface)', color: tab === 'savdo' ? '#4f46e5' : 'var(--ink)' }}>
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'savdo' ? '#6366f1' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'savdo' ? 'rgba(99,102,241,0.09)' : 'var(--surface)', color: tab === 'savdo' ? '#4f46e5' : 'var(--ink)' }}>
               📊 Savdo
             </button>
             <button type="button" onClick={() => { setTab('qaytarma'); void loadVazvrat(); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'qaytarma' ? 'rgba(217,119,6,0.09)' : 'var(--surface)', color: tab === 'qaytarma' ? '#b45309' : 'var(--ink)' }}>
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'qaytarma' ? 'rgba(217,119,6,0.09)' : 'var(--surface)', color: tab === 'qaytarma' ? '#b45309' : 'var(--ink)' }}>
               ↩️ Qaytarma <span style={{ background: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'qaytarma' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{vazvratRows.length}</span>
             </button>
           </div>
