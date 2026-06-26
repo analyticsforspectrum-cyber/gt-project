@@ -3738,7 +3738,6 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
         });
 
         // Pivot: rows=product, cols=market, value=qty+sum
-        const products = [...new Set(filtered.map(v => v.productName))].sort();
         const markets  = [...new Set(filtered.map(v => v.marketName || v.marketCode))].sort();
         type Cell = { qty: number; sum: number };
         const pivot: Record<string, Record<string, Cell>> = {};
@@ -3758,6 +3757,9 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
           colTotals[m].qty += v.qty; colTotals[m].sum += v.totalWithVat;
           grandQty += v.qty; grandSum += v.totalWithVat;
         }
+        // Sort products by total qty descending
+        const products = [...new Set(filtered.map(v => v.productName))]
+          .sort((a, b) => (rowTotals[b]?.qty ?? 0) - (rowTotals[a]?.qty ?? 0));
 
         const thStyle: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
         const tdStyle: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
@@ -4707,7 +4709,6 @@ function AnalyticsPane({
           const d = v.date.slice(0, 10);
           return (!from || d >= from) && (!to || d <= to);
         });
-        const products = [...new Set(filtered.map(v => v.productName))].sort();
         const markets  = [...new Set(filtered.map(v => v.marketName || v.marketCode))].sort();
         type PCell = { qty: number; sum: number };
         const pivot: Record<string, Record<string, PCell>> = {};
@@ -4725,6 +4726,9 @@ function AnalyticsPane({
           colTotals[m].qty += v.qty; colTotals[m].sum += v.totalWithVat;
           grandQty += v.qty; grandSum += v.totalWithVat;
         }
+        // Sort products by total qty descending
+        const products = [...new Set(filtered.map(v => v.productName))]
+          .sort((a, b) => (rowTotals[b]?.qty ?? 0) - (rowTotals[a]?.qty ?? 0));
         const thS: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
         const tdS: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
         const PROD_W = 220;
