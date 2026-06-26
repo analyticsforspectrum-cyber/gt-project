@@ -5443,6 +5443,8 @@ function DateRangePicker({ from, to, onChange, setFrom, setTo, inputStyle }: {
 }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
+  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const [dropPos, setDropPos] = React.useState({ top: 0, right: 0 });
 
   // LOCAL date (timezone-safe) — toISOString() UTC qaytaradi va off-by-one beradi
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -5469,13 +5471,22 @@ function DateRangePicker({ from, to, onChange, setFrom, setTo, inputStyle }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayStr]);
 
+  const openDropdown = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+    }
+    setOpen(o => !o);
+  };
+
   React.useEffect(() => {
+    if (!open) return;
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [open]);
 
   const activeLabel = presets.find(p => p.from === from && p.to === to)?.label;
 
@@ -5486,13 +5497,13 @@ function DateRangePicker({ from, to, onChange, setFrom, setTo, inputStyle }: {
       <span style={{ color: 'var(--muted)', fontSize: 12, flexShrink: 0 }}>—</span>
       <input type="date" value={to} onChange={e => apply(from, e.target.value)}
         style={{ width: 130, ...inputStyle }} />
-      <button type="button" onClick={() => setOpen(o => !o)}
+      <button ref={btnRef} type="button" onClick={openDropdown}
         title={activeLabel ?? 'Tez tanlash'}
         style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, border: '1px solid rgba(var(--ink-rgb),0.14)', borderRadius: 8, background: open ? 'rgba(var(--ink-rgb),0.06)' : 'var(--surface)', cursor: 'pointer', fontSize: 13, color: activeLabel ? 'var(--ok)' : 'var(--muted)', flexShrink: 0 }}>
         ▾
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 1200, background: 'var(--surface)', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.18)', border: '1px solid rgba(var(--ink-rgb),0.1)', minWidth: 160, padding: '6px 0' }}>
+        <div style={{ position: 'fixed', top: dropPos.top, right: dropPos.right, zIndex: 9999, background: 'var(--surface)', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.18)', border: '1px solid rgba(var(--ink-rgb),0.1)', minWidth: 160, padding: '6px 0' }}>
           {presets.map(p => (
             <div key={p.label} onMouseDown={e => { e.preventDefault(); apply(p.from, p.to); setOpen(false); }}
               style={{ padding: '9px 16px', cursor: 'pointer', fontSize: 13, fontWeight: from === p.from && to === p.to ? 700 : 400, color: from === p.from && to === p.to ? 'var(--ok)' : 'inherit', background: from === p.from && to === p.to ? 'rgba(var(--ok-rgb,46,168,85),0.07)' : 'transparent' }}>
