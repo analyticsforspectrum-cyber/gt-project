@@ -3832,7 +3832,73 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
               )}
             </div>
 
-            {filtered.length === 0 && <Empty title={T('pv_empty')} />}
+            {/* KPI cards */}
+            {filtered.length > 0 && (
+              <div className="qaytarma-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
+                {kpi.map(k => (
+                  <div key={k.label} style={{ padding: '10px 14px', borderRadius: 12, background: k.bg, border: `1px solid ${k.color}33`, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: k.color, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{k.label}</span>
+                    <span style={{ fontSize: 20, fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.value}</span>
+                    <span style={{ fontSize: 10, color: k.color, opacity: 0.65, whiteSpace: 'nowrap' }}>{k.sub}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {filtered.length === 0 ? <Empty title={T('pv_empty')} /> : (
+              <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid rgba(var(--ink-rgb),0.1)' }}>
+                <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...thStyle, ...stickyCol, position: 'sticky', top: 0, left: 0, zIndex: 5 }}>{T('pv_mahsulot')}</th>
+                      {markets.map(m => (
+                        <th key={m} style={{ ...thStyle, padding: '8px 6px', fontSize: 11, fontWeight: 600, textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          {m.replace(/^korzinka\s*[-,]?\s*/i, '').replace(/\s*\/\d+$/, '') || m}
+                        </th>
+                      ))}
+                      <th style={{ ...thStyle, background: '#fffbf0', borderLeft: '2px solid #e8a825', minWidth: 90 }}>Jami</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((p, pi) => {
+                      const bg = pi % 2 === 0 ? 'var(--surface)' : 'var(--surface-hi, #f7f8fa)';
+                      return (
+                        <tr key={p}>
+                          <td style={{ ...tdStyle, ...stickyCol, background: bg, borderRight: '2px solid rgba(var(--ink-rgb),0.18)' }} title={p}>{p}</td>
+                          {markets.map(m => {
+                            const c = pivot[p]?.[m];
+                            return (
+                              <td key={m} style={{ ...tdStyle, background: bg }}>
+                                {c ? <><div style={{ fontWeight: 700 }}>{c.qty}</div><div style={{ fontSize: 10, color: 'var(--muted)' }}>{fmt0(c.sum)}</div></> : <span style={{ color: 'rgba(var(--ink-rgb),0.18)' }}>—</span>}
+                              </td>
+                            );
+                          })}
+                          <td style={{ ...tdStyle, fontWeight: 800, color: '#d97706', borderLeft: '2px solid #e8a825', background: '#fffbf0', minWidth: 90 }}>
+                            <div>{rowTotals[p]?.qty ?? 0}</div>
+                            <div style={{ fontSize: 10 }}>{fmt0(rowTotals[p]?.sum ?? 0)}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td style={{ ...tdStyle, ...stickyCol, fontWeight: 800, background: '#fffbf0', borderTop: '2px solid #e8a825' }}>Jami</td>
+                      {markets.map(m => (
+                        <td key={m} style={{ ...tdStyle, fontWeight: 700, background: '#fffbf0', borderTop: '2px solid #e8a825' }}>
+                          <div>{colTotals[m]?.qty ?? 0}</div>
+                          <div style={{ fontSize: 10 }}>{fmt0(colTotals[m]?.sum ?? 0)}</div>
+                        </td>
+                      ))}
+                      <td style={{ ...tdStyle, fontWeight: 900, color: '#d97706', background: '#fff3d0', borderLeft: '2px solid #e8a825', borderTop: '2px solid #e8a825' }}>
+                        <div>{grandQty}</div>
+                        <div style={{ fontSize: 10 }}>{fmt0(grandSum)}</div>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </>
         );
       })()}
