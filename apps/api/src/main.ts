@@ -7,6 +7,11 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // Trust the single reverse proxy (nginx / Render) in front of the app so that
+  // req.ip resolves to the real client via X-Forwarded-For. Without this every
+  // request appears to come from 127.0.0.1 and the per-IP rate limiter (incl. the
+  // tight /auth/login limit) collapses into one shared bucket for all users.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   // 10 MB covers the largest real session snapshots (~1500 invoices × 20 lines); must be before NestJS bodyParser
   app.use(require('express').json({ limit: '10mb' }));
   app.use(require('express').urlencoded({ limit: '10mb', extended: true }));

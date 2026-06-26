@@ -43,6 +43,11 @@
   --blue:       #4c9bea;
   --indigo:     #7c7ce6;
 
+  /* Soliq-blue header band. Same in light & dark themes for brand consistency;
+     the .topbar rule re-scopes its own foreground to white. */
+  --header-bg: linear-gradient(180deg, #1568cc 0%, #0d57b3 100%);
+  --soliq:     #0e5fbf;
+
   --ok:     #3ecf6e;
   --danger: #f05a52;
   --warn:   #f0ab38;
@@ -316,13 +321,57 @@ input:disabled, textarea:disabled, select:disabled { cursor: default; opacity: 0
   gap: 14px;
   padding: 0 20px;
   height: 54px;
-  background: rgba(var(--shell-rgb),1);
-  border-bottom: 1px solid rgba(var(--ink-rgb),0.07);
+  /* Soliq-blue band. Re-scope --ink-rgb to white so every chip/border/label
+     inside the topbar (which all read rgba(var(--ink-rgb),…)) flips to white. */
+  --ink-rgb: 255,255,255;
+  --ink: #ffffff;
+  --muted: rgba(255,255,255,0.72);
+  background: var(--header-bg);
+  color: #fff;
+  border-bottom: 1px solid rgba(255,255,255,0.14);
   position: sticky;
   top: 0;
   z-index: 40;
-  box-shadow: 0 1px 0 rgba(var(--ink-rgb),0.06), 0 4px 24px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 16px rgba(8,52,110,0.34);
 }
+
+/* ── White-on-blue overrides for children with hardcoded accent colors ── */
+.topbar .brandtitle {
+  background: none;
+  -webkit-text-fill-color: #fff;
+  color: #fff;
+}
+.topbar .brandsub { color: rgba(255,255,255,0.62); }
+.topbar .brandmark {
+  background: #fff;
+  color: var(--soliq);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.22), 0 1px 3px rgba(0,0,0,0.18);
+}
+.topbar .topbar-date-month { color: #fff; }
+.topbar .topstat-val,
+.topbar .topstat-chip.accent .topstat-val { color: #fff; }
+.topbar .topstat-chip.accent {
+  border-color: rgba(255,255,255,0.30);
+  background: rgba(255,255,255,0.12);
+  box-shadow: none;
+}
+.topbar .rolechip {
+  background: rgba(255,255,255,0.16);
+  color: #fff;
+  border-color: rgba(255,255,255,0.30);
+}
+.topbar .sessionSelect,
+.topbar .langSelect {
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.24);
+  color: #fff;
+}
+.topbar .sessionSelect:hover,
+.topbar .langSelect:hover { background: rgba(255,255,255,0.24); }
+/* Dropdown options render on a system (white) surface — keep their text dark. */
+.topbar .sessionSelect option,
+.topbar .langSelect option { color: #111; }
+.topbar .iconbtn { color: #fff; }
 
 .brandblock {
   display: flex;
@@ -2553,10 +2602,8 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
 }
 
 /* ─── LIGHT THEME: sidebar/topbar ────────────────────────────────────────── */
-:root[data-theme="light"] .topbar {
-  background: #ffffff;
-  border-bottom-color: rgba(0,0,0,0.07);
-}
+/* Topbar stays the Soliq-blue band in light theme too (brand consistency) —
+   its foreground is re-scoped to white in the base .topbar rule. */
 :root[data-theme="light"] .sidebar {
   background: #ffffff;
   border-right-color: rgba(0,0,0,0.07);

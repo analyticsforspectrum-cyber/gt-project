@@ -8,4 +8,6 @@ export interface PublicUser {
   active: boolean;
   createdAt?: Date;
   updatedAt?: Date;
+  /** Set when the password is changed — used to invalidate JWTs issued earlier. */
+  passwordChangedAt?: Date;
 }
