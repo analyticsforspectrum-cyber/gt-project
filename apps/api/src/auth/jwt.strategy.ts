@@ -23,6 +23,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || !user.active) {
       throw new UnauthorizedException('User not found or inactive');
     }
+    // Invalidate tokens issued before the most recent password change.
+    // payload.iat is in seconds; passwordChangedAt is a Date.
+    if (
+      user.passwordChangedAt &&
+      typeof payload.iat === 'number' &&
+      payload.iat * 1000 < user.passwordChangedAt.getTime()
+    ) {
+      throw new UnauthorizedException('Token expired by password change');
+    }
     return user;
   }
 }

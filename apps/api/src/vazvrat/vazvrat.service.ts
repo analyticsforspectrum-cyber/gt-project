@@ -75,8 +75,11 @@ export class VazvratService implements OnModuleInit {
 
   async query(from: string, to: string) {
     if (!from || !to) throw new BadRequestException('from and to query params are required');
+    // Project only the 9 fields the Tarix pivot consumes — drops uploadedBy/timestamps/__v
+    // so the payload stays lean over the (up to) 10k-row window.
     return this.vazvratModel
       .find({ date: { $gte: from, $lte: to } })
+      .select('date marketCode marketName sapCode productName qty pricePerUnit totalWithVat orderNo')
       .limit(10000)
       .lean()
       .exec();

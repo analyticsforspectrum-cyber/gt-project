@@ -197,8 +197,10 @@ export default function Home() {
   const [appBg, setAppBg] = useState<string>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('pref_bg') || '') : ''
   );
+  // pref_accent_v2: bumped key so the Soliq rebrand becomes the default once, even for
+  // users who had an older accent saved. They can still switch in Preferences.
   const [accent, setAccent] = useState<string>(() =>
-    typeof window !== 'undefined' ? (localStorage.getItem('pref_accent') || 'berry') : 'berry'
+    typeof window !== 'undefined' ? (localStorage.getItem('pref_accent_v2') || 'soliq') : 'soliq'
   );
 
   // Ishonchnoma (power of attorney) fields
@@ -291,14 +293,18 @@ export default function Home() {
     w.document.close();
     w.onload = () => { w.focus(); w.print(); };
   };
-  // Accent color presets
+  // Accent color presets.
+  // `ok`/`okRgb` drive success states AND the table zebra tint — Soliq keeps these
+  // green so the header goes blue while tables stay clean/neutral. `rgb` feeds
+  // --berry-rgb (button shadows).
   const ACCENT_PRESETS = [
-    { id: 'berry',    label: "Pushti",    main: '#e84f6a', dark: '#bf3652', ok: '#46bf72', okRgb: '70,191,114' },
-    { id: 'green',    label: "Yashil",    main: '#22c55e', dark: '#16a34a', ok: '#22c55e', okRgb: '34,197,94' },
-    { id: 'blue',     label: "Ko'k",      main: '#3b82f6', dark: '#2563eb', ok: '#3b82f6', okRgb: '59,130,246' },
-    { id: 'purple',   label: "Binafsha",  main: '#8b5cf6', dark: '#7c3aed', ok: '#8b5cf6', okRgb: '139,92,246' },
-    { id: 'orange',   label: "To'q sariq",main: '#f97316', dark: '#ea580c', ok: '#f97316', okRgb: '249,115,22' },
-    { id: 'teal',     label: "Feruza",    main: '#14b8a6', dark: '#0d9488', ok: '#14b8a6', okRgb: '20,184,166' },
+    { id: 'soliq',    label: "Soliq",     main: '#0e5fbf', dark: '#0a4aa0', ok: '#22c55e', okRgb: '34,197,94',  rgb: '14,95,191' },
+    { id: 'berry',    label: "Pushti",    main: '#e84f6a', dark: '#bf3652', ok: '#46bf72', okRgb: '70,191,114', rgb: '232,79,106' },
+    { id: 'green',    label: "Yashil",    main: '#22c55e', dark: '#16a34a', ok: '#22c55e', okRgb: '34,197,94',  rgb: '34,197,94' },
+    { id: 'blue',     label: "Ko'k",      main: '#3b82f6', dark: '#2563eb', ok: '#3b82f6', okRgb: '59,130,246', rgb: '59,130,246' },
+    { id: 'purple',   label: "Binafsha",  main: '#8b5cf6', dark: '#7c3aed', ok: '#8b5cf6', okRgb: '139,92,246', rgb: '139,92,246' },
+    { id: 'orange',   label: "To'q sariq",main: '#f97316', dark: '#ea580c', ok: '#f97316', okRgb: '249,115,22', rgb: '249,115,22' },
+    { id: 'teal',     label: "Feruza",    main: '#14b8a6', dark: '#0d9488', ok: '#14b8a6', okRgb: '20,184,166', rgb: '20,184,166' },
   ];
 
   // Apply visual preferences to <html> so all token-based styling reacts.
@@ -315,10 +321,11 @@ export default function Home() {
     root.style.setProperty('--ok', ap.ok);
     root.style.setProperty('--ok-rgb', ap.okRgb);
     root.style.setProperty('--accent', ap.main);
+    root.style.setProperty('--berry-rgb', ap.rgb);
     localStorage.setItem('pref_theme', theme);
     localStorage.setItem('pref_density', density);
     localStorage.setItem('pref_bg', appBg);
-    localStorage.setItem('pref_accent', accent);
+    localStorage.setItem('pref_accent_v2', accent);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, density, appBg, accent]);
   const [unsaved, setUnsaved] = useState(false);

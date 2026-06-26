@@ -25,6 +25,13 @@ function zonedDayStart(isoDate: string): Date {
   return new Date(new Date(`${isoDate}T00:00:00.000Z`).getTime() - TZ_OFFSET_MIN * 60000);
 }
 
+// The real UTC instant at the END of a business-zone day (exclusive upper bound:
+// start of the next day). Use with `$lt` so the whole local day is included
+// regardless of the server's own UTC offset.
+function zonedDayEnd(isoDate: string): Date {
+  return new Date(zonedDayStart(isoDate).getTime() + 24 * 60 * 60000);
+}
+
 function todayIso() {
   return isoDay(zonedNow());
 }
@@ -261,8 +268,10 @@ export class AnalyticsService {
     const matchDate: Record<string, unknown> = {};
     if (dateFrom || dateTo) {
       matchDate.createdAt = {};
-      if (dateFrom) (matchDate.createdAt as Record<string, string | Date>).$gte = new Date(dateFrom);
-      if (dateTo) (matchDate.createdAt as Record<string, string | Date>).$lte = new Date(dateTo + 'T23:59:59');
+      // Business-zone (Asia/Tashkent) boundaries, consistent with the rest of this
+      // service — not naive server-local parsing. $lt next-day-start keeps it inclusive.
+      if (dateFrom) (matchDate.createdAt as Record<string, Date>).$gte = zonedDayStart(dateFrom);
+      if (dateTo) (matchDate.createdAt as Record<string, Date>).$lt = zonedDayEnd(dateTo);
     }
 
     const [ordersByUser, invoicesByUser] = await Promise.all([

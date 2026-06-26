@@ -101,7 +101,8 @@ export class UsersService implements OnModuleInit {
       role: user.role,
       active: user.active,
       createdAt: user.createdAt,
-      updatedAt: user.updatedAt
+      updatedAt: user.updatedAt,
+      passwordChangedAt: user.passwordChangedAt
     };
   }
 }
