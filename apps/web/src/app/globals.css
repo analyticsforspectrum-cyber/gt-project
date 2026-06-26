@@ -569,9 +569,9 @@ input:disabled, textarea:disabled, select:disabled { cursor: default; opacity: 0
 }
 
 .rolechip {
-  background: rgba(232,79,106,0.12);
+  background: rgba(var(--berry-rgb,232,79,106),0.12);
   color: var(--berry);
-  border: 1px solid rgba(232,79,106,0.22);
+  border: 1px solid rgba(var(--berry-rgb,232,79,106),0.22);
   text-transform: uppercase;
   font-size: 9px;
   font-weight: 700;
@@ -680,12 +680,13 @@ input:focus, textarea:focus, select:focus {
 .command.primary, .small.dark {
   background: linear-gradient(135deg, var(--berry), var(--berry-dark));
   color: #fff;
-  box-shadow: 0 10px 26px rgba(232,79,106,0.20);
+  /* Glow follows the active accent (--berry-rgb) instead of a fixed pink. */
+  box-shadow: 0 10px 26px rgba(var(--berry-rgb,232,79,106),0.22);
 }
 .command.primary:hover:not(:disabled), .small.dark:hover:not(:disabled) {
-  background: linear-gradient(135deg, #f35d78, var(--berry));
+  filter: brightness(1.07);
   transform: translateY(-1px);
-  box-shadow: 0 12px 30px rgba(232,79,106,0.28);
+  box-shadow: 0 12px 30px rgba(var(--berry-rgb,232,79,106),0.30);
 }
 
 .command.ghost, .small, .mini, .iconbtn {
@@ -700,6 +701,23 @@ input:focus, textarea:focus, select:focus {
   background: rgba(var(--ink-rgb),0.105);
 }
 
+/* Keyboard accessibility — visible focus ring in the accent color, only for
+   keyboard users (focus-visible), never on mouse press. */
+.command:focus-visible, .small:focus-visible, .mini:focus-visible,
+.iconbtn:focus-visible, .tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--berry-rgb,232,79,106),0.38);
+}
+
+/* Disabled state — uniform across every button variant. */
+.command:disabled, .small:disabled, .mini:disabled, .iconbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none;
+  filter: none;
+}
+
 .commandgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .small  { min-height: 34px; padding: 6px 14px; font-size: 12px; border-radius: 10px; }
@@ -707,6 +725,18 @@ input:focus, textarea:focus, select:focus {
 .iconbtn { width: 34px; height: 34px; border-radius: 10px; padding: 0; }
 
 .iconbtn.danger { color: var(--danger); background: rgba(255,69,58,0.12); border-color: rgba(255,69,58,0.22); }
+
+/* Touch-friendly sizing on phones: bump every interactive control to ≥40px so
+   it meets the ~44px tap-target guideline, and lift FORM inputs to 16px to stop
+   iOS Safari auto-zooming on focus. Dense table inputs are intentionally excluded. */
+@media (max-width: 640px) {
+  .small  { min-height: 40px; padding: 9px 16px; font-size: 13px; }
+  .mini   { min-height: 34px; padding: 7px 12px; font-size: 12px; }
+  .iconbtn { width: 40px; height: 40px; }
+  input[type="date"] { height: 40px; font-size: 14px; }
+  .field input, .field select, .field textarea,
+  .login-split-form input { font-size: 16px; }
+}
 
 /* ─── LEDGER ─────────────────────────────────────────────────────────────── */
 .ledger {
@@ -791,9 +821,9 @@ input:focus, textarea:focus, select:focus {
 
 .uploadZone {
   position: relative;
-  border: 1.5px dashed rgba(232,79,106,0.34);
+  border: 1.5px dashed rgba(var(--berry-rgb,232,79,106),0.34);
   border-radius: 12px;
-  background: rgba(232,79,106,0.05);
+  background: rgba(var(--berry-rgb,232,79,106),0.05);
   cursor: pointer;
   overflow: hidden;
   transition: border-color 0.2s, background 0.2s;
@@ -804,8 +834,8 @@ input:focus, textarea:focus, select:focus {
   justify-content: center;
 }
 .uploadZone:hover {
-  border-color: rgba(232,79,106,0.58);
-  background: rgba(232,79,106,0.09);
+  border-color: rgba(var(--berry-rgb,232,79,106),0.58);
+  background: rgba(var(--berry-rgb,232,79,106),0.09);
 }
 
 .uploadZoneInner {
@@ -1409,47 +1439,64 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 }
 
 .kpi {
-  background: rgba(var(--ink-rgb),0.035);
-  border: 1px solid rgba(var(--ink-rgb),0.08);
-  padding: 14px 16px;
-  border-radius: 14px;
-  transition: background 0.18s, transform 0.18s, box-shadow 0.18s;
   position: relative;
   overflow: hidden;
+  padding: 15px 18px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(var(--ink-rgb),0.05), rgba(var(--ink-rgb),0.018));
+  border: 1px solid rgba(var(--ink-rgb),0.09);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+  --kpi-tone: var(--berry);
+  --kpi-tone-rgb: var(--berry-rgb,232,79,106);
 }
+/* Always-on left accent bar (tone-coloured). */
 .kpi::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--berry), #f472b6);
-  opacity: 0;
-  transition: opacity 0.2s;
+  top: 0; left: 0; bottom: 0;
+  width: 3px;
+  background: var(--kpi-tone);
+  opacity: 0.9;
+  transition: width 0.18s;
 }
 .kpi:hover {
-  background: rgba(var(--ink-rgb),0.065);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.16);
+  border-color: rgba(var(--kpi-tone-rgb),0.4);
 }
-.kpi:hover::before { opacity: 1; }
+.kpi:hover::before { width: 5px; }
 
-.kpi span {
-  color: rgba(var(--ink-rgb),0.45);
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+/* Tone variants — drive the bar, the icon chip, and the accent value colour. */
+.kpi.tone-ok     { --kpi-tone: var(--ok);     --kpi-tone-rgb: var(--ok-rgb,62,207,110); }
+.kpi.tone-danger { --kpi-tone: var(--danger); --kpi-tone-rgb: 240,90,82; }
+.kpi.tone-accent { --kpi-tone: var(--berry);  --kpi-tone-rgb: var(--berry-rgb,232,79,106); }
+
+.kpi-top { display: flex; align-items: center; gap: 8px; }
+.kpi-icon {
+  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(var(--kpi-tone-rgb),0.15);
+  color: var(--kpi-tone);
+}
+.kpi-label {
+  color: rgba(var(--ink-rgb),0.5);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .kpi b {
   display: block;
-  margin-top: 6px;
+  margin-top: 10px;
   font-family: var(--mono);
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: var(--ink);
+  font-variant-numeric: tabular-nums;
   animation: kpiPop 0.32s cubic-bezier(0.34,1.56,0.64,1) both;
 }
 
@@ -1458,7 +1505,7 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-.kpi b.accent { color: var(--berry); }
+.kpi b.accent { color: var(--kpi-tone); }
 
 /* ─── STATS ──────────────────────────────────────────────────────────────── */
 .statgrid {
@@ -1688,66 +1735,265 @@ tr:hover .peek-btn { opacity: 1; }
 
 /* ── Date input — global styling ─────────────────────────────────────────── */
 input[type="date"] {
-  height: 32px;
-  padding: 0 10px 0 10px;
+  height: 38px;
+  padding: 0 12px;
   border-radius: 10px;
-  border: 1.5px solid rgba(var(--ink-rgb), 0.12);
-  background: rgba(var(--ink-rgb), 0.04);
+  border: 1.5px solid rgba(var(--ink-rgb), 0.14);
+  background: rgba(var(--ink-rgb), 0.05);
   color: var(--ink);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--mono);
+  letter-spacing: 0.01em;
   cursor: pointer;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
   color-scheme: dark;
-  font-family: var(--sans);
   appearance: none;
   -webkit-appearance: none;
-  min-width: 110px;
+  min-width: 132px;
 }
 input[type="date"]:hover {
-  border-color: rgba(70, 191, 114, 0.55);
+  border-color: rgba(var(--berry-rgb,232,79,106), 0.5);
+  background: rgba(var(--ink-rgb), 0.07);
 }
 input[type="date"]:focus {
-  border-color: var(--ok);
-  box-shadow: 0 0 0 3px rgba(70, 191, 114, 0.13);
+  border-color: var(--berry);
+  box-shadow: 0 0 0 3px rgba(var(--berry-rgb,232,79,106), 0.18);
 }
 input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
-  opacity: 0.5;
+  opacity: 0.55;
   filter: invert(1);
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   padding: 0;
-  margin-left: 4px;
-  transition: opacity 0.15s;
+  margin-left: 6px;
+  transition: opacity 0.15s, filter 0.15s;
 }
 input[type="date"]:hover::-webkit-calendar-picker-indicator,
 input[type="date"]:focus::-webkit-calendar-picker-indicator {
   opacity: 1;
-  filter: invert(0.5) sepia(1) saturate(5) hue-rotate(90deg);
+  /* tint the calendar glyph to Soliq blue */
+  filter: invert(34%) sepia(86%) saturate(1700%) hue-rotate(196deg) brightness(96%);
 }
 /* Hide native calendar icon when we use our own */
 input.date-no-icon::-webkit-calendar-picker-indicator {
   display: none;
 }
+
+/* ── DateRangePicker: stay on one row on desktop, wrap cleanly on mobile so the
+   "Sana" quick-pick button never overflows off-screen. !important overrides the
+   inline width:130 on the date inputs. ── */
+@media (max-width: 640px) {
+  .drp {
+    display: flex !important;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 6px !important;
+  }
+  .drp-input {
+    flex: 1 1 0;
+    width: auto !important;
+    min-width: 0;
+  }
+  .drp-btn {
+    flex: 1 1 100%;
+    height: 40px !important;
+  }
+}
 :root[data-theme="light"] input[type="date"] {
-  background: #f5faf7;
-  border-color: #d0e8d8;
-  color: #1a2e25;
+  background: #ffffff;
+  border-color: #dfe3ea;
+  color: #1a2230;
   color-scheme: light;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 :root[data-theme="light"] input[type="date"]:hover {
-  border-color: var(--ok);
+  border-color: rgba(var(--berry-rgb,232,79,106),0.6);
 }
 :root[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator {
   filter: none;
-  opacity: 0.45;
+  opacity: 0.5;
 }
 :root[data-theme="light"] input[type="date"]:hover::-webkit-calendar-picker-indicator,
 :root[data-theme="light"] input[type="date"]:focus::-webkit-calendar-picker-indicator {
   opacity: 1;
-  filter: invert(0.2) sepia(1) saturate(5) hue-rotate(90deg);
+  filter: invert(34%) sepia(86%) saturate(1700%) hue-rotate(196deg) brightness(96%);
+}
+
+/* ─── CUSTOM CALENDAR (desktop DateRangePicker) ──────────────────────────── */
+.cal-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(var(--ink-rgb),0.14);
+  background: rgba(var(--ink-rgb),0.05);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.cal-trigger:hover {
+  border-color: rgba(var(--berry-rgb,232,79,106),0.5);
+  background: rgba(var(--ink-rgb),0.07);
+}
+.cal-trigger:focus-visible {
+  outline: none;
+  border-color: var(--berry);
+  box-shadow: 0 0 0 3px rgba(var(--berry-rgb,232,79,106),0.18);
+}
+.cal-trigger[data-active="true"] {
+  border-color: rgba(var(--berry-rgb,232,79,106),0.45);
+  color: var(--berry);
+  background: rgba(var(--berry-rgb,232,79,106),0.08);
+}
+.cal-trigger-label { font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+:root[data-theme="light"] .cal-trigger { background: #fff; border-color: #dfe3ea; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+
+/* Popover: presets rail + month panel */
+/* Centered modal — identical on desktop & mobile, never overflows the viewport. */
+.cal-backdrop {
+  position: fixed; inset: 0; z-index: 9998;
+  background: rgba(0,0,0,0.45);
+  animation: calFade 0.15s ease;
+}
+@keyframes calFade { from { opacity: 0; } to { opacity: 1; } }
+
+.cal-modal {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  width: min(94vw, 340px);
+  max-height: 90dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  border: 1px solid rgba(var(--ink-rgb),0.1);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.40), 0 4px 14px rgba(0,0,0,0.16);
+  animation: calModalIn 0.18s cubic-bezier(0.34,1.4,0.64,1);
+}
+@keyframes calModalIn {
+  from { opacity: 0; transform: translate(-50%,-48%) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+}
+:root[data-theme="light"] .cal-modal { box-shadow: 0 24px 70px rgba(0,0,0,0.18), 0 4px 14px rgba(0,0,0,0.08); }
+
+.cal-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 8px;
+}
+.cal-modal-title { font-size: 13px; font-weight: 700; color: var(--ink); }
+.cal-close {
+  width: 28px; height: 28px; border-radius: 8px;
+  border: none; background: rgba(var(--ink-rgb),0.06);
+  color: var(--ink-2); font-size: 19px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+.cal-close:hover { background: rgba(var(--ink-rgb),0.12); color: var(--ink); }
+
+.cal-presets-row {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 0 14px 10px;
+  border-bottom: 1px solid rgba(var(--ink-rgb),0.08);
+}
+.cal-preset {
+  flex: 1 1 calc(50% - 6px);
+  text-align: center;
+  padding: 9px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--ink-rgb),0.1);
+  background: rgba(var(--ink-rgb),0.03);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.cal-preset:hover { background: rgba(var(--ink-rgb),0.07); color: var(--ink); }
+.cal-preset[data-active="true"] {
+  background: rgba(var(--berry-rgb,232,79,106),0.12);
+  color: var(--berry);
+  border-color: rgba(var(--berry-rgb,232,79,106),0.4);
+}
+
+.cal-panel { padding: 12px 14px 14px; width: 100%; }
+.cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.cal-title { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.cal-arrow {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--ink-rgb),0.12);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.cal-arrow:hover { background: rgba(var(--ink-rgb),0.08); color: var(--ink); }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.cal-wd {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 0 6px;
+}
+.cal-day {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.cal-day:hover { background: rgba(var(--ink-rgb),0.09); }
+.cal-day-range {
+  background: rgba(var(--berry-rgb,232,79,106),0.13);
+  border-radius: 0;
+  color: var(--berry);
+}
+.cal-day-sel {
+  background: var(--berry);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(var(--berry-rgb,232,79,106),0.40);
+}
+.cal-day-sel:hover { background: var(--berry); }
+.cal-day-today:not(.cal-day-sel) { box-shadow: inset 0 0 0 1.5px rgba(var(--berry-rgb,232,79,106),0.5); }
+
+/* Mobile: the centered modal already fits (width: min(94vw,340px)); just give the
+   day cells a slightly taller touch target. Trigger stays auto-width (not oversized). */
+@media (max-width: 640px) {
+  .cal-modal .cal-day { height: 40px; font-size: 14.5px; }
 }
 
 /* Stats tabs */
@@ -2162,10 +2408,18 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
 .manual-modal { width: min(96vw, 960px) !important; max-width: min(96vw, 960px) !important; }
 .manual-modal-body { padding: 10px 14px !important; display: flex; flex-direction: column; gap: 8px; }
 
-.manual-topbar { display: flex; align-items: center; gap: 10px; }
+.manual-topbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .manual-date-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .manual-date-field input { font-size: 12px; padding: 4px 8px; background: rgba(var(--hi-rgb),0.06); border: 1px solid rgba(var(--ink-rgb),0.12); border-radius: 7px; color: inherit; outline: none; }
 :root[data-theme="light"] .manual-date-field input { background: #f5f5f7; border-color: #d0e8d8; }
+
+/* Manual-invoice action footer — clear, always-labelled buttons (desktop + mobile). */
+.manual-foot { display: flex; gap: 10px; align-items: center; }
+.manual-foot .small { min-height: 44px; font-size: 14px; font-weight: 700; border-radius: 10px; }
+.manual-foot-cancel { flex: 0 0 auto; min-width: 100px; color: var(--danger); border-color: rgba(240,90,82,0.35); }
+.manual-foot-submit { flex: 1; background: #16a34a; border-color: #16a34a; color: #fff; }
+.manual-foot-submit:hover:not(:disabled) { filter: brightness(1.06); }
+.manual-foot-submit:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .manual-tablewrap { overflow: auto; max-height: 65vh; border: 1px solid rgba(var(--ink-rgb),0.1); border-radius: 8px; }
 :root[data-theme="light"] .manual-tablewrap { border-color: #d0e8d8; }
@@ -2481,6 +2735,7 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
     grid-row: 2;
     padding: 10px 12px 12px;
     overflow-y: auto;
+    overflow-x: hidden;
     height: 100%;
   }
 
@@ -2498,13 +2753,16 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
     margin-bottom: 12px;
   }
   .paneHead h2 { font-size: 15px; font-weight: 700; flex: 1; min-width: 0; }
-  .paneActions { gap: 6px; flex-shrink: 0; }
+  /* Actions (e.g. DateRangePicker) drop to their own full-width row so a
+     100%-wide picker resolves against the viewport instead of overflowing. */
+  .paneActions { gap: 6px; flex: 1 1 100%; width: 100%; min-width: 0; }
 
   /* ── KPIs ── */
   .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .kpi { padding: 10px 12px; border-radius: 12px; }
-  .kpi b { font-size: 16px; }
-  .kpi span { font-size: 9px; }
+  .kpi { padding: 11px 13px 12px; border-radius: 13px; }
+  .kpi b { font-size: 17px; margin-top: 8px; }
+  .kpi-label { font-size: 9.5px; }
+  .kpi-icon { width: 22px; height: 22px; border-radius: 7px; }
 
   /* ── Settings forms ── */
   .two { grid-template-columns: 1fr; }
@@ -2554,7 +2812,7 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
 
   /* ── Buttons ── */
   button.primary, button.danger { min-height: 40px; font-size: 13px; }
-  .iconbtn { width: 36px; height: 36px; }
+  .iconbtn { width: 40px; height: 40px; }
 }
 
 /* ── Small phones (iPhone SE, 375px) ── */

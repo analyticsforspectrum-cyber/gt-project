@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
   BarChart3,
@@ -197,10 +198,10 @@ export default function Home() {
   const [appBg, setAppBg] = useState<string>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('pref_bg') || '') : ''
   );
-  // pref_accent_v2: bumped key so the Soliq rebrand becomes the default once, even for
-  // users who had an older accent saved. They can still switch in Preferences.
+  // pref_accent_v3: bumped key so the Soliq blue becomes the default again, resetting
+  // any stray accent (e.g. orange) that was saved earlier. Switchable in Preferences.
   const [accent, setAccent] = useState<string>(() =>
-    typeof window !== 'undefined' ? (localStorage.getItem('pref_accent_v2') || 'soliq') : 'soliq'
+    typeof window !== 'undefined' ? (localStorage.getItem('pref_accent_v3') || 'soliq') : 'soliq'
   );
 
   // Ishonchnoma (power of attorney) fields
@@ -325,7 +326,7 @@ export default function Home() {
     localStorage.setItem('pref_theme', theme);
     localStorage.setItem('pref_density', density);
     localStorage.setItem('pref_bg', appBg);
-    localStorage.setItem('pref_accent_v2', accent);
+    localStorage.setItem('pref_accent_v3', accent);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, density, appBg, accent]);
   const [unsaved, setUnsaved] = useState(false);
@@ -2758,10 +2759,6 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     </span>
                   ) : null;
                 })()}
-                <button className="small" type="button" onClick={() => { setManualOpen(false); setManualStores([emptyStoreRow()]); }} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.35)' }}>{T('lbl_cancel')}</button>
-                <button className="small manual-submit-btn" type="button" onClick={createManualInvoice} disabled={busy} style={{ background: busy ? undefined : '#16a34a', color: '#fff', borderColor: '#16a34a', opacity: busy ? 0.5 : 1 }}>
-                  {busy ? '...' : `+ Qo'shish (${manualStores.filter(r => r.storeCode.trim()).length})`}
-                </button>
               </div>
 
               {/* Transposed table: products = rows, stores = columns */}
@@ -2834,6 +2831,14 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   </tbody>
                 </table>
               </div>
+            </div>
+            <div className="modalFoot manual-foot">
+              <button className="small manual-foot-cancel" type="button" onClick={() => { setManualOpen(false); setManualStores([emptyStoreRow()]); }}>
+                {T('lbl_cancel')}
+              </button>
+              <button className="small manual-foot-submit" type="button" onClick={createManualInvoice} disabled={busy}>
+                {busy ? 'Saqlanmoqda…' : `+ Qo'shish (${manualStores.filter(r => r.storeCode.trim()).length})`}
+              </button>
             </div>
           </div>
         </div>
@@ -4130,7 +4135,8 @@ function AnalyticsPane({
   const [sessionInvoices, setSessionInvoices] = useState<Invoice[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
   // invNo -> { initSum, initQty } from session snapshot
-  const [snapInitMap, setSnapInitMap] = useState<Map<number, { sum: number; qty: number }>>(new Map());
+  // Keyed by `${invNo}__${sessionDate}` so the same invNo on different days stays separate.
+  const [snapInitMap, setSnapInitMap] = useState<Map<string, { sum: number; qty: number }>>(new Map());
 
   async function loadSessionInvoices(from: string, to: string) {
     if (!token) return;
@@ -4143,16 +4149,22 @@ function AnalyticsPane({
         ? await Promise.all(inRange.map(s => api.session(token, s._id).catch(() => null)))
         : [];
 
-      const invoiceMap = new Map<number, Invoice>();
-      const newSnapMap = new Map<number, { sum: number; qty: number }>();
+      const invoiceMap = new Map<string, Invoice>();
+      const newSnapMap = new Map<string, { sum: number; qty: number }>();
 
       for (const rec of snaps) {
         if (!rec?.snapshot?.invoices) continue;
         const sessionDate = rec.invoiceDate as string;
         for (const inv of rec.snapshot.invoices as Invoice[]) {
-          // Berildi = snapshot dagi joriy holat
-          if (!invoiceMap.has(inv.invNo)) {
-            invoiceMap.set(inv.invNo, { ...inv, dateIso: inv.dateIso || sessionDate });
+          // Berildi = snapshot dagi joriy holat.
+          // Kalit = invNo + sessiya sanasi. Bir xil invNo turli kunlarda qayta
+          // ishlatiladi; faqat invNo bo'yicha dedup qilsak, barcha kunlar bitta
+          // kunga yig'ilib qolardi (shu sabab Savdo'da faqat 1 kun ko'rinardi).
+          // Sana — FAYL NOMIDAN (sessionDate) olinadi, invoice ichidagi dateIso'dan
+          // emas (u generatsiya sanasi bo'lib, fayl nomidan farq qilishi mumkin).
+          const dayKey = `${inv.invNo}__${sessionDate}`;
+          if (!invoiceMap.has(dayKey)) {
+            invoiceMap.set(dayKey, { ...inv, dateIso: sessionDate });
           }
           // Buyurtma = SAP boshlang'ich miqdor (init field yoki qty)
           const initQty = inv.lines.reduce((s: number, l: Invoice['lines'][0]) => s + (l.init || l.qty || 0), 0);
@@ -4161,7 +4173,7 @@ function AnalyticsPane({
             const price = l.qty > 0 ? l.total / l.qty : (l.price || 0);
             return s + iq * price;
           }, 0);
-          newSnapMap.set(inv.invNo, { qty: initQty, sum: initSum || inv.sumTotal });
+          newSnapMap.set(dayKey, { qty: initQty, sum: initSum || inv.sumTotal });
         }
       }
 
@@ -4391,14 +4403,14 @@ function AnalyticsPane({
     if (!snapInitMap.size) return aBerildiDona;
     return filteredInvoices.reduce((s, inv) => {
       if (inv.manual) return s + inv.sumQty; // qo'lda: buyurtma = berildi
-      return s + (snapInitMap.get(inv.invNo)?.qty ?? inv.sumQty);
+      return s + (snapInitMap.get(`${inv.invNo}__${inv.dateIso}`)?.qty ?? inv.sumQty);
     }, 0);
   }, [filteredInvoices, snapInitMap, aBerildiDona]);
   const aBuyurtmaSum  = useMemo(() => {
     if (!snapInitMap.size) return aBerildiSum;
     return filteredInvoices.reduce((s, inv) => {
       if (inv.manual) return s + inv.sumTotal; // qo'lda: buyurtma = berildi
-      return s + (snapInitMap.get(inv.invNo)?.sum ?? inv.sumTotal);
+      return s + (snapInitMap.get(`${inv.invNo}__${inv.dateIso}`)?.sum ?? inv.sumTotal);
     }, 0);
   }, [filteredInvoices, snapInitMap, aBerildiSum]);
 
@@ -4913,7 +4925,9 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
   savdoTab: string; setSavdoTab: React.Dispatch<React.SetStateAction<'kunlik' | 'dokonlar' | 'mahsulotlar'>>;
   fmtDateRu: (d: string) => string; fmt0: (n: number) => string;
 }) {
-  // Live invoicelardan hisoblash (session stale bo'lishi mumkin)
+  // Berilgan = Tarix sessiyalarining snapshot'idan, har bir invoice'ning dateIso'si
+  // FAYL NOMI (sessionDate) bo'yicha guruhlanadi — jonli invoice'lar invNo bo'yicha
+  // ustiga yozilgani uchun ular ishlatilmaydi.
   const dayMap: Record<string, { berilgan: number; vazvrat: number; count: number }> = {};
   for (const inv of savdoInvoices) {
     const d = inv.dateIso;
@@ -4975,9 +4989,9 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div className="kpis kpis-3">
-        <Kpi label="BERILGAN" value={fmt0(totBerilgan)} />
-        <Kpi label="QAYTARMA"  value={fmt0(totVazvrat)} valueStyle={totVazvrat > 0 ? { color: 'var(--danger)' } : undefined} />
-        <Kpi label="SAVDO"    value={fmt0(totSavdo)} accent />
+        <Kpi label="BERILGAN" value={fmt0(totBerilgan)} tone="ok" icon={<Truck size={15} />} />
+        <Kpi label="QAYTARMA" value={fmt0(totVazvrat)} tone="danger" icon={<RefreshCcw size={15} />} valueStyle={totVazvrat > 0 ? { color: 'var(--danger)' } : undefined} />
+        <Kpi label="SAVDO" value={fmt0(totSavdo)} accent tone="accent" icon={<TrendingUp size={15} />} />
       </div>
       <div className="subtabs" style={{ marginBottom: 12 }}>
         {(['kunlik', 'dokonlar', 'mahsulotlar'] as const).map(st => (
@@ -5282,10 +5296,19 @@ function StatusChip({ status, T = (k: string) => k }: { status: string; T?: (k: 
   );
 }
 
-function Kpi({ label, value, accent, valueStyle }: { label: string; value: string; accent?: boolean; valueStyle?: React.CSSProperties }) {
+function Kpi({ label, value, accent, valueStyle, tone, icon }: {
+  label: string; value: string; accent?: boolean;
+  valueStyle?: React.CSSProperties;
+  tone?: 'ok' | 'danger' | 'accent';
+  icon?: React.ReactNode;
+}) {
+  const toneClass = tone ? `tone-${tone}` : (accent ? 'tone-accent' : '');
   return (
-    <div className="kpi">
-      <span>{label}</span>
+    <div className={`kpi ${toneClass}`.trim()}>
+      <div className="kpi-top">
+        {icon && <span className="kpi-icon">{icon}</span>}
+        <span className="kpi-label">{label}</span>
+      </div>
       <b className={accent ? 'accent' : ''} style={valueStyle}>{value}</b>
     </div>
   );
@@ -5446,19 +5469,75 @@ function updateCatalogDraft(
 }
 
 // ─── Reusable date range picker with presets ──────────────────────────────────
-function DateRangePicker({ from, to, onChange, setFrom, setTo, inputStyle }: {
+// ─── Calendar localization ────────────────────────────────────────────────
+const MONTHS_UZ_FULL = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+const MONTHS_UZ_SHORT = ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','Okt','Noy','Dek'];
+const WEEKDAYS_UZ = ['Du','Se','Ch','Pa','Ju','Sh','Ya'];
+
+function CalIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+    </svg>
+  );
+}
+
+// Single-month calendar grid with range highlighting.
+function CalendarPanel({ from, to, anchor, todayStr, isoFn, parseFn, onPick }: {
+  from: string; to: string; anchor: string | null; todayStr: string;
+  isoFn: (d: Date) => string; parseFn: (s: string) => Date; onPick: (ds: string) => void;
+}) {
+  const seed = parseFn(to || from || todayStr);
+  const [view, setView] = React.useState({ y: seed.getFullYear(), m: seed.getMonth() });
+  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+  const firstDow = (() => { const d = new Date(view.y, view.m, 1).getDay(); return d === 0 ? 6 : d - 1; })();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const prev = () => setView(v => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }));
+  const next = () => setView(v => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }));
+
+  return (
+    <div className="cal-panel">
+      <div className="cal-nav">
+        <button type="button" className="cal-arrow" onClick={prev} aria-label="Oldingi oy">‹</button>
+        <span className="cal-title">{MONTHS_UZ_FULL[view.m]} {view.y}</span>
+        <button type="button" className="cal-arrow" onClick={next} aria-label="Keyingi oy">›</button>
+      </div>
+      <div className="cal-grid">
+        {WEEKDAYS_UZ.map(w => <span key={w} className="cal-wd">{w}</span>)}
+      </div>
+      <div className="cal-grid">
+        {cells.map((d, i) => {
+          if (d === null) return <span key={`e${i}`} />;
+          const ds = isoFn(new Date(view.y, view.m, d));
+          const isAnchor = ds === anchor;
+          const isStart = ds === from && !anchor;
+          const isEnd = ds === to && !anchor;
+          const inRange = !!from && !!to && !anchor && ds > from && ds < to;
+          const cls = ['cal-day'];
+          if (isAnchor || isStart || isEnd) cls.push('cal-day-sel');
+          else if (inRange) cls.push('cal-day-range');
+          if (ds === todayStr) cls.push('cal-day-today');
+          return <button key={`d${i}`} type="button" className={cls.join(' ')} onClick={() => onPick(ds)}>{d}</button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DateRangePicker({ from, to, onChange, setFrom, setTo }: {
   from: string; to: string;
   onChange?: (from: string, to: string) => void;
   setFrom?: (v: string) => void; setTo?: (v: string) => void;
   inputStyle?: React.CSSProperties;
 }) {
   const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-  const btnRef = React.useRef<HTMLButtonElement>(null);
-  const [dropPos, setDropPos] = React.useState({ top: 0, right: 0 });
+  const [anchor, setAnchor] = React.useState<string | null>(null);
 
   // LOCAL date (timezone-safe) — toISOString() UTC qaytaradi va off-by-one beradi
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const parse = (s: string) => { const [y, m, d] = (s || '').split('-').map(Number); return new Date(y || 2000, (m || 1) - 1, d || 1); };
   const todayStr = iso(new Date());
 
   const apply = React.useCallback((f: string, t: string) => {
@@ -5482,53 +5561,56 @@ function DateRangePicker({ from, to, onChange, setFrom, setTo, inputStyle }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayStr]);
 
-  const openDropdown = () => {
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setDropPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
-    }
-    setOpen(o => !o);
-  };
+  const activeLabel = presets.find(p => p.from === from && p.to === to)?.label;
+  const fmtShort = (s: string) => { if (!s) return '—'; const d = parse(s); return `${d.getDate()} ${MONTHS_UZ_SHORT[d.getMonth()]}`; };
+  const triggerLabel = (from || to) ? `${fmtShort(from)} – ${fmtShort(to)}` : 'Sana tanlang';
 
+  const close = () => { setOpen(false); setAnchor(null); };
+
+  // Esc closes the modal.
   React.useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const activeLabel = presets.find(p => p.from === from && p.to === to)?.label;
+  const pick = (ds: string) => {
+    if (!anchor) { setAnchor(ds); apply(ds, ds); }
+    else {
+      const lo = ds < anchor ? ds : anchor;
+      const hi = ds < anchor ? anchor : ds;
+      apply(lo, hi); setAnchor(null); setOpen(false);
+    }
+  };
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-      <input type="date" value={from} onChange={e => apply(e.target.value, to)}
-        style={{ width: 130, ...inputStyle }} />
-      <span style={{ color: 'var(--muted)', fontSize: 12, flexShrink: 0 }}>—</span>
-      <input type="date" value={to} onChange={e => apply(from, e.target.value)}
-        style={{ width: 130, ...inputStyle }} />
-      <button ref={btnRef} type="button" onClick={openDropdown}
-        title={activeLabel ?? 'Tez tanlash'}
-        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, height: 36, padding: '0 10px', border: `1.5px solid ${activeLabel ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.14)'}`, borderRadius: 10, background: activeLabel ? 'rgba(var(--ok-rgb,46,168,85),0.08)' : open ? 'rgba(var(--ink-rgb),0.06)' : 'var(--surface)', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: activeLabel ? 'var(--ok)' : 'var(--muted)', flexShrink: 0, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        {activeLabel ?? 'Sana'}
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}><polyline points="6 9 12 15 18 9"/></svg>
+    <div style={{ display: 'inline-flex', flexShrink: 0 }}>
+      <button type="button" onClick={() => { setAnchor(null); setOpen(true); }} className="cal-trigger" data-active={!!(from || to)}>
+        <CalIcon />
+        <span className="cal-trigger-label">{activeLabel ?? triggerLabel}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}><polyline points="6 9 12 15 18 9"/></svg>
       </button>
-      {open && (
-        <div style={{ position: 'fixed', top: dropPos.top, right: dropPos.right, zIndex: 9999, background: 'var(--surface)', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.18)', border: '1px solid rgba(var(--ink-rgb),0.1)', minWidth: 160, padding: '6px 0' }}>
-          {presets.map(p => (
-            <div key={p.label} onMouseDown={e => { e.preventDefault(); apply(p.from, p.to); setOpen(false); }}
-              style={{ padding: '9px 16px', cursor: 'pointer', fontSize: 13, fontWeight: from === p.from && to === p.to ? 700 : 400, color: from === p.from && to === p.to ? 'var(--ok)' : 'inherit', background: from === p.from && to === p.to ? 'rgba(var(--ok-rgb,46,168,85),0.07)' : 'transparent' }}>
-              {p.label}
+      {open && typeof document !== 'undefined' && createPortal(
+        <>
+          <div className="cal-backdrop" onMouseDown={close} />
+          <div className="cal-modal" role="dialog" aria-modal="true">
+            <div className="cal-modal-head">
+              <span className="cal-modal-title">Sana oralig&apos;i</span>
+              <button type="button" className="cal-close" onClick={close} aria-label="Yopish">×</button>
             </div>
-          ))}
-          <div style={{ borderTop: '1px solid rgba(var(--ink-rgb),0.08)', margin: '4px 0' }} />
-          <div onMouseDown={() => setOpen(false)}
-            style={{ padding: '9px 16px', fontSize: 12, color: 'var(--muted)', fontWeight: 600, cursor: 'pointer' }}>
-            Boshqa oraliq
+            <div className="cal-presets-row">
+              {presets.map(p => (
+                <button key={p.label} type="button" className="cal-preset" data-active={from === p.from && to === p.to}
+                  onClick={() => { apply(p.from, p.to); close(); }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <CalendarPanel from={from} to={to} anchor={anchor} todayStr={todayStr} isoFn={iso} parseFn={parse} onPick={pick} />
           </div>
-        </div>
+        </>,
+        document.body
       )}
     </div>
   );
