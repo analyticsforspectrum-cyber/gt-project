@@ -3848,17 +3848,17 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
             )}
 
             {filtered.length === 0 ? <Empty title={T('pv_empty')} /> : (
-              <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid rgba(var(--ink-rgb),0.1)' }}>
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh', borderRadius: 10, border: '1px solid rgba(var(--ink-rgb),0.1)' }}>
                 <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: '100%' }}>
                   <thead>
                     <tr>
-                      <th style={{ ...thStyle, ...stickyCol, position: 'sticky', top: 0, left: 0, zIndex: 5 }}>{T('pv_mahsulot')}</th>
+                      <th style={{ ...thStyle, ...stickyCol, position: 'sticky', top: 0, left: 0, zIndex: 20, background: 'var(--surface)' }}>{T('pv_mahsulot')}</th>
                       {markets.map(m => (
-                        <th key={m} style={{ ...thStyle, padding: '8px 6px', fontSize: 11, fontWeight: 600, textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                        <th key={m} style={{ ...thStyle, position: 'sticky', top: 0, zIndex: 10, padding: '8px 6px', fontSize: 11, fontWeight: 600, textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap', background: 'var(--surface)' }}>
                           {m.replace(/^korzinka\s*[-,]?\s*/i, '').replace(/\s*\/\d+$/, '') || m}
                         </th>
                       ))}
-                      <th style={{ ...thStyle, background: '#fffbf0', borderLeft: '2px solid #e8a825', minWidth: 90 }}>Jami</th>
+                      <th style={{ ...thStyle, position: 'sticky', top: 0, zIndex: 10, background: '#fffbf0', borderLeft: '2px solid #e8a825', minWidth: 90 }}>Jami</th>
                     </tr>
                   </thead>
                   <tbody>
