@@ -3763,7 +3763,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
 
         const thStyle: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
         const tdStyle: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
-        const stickyCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 200, maxWidth: 200, willChange: 'transform' };
+        const stickyCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 200, maxWidth: 200, width: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', willChange: 'transform' };
 
         const activeDays = allDates.filter(d => (!from||d>=from)&&(!to||d<=to)).length;
         const kpi = [
