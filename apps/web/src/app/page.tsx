@@ -3763,7 +3763,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
 
         const thStyle: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
         const tdStyle: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
-        const stickyCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 200, maxWidth: 200, width: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', willChange: 'transform' };
+        const stickyCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 220, maxWidth: 280, willChange: 'transform' };
 
         const activeDays = allDates.filter(d => (!from||d>=from)&&(!to||d<=to)).length;
         const kpi = [
@@ -3866,12 +3866,12 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
                       const bg = pi % 2 === 0 ? 'var(--surface)' : 'var(--surface-hi, #f7f8fa)';
                       return (
                         <tr key={p}>
-                          <td style={{ ...tdStyle, ...stickyCol, background: bg, borderRight: '2px solid rgba(var(--ink-rgb),0.18)' }} title={p}>{p}</td>
+                          <td style={{ ...tdStyle, ...stickyCol, background: bg, borderRight: '2px solid rgba(var(--ink-rgb),0.18)', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.3, padding: '6px 10px' }} title={p}>{p}</td>
                           {markets.map(m => {
                             const c = pivot[p]?.[m];
                             return (
                               <td key={m} style={{ ...tdStyle, background: bg }}>
-                                {c ? <><div style={{ fontWeight: 700 }}>{c.qty}</div><div style={{ fontSize: 10, color: 'var(--muted)' }}>{fmt0(c.sum)}</div></> : <span style={{ color: 'rgba(var(--ink-rgb),0.18)' }}>—</span>}
+                                {c ? <span style={{ fontWeight: 700 }}>{c.qty}</span> : <span style={{ color: 'rgba(var(--ink-rgb),0.18)' }}>—</span>}
                               </td>
                             );
                           })}
@@ -4732,7 +4732,7 @@ function AnalyticsPane({
         const thS: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
         const tdS: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
         const PROD_W = 220;
-        const stCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', width: PROD_W, minWidth: PROD_W, maxWidth: PROD_W, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', willChange: 'transform' };
+        const stCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: PROD_W, maxWidth: 300, willChange: 'transform' };
         const kpi = [
           { label: 'JAMI QAYTARMA', value: `${grandQty} dona`, sub: fmt0(grandSum) + ' so\'m', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
           { label: 'MAHSULOT TURLARI', value: products.length, sub: 'xil tovar', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
@@ -4778,7 +4778,7 @@ function AnalyticsPane({
                       const rt = rowTotals[p] ?? { qty:0, sum:0 };
                       return (
                         <tr key={p} style={{ background: pi%2===0 ? bg0 : bg1 }}>
-                          <td style={{ ...tdS, ...stCol, background: pi%2===0 ? bg0 : bg1, borderRight: '2px solid rgba(var(--ink-rgb),0.2)' }} title={p}>{p.length>38 ? p.slice(0,36)+'…' : p}</td>
+                          <td style={{ ...tdS, ...stCol, background: pi%2===0 ? bg0 : bg1, borderRight: '2px solid rgba(var(--ink-rgb),0.2)', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.3, padding: '6px 10px' }}>{p}</td>
                           {markets.map(m => { const c=pivot[p]?.[m]; return (
                             <td key={m} style={{ ...tdS, color: c ? 'var(--ink)' : 'rgba(var(--ink-rgb),0.15)' }} title={c ? `${c.qty} dona · ${fmt0(c.sum)} so'm` : '—'}>{c ? c.qty : '—'}</td>
                           );})}
