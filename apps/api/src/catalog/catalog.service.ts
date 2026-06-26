@@ -11,12 +11,32 @@ export class CatalogService implements OnModuleInit {
   constructor(@InjectModel(Product.name) private readonly productModel: Model<ProductDocument>) {}
 
   async onModuleInit(): Promise<void> {
-    const count = await this.productModel.countDocuments().exec();
-    if (count === 0) {
-      await this.productModel.insertMany(
-        DEFAULT_CATALOG.map((product, sortOrder) => ({ ...product, sortOrder }))
-      );
+    // Pre-check: detect duplicate SKUs in the DB before attempting the unique index upsert.
+    // Duplicates would cause an E11000 crash if autoIndex fires on a replica set or dev instance.
+    const dupes = await this.productModel.aggregate<{ _id: string; count: number }>([
+      { $group: { _id: '$sku', count: { $sum: 1 } } },
+      { $match: { count: { $gt: 1 } } },
+    ]).exec();
+    if (dupes.length > 0) {
+      const skus = dupes.map(d => d._id).join(', ');
+      throw new Error(`[CatalogService] Duplicate SKUs in DB — deduplicate before startup: ${skus}`);
     }
+
+    // Seeding rules:
+    //   $set   → name, unit, category, sortOrder  (DEFAULT_CATALOG is authoritative; order changes take effect on deploy)
+    //   $setOnInsert → sku, price, currentStock, minStock  (user-managed; never overwritten by a deploy)
+    await Promise.all(
+      DEFAULT_CATALOG.map((p, i) =>
+        this.productModel.updateOne(
+          { sku: p.sku },
+          {
+            $set: { name: p.name, unit: p.unit, category: p.category ?? '', sortOrder: i },
+            $setOnInsert: { sku: p.sku, price: p.price, currentStock: 0, minStock: 0 },
+          },
+          { upsert: true }
+        )
+      )
+    );
   }
 
   async list(): Promise<CatalogProduct[]> {

@@ -42,6 +42,12 @@ export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 export function lineTotal(line: InvoiceLine): InvoiceLine {
   const cost = r2(line.qty * line.price);
   const vat = r2(cost * VAT);

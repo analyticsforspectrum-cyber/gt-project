@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, Types } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
@@ -7,11 +7,25 @@ import { UploadVazvratDto } from './dto/upload-vazvrat.dto';
 import { Vazvrat, VazvratDocument } from './schemas/vazvrat.schema';
 
 @Injectable()
-export class VazvratService {
+export class VazvratService implements OnModuleInit {
+  /** Cached once at startup — replica set topology never changes at runtime */
+  private supportsTransactions = false;
+
   constructor(
     @InjectModel(Vazvrat.name) private readonly vazvratModel: Model<VazvratDocument>,
     @InjectConnection() private readonly connection: Connection
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    // Use `hello` (MongoDB 5.0+); fall back to legacy `isMaster` for older servers.
+    this.supportsTransactions = this.connection.db
+      ? await this.connection.db.admin()
+          .command({ hello: 1 })
+          .catch(() => this.connection.db!.admin().command({ isMaster: 1 }))
+          .then((r) => !!r.setName)
+          .catch(() => false)
+      : false;
+  }
 
   /** Save records — replace all records for the dates present in the upload */
   async upload(dto: UploadVazvratDto, user: PublicUser) {
@@ -29,15 +43,27 @@ export class VazvratService {
       .filter(([, count]) => count > 1)
       .map(([key, count]) => ({ key, count }));
 
-    // Delete existing records for these dates (idempotent re-upload)
-    await this.vazvratModel.deleteMany({ date: { $in: dates } }).exec();
-
     const docs = dto.records.map((r) => ({
       ...r,
       uploadedBy: new Types.ObjectId(user.id)
     }));
 
-    await this.vazvratModel.insertMany(docs);
+    // Atomic replace: prefer a transaction (replica set / Atlas); fall back gracefully on standalone mongod
+    const mongoSession = await this.connection.startSession();
+    try {
+      if (this.supportsTransactions) {
+        await mongoSession.withTransaction(async () => {
+          await this.vazvratModel.deleteMany({ date: { $in: dates } }, { session: mongoSession });
+          await this.vazvratModel.insertMany(docs, { session: mongoSession });
+        });
+      } else {
+        // Standalone mongod — run sequentially without a transaction
+        await this.vazvratModel.deleteMany({ date: { $in: dates } }).exec();
+        await this.vazvratModel.insertMany(docs);
+      }
+    } finally {
+      await mongoSession.endSession();
+    }
     return {
       ok: true,
       inserted: docs.length,
@@ -48,8 +74,10 @@ export class VazvratService {
   }
 
   async query(from: string, to: string) {
+    if (!from || !to) throw new BadRequestException('from and to query params are required');
     return this.vazvratModel
       .find({ date: { $gte: from, $lte: to } })
+      .limit(10000)
       .lean()
       .exec();
   }
@@ -60,6 +88,7 @@ export class VazvratService {
 
   /** Aggregate invoice lines + vazvrat by SKU for a date range */
   async analytics(from: string, to: string) {
+    if (!from || !to) throw new BadRequestException('from and to query params are required');
     // 1. Invoice lines aggregated by sku
     const invoicePipeline = [
       { $match: { dateIso: { $gte: from, $lte: to }, status: { $ne: 'cancelled' } } },

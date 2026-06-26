@@ -34,6 +34,7 @@ import { downloadBarcodePdf } from '@/lib/barcodePdf';
 import {
   amountWords,
   buildSnapshot,
+  daysAgo,
   DEFAULT_REQUISITES,
   downloadBlob,
   fmt,
@@ -86,6 +87,8 @@ type AnalyticsTab = 'overview' | 'products' | 'inventory' | 'customers';
 type Toast = { kind: 'ok' | 'err' | 'info'; text: string } | null;
 
 const TOKEN_KEY = 'gde_tort_token';
+/** Initial vazvrat fetch window. Shown in the UI so users know the visible range. */
+const VAZVRAT_DEFAULT_DAYS = 90;
 
 /** "Korzinka Go - Bashlyk /1" → "Bashlyk" */
 function shortMkt(name: string): string {
@@ -116,7 +119,7 @@ export default function Home() {
   const [sessionSuffix, setSessionSuffix] = useState('');
   const [ordersTab, setOrdersTab] = useState<'import' | 'history' | 'vazvrat'>('import');
   const [vazvratUploadBusy, setVazvratUploadBusy] = useState(false);
-  const [histFrom, setHistFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 10); return d.toISOString().slice(0, 10); });
+  const [histFrom, setHistFrom] = useState(() => daysAgo(10));
   const [histTo,   setHistTo]   = useState(todayIso);
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [catalogDraft, setCatalogDraft] = useState<CatalogProduct[]>([]);
@@ -153,8 +156,7 @@ export default function Home() {
   const [invoiceDetail, setInvoiceDetail] = useState<Invoice | null>(null);
   const [undeliverModal, setUndeliverModal] = useState<{ invNo: number; comment: string } | null>(null);
   const [undeliveredFilter, setUndeliveredFilter] = useState<{ from: string; to: string }>(() => {
-    const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 3);
-    return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+    return { from: daysAgo(3), to: todayIso() };
   });
   const [restoreModal, setRestoreModal] = useState<{
     invNo: number;
@@ -386,7 +388,7 @@ const [manualOpen, setManualOpen] = useState(false);
         role === 'admin' ? api.auditLogs(authToken) : Promise.resolve([] as AuditLog[]),
         Promise.resolve([]),
         api.dashboardStats(authToken).catch(() => null),
-        api.queryVazvrat(authToken, '2020-01-01', new Date().toISOString().slice(0, 10)).catch(() => [] as import('@/types/domain').VazvratRecord[]),
+        api.queryVazvrat(authToken, daysAgo(VAZVRAT_DEFAULT_DAYS), todayIso()).catch(() => [] as import('@/types/domain').VazvratRecord[]),
       ]);
       setCatalog(catalogResult);
       setCatalogDraft(catalogResult);
@@ -410,9 +412,10 @@ const [manualOpen, setManualOpen] = useState(false);
             // restoreSnapshot needs setInvoices etc — call inline here
             const snap = sessionRecord.snapshot;
             setInvoices(snap.invoices || []);
-            // Use live catalog (up-to-date prices); fall back to snapshot only if API failed
-            setCatalog(catalogResult || snap.catalog);
-            setCatalogDraft(catalogResult || snap.catalog);
+            // Use live catalog (up-to-date prices); fall back to snapshot only if live catalog is empty
+            const liveCatalog = catalogResult.length > 0 ? catalogResult : (snap.catalog ?? []);
+            setCatalog(liveCatalog);
+            setCatalogDraft(liveCatalog);
             // Sync DB statuses on top of snapshot
             try {
               const [dbInvoices, cancelledInvoices] = await Promise.all([
@@ -424,7 +427,12 @@ const [manualOpen, setManualOpen] = useState(false);
               for (const d of dbInvoices) statusMap[d.invNo] = d.status;
               for (const d of cancelledInvoices) statusMap[d.invNo] = 'cancelled';
               setInvoices((prev) => prev.map((inv) => ({ ...inv, status: statusMap[inv.invNo] ?? inv.status ?? 'saved' })));
-            } catch (e) { console.warn('[loadCore] DB status sync failed:', e); }
+            } catch (e) {
+              // Re-throw ApiError (e.g. 401) so the outer loadCore catch handles auth; warn on everything else.
+              if (e instanceof ApiError) throw e;
+              console.warn('[loadCore] DB status sync failed:', e);
+              setToast({ kind: 'err', text: "Holat yangilanmadi — tarmoq xatosi." });
+            }
           }
         } catch (e) { console.warn('[loadCore] No session available:', e); }
       }
@@ -448,7 +456,16 @@ const [manualOpen, setManualOpen] = useState(false);
         setToken(saved);
         setUser(me);
         if (me.role === 'admin') setView('analytics');
-        await loadCore(saved, me.role);
+        await loadCore(saved, me.role).catch((e) => {
+          console.warn('[loadCore]', e);
+          if (e instanceof ApiError && e.status === 401) {
+            window.localStorage.removeItem(TOKEN_KEY);
+            setToken(null);
+            setUser(null);
+          } else {
+            setToast({ kind: 'err', text: "Ma'lumotlar yuklanmadi. Sahifani yangilang." });
+          }
+        });
       })
       .catch(() => {
         window.localStorage.removeItem(TOKEN_KEY);
@@ -3535,8 +3552,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
   }, [vazvratRows]);
   const todayPv = todayIso();
   // Default: last 30 days so past sessions are visible
-  const thirtyDaysAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
-  const [pvFrom, setPvFrom] = React.useState(thirtyDaysAgo);
+  const [pvFrom, setPvFrom] = React.useState(() => daysAgo(30));
   const [pvTo, setPvTo] = React.useState(todayPv);
 
   // ── Vazvrat date-picker delete panel ──
@@ -3757,8 +3773,11 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
 
         return (
           <>
-            {/* Top bar: delete */}
+            {/* Top bar: delete + range notice */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--muted)', background: 'rgba(var(--ink-rgb),0.06)', borderRadius: 6, padding: '3px 8px', flexShrink: 0 }}>
+                So&apos;nggi {VAZVRAT_DEFAULT_DAYS} kun
+              </span>
               {isAdmin && vazvratRows.length > 0 && (
                 <button type="button" disabled={vazvratBusy} onClick={openDeletePanel}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '7px 12px', border: '1px solid #dc2626', borderRadius: 9, background: 'rgba(220,38,38,0.06)', color: '#dc2626', cursor: 'pointer' }}>

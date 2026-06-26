@@ -168,11 +168,27 @@ export const api = {
   /** Hard delete session from Arxiv (permanent) */
   hardDeleteSession: (token: string, id: string) =>
     request<{ ok: true }>(`/sessions/${id}/hard`, token, { method: 'DELETE' }),
-  invoices: (token: string, dateIso?: string, page = 1, limit = 200) =>
-    request<{ items: Invoice[]; total: number; page: number; limit: number; pages: number }>(
-      `/invoices${dateIso ? `?dateIso=${dateIso}&page=${page}&limit=${limit}` : `?page=${page}&limit=${limit}`}`,
-      token
-    ).then(r => r.items),
+  invoices: async (token: string, dateIso?: string, page = 1, limit = 200): Promise<Invoice[]> => {
+    const buildQs = (p: number) =>
+      dateIso ? `dateIso=${dateIso}&page=${p}&limit=${limit}` : `page=${p}&limit=${limit}`;
+    const first = await request<{ items: Invoice[]; pages?: number }>(`/invoices?${buildQs(page)}`, token);
+    const totalPages = typeof first.pages === 'number' && first.pages > 1 ? first.pages : 1;
+    if (totalPages <= 1) return first.items;
+    const results = await Promise.allSettled(
+      Array.from({ length: totalPages - 1 }, (_, i) =>
+        request<{ items: Invoice[] }>(`/invoices?${buildQs(i + 2)}`, token).then(r => r.items)
+      )
+    );
+    const rejections = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (rejections.length > 0) {
+      // If every failure is a 401, surface it as ApiError so the auth handler can log the user out.
+      const is401 = rejections.every(r => r.reason instanceof ApiError && r.reason.status === 401);
+      if (is401) throw new ApiError(401, 'Unauthorized');
+      throw new Error(`Failed to load ${rejections.length} of ${totalPages} invoice pages`);
+    }
+    const extra = results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+    return [...first.items, ...extra];
+  },
   invoice: (token: string, invNo: number) => request<Invoice>(`/invoices/${invNo}`, token),
   updateInvoice: (token: string, invNo: number, input: Partial<Invoice>) =>
     request<Invoice>(`/invoices/${invNo}`, token, {

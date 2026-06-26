@@ -45,36 +45,58 @@ export class SessionsService {
 
   async save(dto: SaveSessionDto, user: PublicUser) {
     const name = (dto.name && dto.name.trim()) ? dto.name.trim() : dto.invoiceDate;
-    const previous = await this.sessionModel.findOne({ invoiceDate: dto.invoiceDate, name }).lean().exec();
-    const versions = previous
-      ? [
-          {
-            savedAt: previous.savedAt,
-            invoiceCount: previous.invoiceCount,
-            sumTotal: previous.sumTotal,
-            snapshot: previous.snapshot,
-            savedBy: previous.savedBy,
-          },
-          ...((previous.versions || []) as unknown[]),
-        ].slice(0, 9)
-      : [];
+    const userId = new Types.ObjectId(user.id);
+    const now = new Date();
 
-    return this.sessionModel
+    // Aggregation pipeline update (MongoDB 4.2+):
+    // Reads existing $snapshot/$savedAt/etc. BEFORE $set overwrites them,
+    // so versions[] captures the true "before image" of each save — enabling real rollback.
+    // Also eliminates the findOne + findOneAndUpdate race (single atomic round-trip).
+    return (this.sessionModel as any)
       .findOneAndUpdate(
+        // No deletedAt filter: a previously soft-deleted doc is reused and reactivated
+        // instead of leaving a zombie duplicate in Arxiv alongside the new active one.
         { invoiceDate: dto.invoiceDate, name },
-        {
-          $set: {
-            savedAt: new Date(),
-            invoiceCount: dto.invoiceCount,
-            sumTotal: dto.sumTotal,
-            snapshot: dto.snapshot,
-            versions,
-            savedBy: new Types.ObjectId(user.id),
-            name,
-            deletedAt: null,
-            deletedBy: null,
+        [
+          {
+            $set: {
+              // Prepend the current "before image" to versions, then keep newest 9.
+              // $cond guards the first-ever save (when $snapshot is null — upsert path).
+              versions: {
+                $slice: [
+                  {
+                    $concatArrays: [
+                      {
+                        $cond: {
+                          if: { $gt: ['$snapshot', null] },
+                          then: [{
+                            savedAt: '$savedAt',
+                            invoiceCount: '$invoiceCount',
+                            sumTotal: '$sumTotal',
+                            snapshot: '$snapshot',
+                            savedBy: '$savedBy',
+                          }],
+                          else: [],
+                        },
+                      },
+                      { $ifNull: ['$versions', []] },
+                    ],
+                  },
+                  9,
+                ],
+              },
+              savedAt: now,
+              invoiceCount: dto.invoiceCount,
+              sumTotal: dto.sumTotal,
+              snapshot: dto.snapshot,
+              savedBy: userId,
+              name,
+              invoiceDate: dto.invoiceDate,
+              deletedAt: null,
+              deletedBy: null,
+            },
           },
-        },
+        ],
         { new: true, upsert: true }
       )
       .lean()
@@ -91,13 +113,15 @@ export class SessionsService {
     return { ok: true };
   }
 
-  /** Restore from Arxiv */
+  /** Restore from Arxiv — atomic: only restores if the doc is still soft-deleted */
   async restore(id: string): Promise<{ ok: true }> {
+    // Single atomic updateOne: matches only if the doc exists AND is still soft-deleted.
+    // This eliminates the TOCTOU race between a concurrent findOne + updateOne pair.
     const result = await this.sessionModel.updateOne(
-      { _id: new Types.ObjectId(id) },
+      { _id: new Types.ObjectId(id), deletedAt: { $ne: null } },
       { $set: { deletedAt: null, deletedBy: null } }
     ).exec();
-    if (!result.matchedCount) throw new NotFoundException('Session not found');
+    if (!result.matchedCount) throw new NotFoundException('Session not found or already active');
     return { ok: true };
   }
 

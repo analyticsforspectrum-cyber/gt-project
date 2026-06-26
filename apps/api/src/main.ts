@@ -7,9 +7,9 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
-  // Allow large session snapshots — must be before NestJS bodyParser
-  app.use(require('express').json({ limit: '50mb' }));
-  app.use(require('express').urlencoded({ limit: '50mb', extended: true }));
+  // 10 MB covers the largest real session snapshots (~1500 invoices × 20 lines); must be before NestJS bodyParser
+  app.use(require('express').json({ limit: '10mb' }));
+  app.use(require('express').urlencoded({ limit: '10mb', extended: true }));
   const config = app.get(ConfigService);
   const apiPrefix = config.get<string>('API_PREFIX', 'api');
   const webOrigins = config

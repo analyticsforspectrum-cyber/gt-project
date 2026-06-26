@@ -3,9 +3,19 @@ import { HydratedDocument } from 'mongoose';
 
 export type ProductDocument = HydratedDocument<Product>;
 
-@Schema({ timestamps: true, toJSON: { virtuals: true, versionKey: false }, toObject: { virtuals: true } })
+// autoIndex is disabled in production — the unique index on `sku` must be created
+// manually after deduplication (or is already present from a prior migration).
+// In development (NODE_ENV !== 'production') Mongoose will still auto-create it.
+const isProduction = process.env.NODE_ENV === 'production';
+
+@Schema({
+  timestamps: true,
+  toJSON: { virtuals: true, versionKey: false },
+  toObject: { virtuals: true },
+  autoIndex: !isProduction,
+})
 export class Product {
-  @Prop({ required: true, trim: true, index: true })
+  @Prop({ required: true, trim: true, index: true, unique: true })
   sku: string;
 
   @Prop({ required: true, trim: true })
