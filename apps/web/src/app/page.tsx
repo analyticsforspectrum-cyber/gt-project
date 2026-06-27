@@ -4437,20 +4437,20 @@ function AnalyticsPane({
         {/* Tabs on their own row; wrap so none get clipped on mobile */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <button type="button" onClick={() => setTab('products')}
-              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'products' ? 'rgba(46,168,85,0.09)' : 'var(--surface)', color: tab === 'products' ? 'var(--ok)' : 'var(--ink)' }}>
-              📦 {T('an_tab_products')} <span style={{ background: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'products' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredProductRows.length}</span>
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'products' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'products' ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: tab === 'products' ? 'var(--berry)' : 'var(--ink)' }}>
+              📦 {T('an_tab_products')} <span style={{ background: tab === 'products' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'products' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredProductRows.length}</span>
             </button>
             <button type="button" onClick={() => setTab('markets')}
-              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'markets' ? 'rgba(245,158,11,0.09)' : 'var(--surface)', color: tab === 'markets' ? '#b45309' : 'var(--ink)' }}>
-              🏪 {T('an_tab_market')} <span style={{ background: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'markets' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredMarkets.length}</span>
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'markets' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'markets' ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: tab === 'markets' ? 'var(--berry)' : 'var(--ink)' }}>
+              🏪 {T('an_tab_market')} <span style={{ background: tab === 'markets' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'markets' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredMarkets.length}</span>
             </button>
             <button type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}
-              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'savdo' ? '#6366f1' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'savdo' ? 'rgba(99,102,241,0.09)' : 'var(--surface)', color: tab === 'savdo' ? '#4f46e5' : 'var(--ink)' }}>
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'savdo' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'savdo' ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: tab === 'savdo' ? 'var(--berry)' : 'var(--ink)' }}>
               📊 {T('an_tab_sales')}
             </button>
             <button type="button" onClick={() => { setTab('qaytarma'); void loadVazvrat(); }}
-              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'qaytarma' ? 'rgba(217,119,6,0.09)' : 'var(--surface)', color: tab === 'qaytarma' ? '#b45309' : 'var(--ink)' }}>
-              ↩️ {T('an_tab_returns')} <span style={{ background: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'qaytarma' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{vazvratRows.length}</span>
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'qaytarma' ? 'var(--danger)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'qaytarma' ? 'rgba(240,90,82,0.10)' : 'var(--surface)', color: tab === 'qaytarma' ? 'var(--danger)' : 'var(--ink)' }}>
+              ↩️ {T('an_tab_returns')} <span style={{ background: tab === 'qaytarma' ? 'var(--danger)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'qaytarma' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{vazvratRows.length}</span>
             </button>
         </div>
       </div>
@@ -4745,10 +4745,10 @@ function AnalyticsPane({
         const arrow = (key: string) => qSort.key === key ? (qSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
 
         const kpi = [
-          { label: 'Jami qaytarma', value: fmt0(totQaytarma), sub: `${fmt0(totQaytarmaQty)} dona`, accent: '#d97706', icon: <RefreshCcw size={14} /> },
+          { label: 'Jami qaytarma', value: fmt0(totQaytarma), sub: `${fmt0(totQaytarmaQty)} dona`, accent: 'var(--danger)', icon: <RefreshCcw size={14} /> },
           { label: 'Qaytarma foizi', value: overallRate.toFixed(1) + '%', sub: 'berilgandan', accent: rateColor(overallRate), icon: <TrendingUp size={14} /> },
-          { label: 'Marketlar', value: String(markets.length), sub: "ta do'kon", accent: '#0891b2', icon: <MapIcon size={14} /> },
-          { label: 'Mahsulot turlari', value: String(products.length), sub: 'xil tovar', accent: '#7c3aed', icon: <FileText size={14} /> },
+          { label: 'Marketlar', value: String(markets.length), sub: "ta do'kon", accent: 'var(--berry)', icon: <MapIcon size={14} /> },
+          { label: 'Mahsulot turlari', value: String(products.length), sub: 'xil tovar', accent: 'var(--berry)', icon: <FileText size={14} /> },
         ];
 
         const thBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', fontWeight: 800, color: 'inherit', padding: 0, whiteSpace: 'nowrap' };
@@ -4775,8 +4775,8 @@ function AnalyticsPane({
               {([['product', '📦 Mahsulot bo‘yicha'], ['market', '🏪 Market bo‘yicha'], ['pivot', '▦ Pivot jadval']] as const).map(([id, label]) => (
                 <button key={id} type="button" onClick={() => setQView(id)}
                   style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                    border: '1.5px solid', borderColor: qView === id ? '#d97706' : 'var(--border)',
-                    background: qView === id ? 'rgba(217,119,6,0.10)' : 'var(--surface)', color: qView === id ? '#b45309' : 'var(--ink)' }}>
+                    border: '1.5px solid', borderColor: qView === id ? 'var(--berry)' : 'var(--border)',
+                    background: qView === id ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: qView === id ? 'var(--berry)' : 'var(--ink)' }}>
                   {label}
                 </button>
               ))}
@@ -4814,7 +4814,7 @@ function AnalyticsPane({
                           <td style={{ ...num, color: 'var(--ink-2)' }}>{r.bQty > 0 ? fmt0(r.bQty) : '—'}</td>
                           <td style={{ ...num, color: 'var(--ink-2)' }}>{r.bSum > 0 ? fmt0(r.bSum) : '—'}</td>
                           <td style={num}>{fmt0(r.rQty)}</td>
-                          <td style={{ ...num, fontWeight: 700, color: '#d97706' }}>{fmt0(r.rSum)}</td>
+                          <td style={{ ...num, fontWeight: 700, color: 'var(--danger)' }}>{fmt0(r.rSum)}</td>
                           <td style={{ textAlign: 'right' }}>
                             <span style={{ display: 'inline-block', minWidth: 50, padding: '2px 8px', borderRadius: 999, fontWeight: 800, fontFamily: 'var(--mono)', fontSize: 11.5, color: rateColor(r.rate), background: rateBg(r.rate) }}>
                               {r.rate < 0 ? '—' : r.rate.toFixed(1) + '%'}
@@ -4829,7 +4829,7 @@ function AnalyticsPane({
                         <td style={{ ...num, background: 'var(--surface-hi)' }}>{fBerQty > 0 ? fmt0(fBerQty) : '—'}</td>
                         <td style={{ ...num, background: 'var(--surface-hi)' }}>{fBerSum > 0 ? fmt0(fBerSum) : '—'}</td>
                         <td style={{ ...num, background: 'var(--surface-hi)' }}>{fmt0(fRetQty)}</td>
-                        <td style={{ ...num, color: '#d97706', background: 'var(--surface-hi)' }}>{fmt0(fRetSum)}</td>
+                        <td style={{ ...num, color: 'var(--danger)', background: 'var(--surface-hi)' }}>{fmt0(fRetSum)}</td>
                         <td style={{ ...num, color: rateColor(fRate), background: 'var(--surface-hi)' }}>{fRate < 0 ? '—' : fRate.toFixed(1) + '%'}</td>
                       </tr>
                     </tfoot>
@@ -4859,7 +4859,7 @@ function AnalyticsPane({
                       <tr>
                         <th className="productcol" style={{ position: 'sticky', left: 0, zIndex: 3, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>{T('lbl_product')}</th>
                         {mk.map(m => <th key={m} title={m} style={{ whiteSpace: 'nowrap' }}>{m.replace(/^Korzinka\s*[-–]\s*/i, '')}</th>)}
-                        <th style={{ color: '#d97706', whiteSpace: 'nowrap' }}>{T('lbl_total')}</th>
+                        <th style={{ color: 'var(--danger)', whiteSpace: 'nowrap' }}>{T('lbl_total')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4867,15 +4867,15 @@ function AnalyticsPane({
                         <tr key={p}>
                           <td className="productcol" style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p}>{p}</td>
                           {mk.map(m => { const c = pivot[p]?.[m]; return <td key={m} style={{ textAlign: 'center', color: c ? 'var(--ink)' : 'var(--ink-3)' }}>{c || '—'}</td>; })}
-                          <td style={{ textAlign: 'center', fontWeight: 800, color: '#d97706' }}>{rowT[p] || 0}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 800, color: 'var(--danger)' }}>{rowT[p] || 0}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr style={{ fontWeight: 800 }}>
                         <td className="productcol" style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>{T('lbl_total')}</td>
-                        {mk.map(m => <td key={m} style={{ textAlign: 'center', color: '#d97706' }}>{colT[m] || 0}</td>)}
-                        <td style={{ textAlign: 'center', color: '#d97706' }}>{gQty}</td>
+                        {mk.map(m => <td key={m} style={{ textAlign: 'center', color: 'var(--danger)' }}>{colT[m] || 0}</td>)}
+                        <td style={{ textAlign: 'center', color: 'var(--danger)' }}>{gQty}</td>
                       </tr>
                     </tfoot>
                   </table>
