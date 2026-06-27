@@ -13,7 +13,17 @@ export class OrdersService {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  async list(filters?: { dateFrom?: string; dateTo?: string; customer?: string; status?: string }): Promise<Order[]> {
+  // `.lean()` drops Mongoose virtuals, but the web client keys order rows on the
+  // `id` virtual — re-attach it so the lean payload matches the hydrated shape.
+  private static withId<T extends { _id: unknown }>(doc: T): T & { id: string } {
+    return { ...doc, id: String(doc._id) };
+  }
+
+  async list(
+    filters?: { dateFrom?: string; dateTo?: string; customer?: string; status?: string },
+    page = 1,
+    limit = 200
+  ) {
     const query: Record<string, unknown> = {};
     // Escape regex metacharacters so user input can't inject a pattern (ReDoS / `.*` enumeration).
     if (filters?.customer) query.customer = { $regex: OrdersService.escapeRegex(filters.customer), $options: 'i' };
@@ -23,7 +33,37 @@ export class OrdersService {
       if (filters.dateFrom) (query.deliveryDate as Record<string, string>).$gte = filters.dateFrom;
       if (filters.dateTo) (query.deliveryDate as Record<string, string>).$lte = filters.dateTo;
     }
-    return this.orderModel.find(query).sort({ createdAt: -1 }).exec();
+
+    // Bound the previously-unbounded query: paginate server-side and let the client
+    // fan out the remaining pages. `.lean()` skips document hydration (the dominant
+    // CPU cost) since the list is read-only.
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(500, Math.max(1, limit));
+    const skip = (safePage - 1) * safeLimit;
+    const itemsQuery = this.orderModel
+      .find(query)
+      // _id tiebreaker makes skip/limit paging deterministic across the client's
+      // concurrent page fan-out even when two orders share the same createdAt ms.
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean()
+      .exec();
+
+    // Only page 1 needs total/pages — pages 2..N are read for `items` only.
+    if (safePage > 1) {
+      const docs = await itemsQuery;
+      return { items: docs.map(OrdersService.withId), total: docs.length, page: safePage, limit: safeLimit, pages: 1 };
+    }
+
+    const [docs, total] = await Promise.all([itemsQuery, this.orderModel.countDocuments(query)]);
+    return {
+      items: docs.map(OrdersService.withId),
+      total,
+      page: safePage,
+      limit: safeLimit,
+      pages: Math.max(1, Math.ceil(total / safeLimit))
+    };
   }
 
   async findById(id: string): Promise<Order> {

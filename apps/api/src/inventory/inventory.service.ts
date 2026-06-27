@@ -18,7 +18,16 @@ export class InventoryService {
     return this.movementModel.create(input);
   }
 
-  async list(): Promise<InventoryMovement[]> {
-    return this.movementModel.find().sort({ dateIso: -1, createdAt: -1 }).limit(200).exec();
+  // Explicit return type: the inferred lean type is too large for TS to serialize (TS7056).
+  async list(): Promise<(InventoryMovement & { id: string })[]> {
+    // `.lean()` skips hydration for this read-only list; re-attach the `id` virtual
+    // the web client keys movement rows on (lean drops virtuals).
+    const docs = await this.movementModel
+      .find()
+      .sort({ dateIso: -1, createdAt: -1 })
+      .limit(200)
+      .lean()
+      .exec();
+    return docs.map((doc) => ({ ...doc, id: String(doc._id) })) as unknown as (InventoryMovement & { id: string })[];
   }
 }

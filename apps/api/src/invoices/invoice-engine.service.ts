@@ -116,11 +116,14 @@ export class InvoiceEngineService {
       startId: number;
       quantities: { sku: string; qty: number; price?: number }[];
       existingInvoices?: Invoice[];
+      /** Pre-computed count of same-store invoices for `seq` — lets callers avoid
+       *  passing the full invoice array when they already know the count (manual()). */
+      existingStoreCount?: number;
     }
   ): Invoice {
     const existing = input.existingInvoices || [];
     const maxNo = existing.reduce((max, invoice) => Math.max(max, invoice.invNo), input.startId);
-    const seq = existing.filter((invoice) => invoice.storeCode === input.storeCode).length + 1;
+    const seq = (input.existingStoreCount ?? existing.filter((invoice) => invoice.storeCode === input.storeCode).length) + 1;
     const short = this.shortStore(input.storeName);
     const qtyMap = new Map(input.quantities.map((line) => [line.sku, line.qty]));
     const priceMap = new Map(input.quantities.filter((l) => l.price != null).map((line) => [line.sku, line.price!]));

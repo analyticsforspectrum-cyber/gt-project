@@ -8,8 +8,12 @@ import { Customer, CustomerDocument } from './schemas/customer.schema';
 export class CustomersService {
   constructor(@InjectModel(Customer.name) private readonly customerModel: Model<CustomerDocument>) {}
 
-  async list(): Promise<Customer[]> {
-    return this.customerModel.find({ active: true }).sort({ name: 1 }).exec();
+  // Explicit return type: the inferred lean type is too large for TS to serialize (TS7056).
+  async list(): Promise<(Customer & { id: string })[]> {
+    // Read-only list: `.lean()` skips hydration; re-attach the `id` virtual the web
+    // Customer type keys on (lean drops virtuals).
+    const docs = await this.customerModel.find({ active: true }).sort({ name: 1 }).lean().exec();
+    return docs.map((d) => ({ ...d, id: String(d._id) })) as unknown as (Customer & { id: string })[];
   }
 
   async findById(id: string): Promise<Customer> {

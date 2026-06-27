@@ -22,10 +22,34 @@ export class InvoicesService {
   async list(dateIso?: string, page = 1, limit = 200) {
     const filter: Record<string, unknown> = dateIso ? { dateIso, status: { $ne: 'cancelled' } } : { status: { $ne: 'cancelled' } };
     const skip = (page - 1) * limit;
-    const [items, total] = await Promise.all([
-      this.invoiceModel.find(filter).sort({ dateIso: -1, invNo: 1 }).skip(skip).limit(limit).exec(),
-      this.invoiceModel.countDocuments(filter)
-    ]);
+    // Two distinct consumers hit GET /invoices:
+    //  • Date-scoped (dateIso present) — the Savdo sales tab (loadSavdo) — needs the
+    //    FULL invoice incl. lines[]/sumTotal/storeCode/market. A single day is a
+    //    bounded set, so returning full docs here is cheap.
+    //  • Unscoped (no dateIso) — the client-side status-sync passes (loadCore +
+    //    loadSession) — only read invNo/status/undeliverComment/undeliveredAt; the
+    //    displayed rows there come from the session snapshot, not from here. So we
+    //    project just those 5 fields and drop the heavy `lines[]` array, shrinking
+    //    the (200–500 doc) payload ~20×.
+    // `.lean()` (plain objects, no hydration) is the dominant per-doc CPU win on both.
+    const projection = dateIso ? undefined : 'invNo status dateIso undeliverComment undeliveredAt';
+    const itemsQuery = this.invoiceModel
+      .find(filter, projection)
+      .sort({ dateIso: -1, invNo: 1 })
+      .skip(skip)
+      .limit(limit)
+      .lean()
+      .exec();
+
+    // Only the first page needs total/pages — the client reads `pages` from page 1
+    // and fans out the rest reading `items` only. Skipping countDocuments on pages
+    // 2..N removes a redundant full-collection count on every fanned-out request.
+    if (page > 1) {
+      const items = await itemsQuery;
+      return { items, total: items.length, page, limit, pages: 1 };
+    }
+
+    const [items, total] = await Promise.all([itemsQuery, this.invoiceModel.countDocuments(filter)]);
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
@@ -81,14 +105,18 @@ export class InvoicesService {
     return invoice;
   }
 
-  async persistInvoices(invoices: InvoiceType[], user: PublicUser) {
-    if (!invoices.length) return;
+  async persistInvoices(invoices: InvoiceType[], user: PublicUser): Promise<Map<number, InvoiceStatus>> {
+    if (!invoices.length) return new Map();
     // Never silently overwrite the financial data of an invoice that was
     // explicitly cancelled — a re-generate must not resurrect its line totals.
     const existing = await this.invoiceModel
       .find({ invNo: { $in: invoices.map((i) => i.invNo) } }, { invNo: 1, status: 1 })
       .lean()
       .exec();
+    // Prior status per existing invNo — returned so generate() doesn't re-query the
+    // collection just to learn statuses (upsert leaves existing status untouched;
+    // new invoices get $setOnInsert 'delivered').
+    const statusByInvNo = new Map<number, InvoiceStatus>(existing.map((e) => [e.invNo, e.status as InvoiceStatus]));
     const cancelled = new Set(existing.filter((e) => e.status === 'cancelled').map((e) => e.invNo));
 
     const ops = invoices
@@ -111,6 +139,7 @@ export class InvoicesService {
 
     // Single round-trip instead of one updateOne per invoice.
     if (ops.length) await this.invoiceModel.bulkWrite(ops as never, { ordered: false });
+    return statusByInvNo;
   }
 
   async generate(dto: GenerateInvoicesDto, user: PublicUser) {
@@ -118,16 +147,12 @@ export class InvoicesService {
     await this.catalogService.rememberOrderPrices(rows);
     const catalog = await this.catalogService.list();
     const invoices = this.engine.buildInvoices(rows, catalog, dto.startId, dto.dateIso);
-    await this.persistInvoices(invoices, user);
-    // Re-fetch from DB so returned invoices have actual status (e.g., 'delivered')
-    const savedInvoices = await this.invoiceModel
-      .find({ invNo: { $in: invoices.map((i) => i.invNo) } }, { invNo: 1, status: 1 })
-      .lean()
-      .exec();
-    const statusByInvNo = new Map(savedInvoices.map((d) => [d.invNo, d.status]));
+    // persistInvoices returns prior statuses; new invoices default to 'delivered'
+    // ($setOnInsert), so no second query is needed to report actual statuses.
+    const statusByInvNo = await this.persistInvoices(invoices, user);
     const invoicesWithStatus = invoices.map((inv) => ({
       ...inv,
-      status: statusByInvNo.get(inv.invNo) ?? ('saved' as const)
+      status: statusByInvNo.get(inv.invNo) ?? ('delivered' as const)
     }));
     const snapshot = this.engine.snapshot({
       invoiceDate: dto.dateIso,
@@ -202,11 +227,9 @@ export class InvoicesService {
 
   async manual(dto: ManualInvoiceDto, user: PublicUser) {
     const catalog = await this.catalogService.list();
-    // Never trust client-provided existingInvoices — only invNo+storeCode are needed for seq.
-    const sameStoreInvoices = await this.invoiceModel
-      .find({ storeCode: dto.storeCode }, { invNo: 1, storeCode: 1 })
-      .lean()
-      .exec();
+    // Only the per-store invoice COUNT is needed (to derive `seq`); count via the
+    // indexed storeCode field instead of loading every same-store invoice into memory.
+    const sameStoreCount = await this.invoiceModel.countDocuments({ storeCode: dto.storeCode });
 
     // Allocate the invoice number atomically: recompute the next number from the
     // current DB max and insert. The unique index on invNo rejects a colliding
@@ -222,7 +245,9 @@ export class InvoicesService {
       const invoice = this.engine.buildManualInvoice(catalog, {
         ...dto,
         startId: safeStartId,
-        existingInvoices: sameStoreInvoices as any,
+        // maxNo derives solely from the server-computed safeStartId; pass the count for seq.
+        existingInvoices: [],
+        existingStoreCount: sameStoreCount,
       });
       try {
         await this.invoiceModel.create({

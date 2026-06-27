@@ -40,8 +40,20 @@ export class CatalogService implements OnModuleInit {
   }
 
   async list(): Promise<CatalogProduct[]> {
-    const products = await this.productModel.find().sort({ sortOrder: 1, createdAt: 1 }).exec();
-    return products.map((product) => this.toCatalogProduct(product));
+    // `.lean()` skips hydration — this is read-only and called on every invoice
+    // generate/manual (not just the catalog screen), so it's a hot path. Map _id->id
+    // explicitly since lean drops the `id` virtual toCatalogProduct relies on.
+    const products = await this.productModel.find().sort({ sortOrder: 1, createdAt: 1 }).lean().exec();
+    return products.map((p) => ({
+      id: String(p._id),
+      sku: p.sku,
+      name: p.name,
+      unit: p.unit,
+      price: p.price,
+      category: (p as { category?: string }).category ?? '',
+      currentStock: (p as { currentStock?: number }).currentStock ?? 0,
+      minStock: (p as { minStock?: number }).minStock ?? 0
+    }));
   }
 
   async create(dto: CreateProductDto): Promise<CatalogProduct> {

@@ -66,7 +66,7 @@ import {
 import {
   View, SettingsView, Theme, Density, AnalyticsTab, Toast, Lang, HistoryEvent, TarixTab,
   BG_PRESETS, TOKEN_KEY, VAZVRAT_DEFAULT_DAYS, KIND_STYLE, MONTHS_UZ_FULL, MONTHS_UZ_SHORT, WEEKDAYS_UZ, DISPATCH_COLORS,
-  isLightColor, shortMkt, groupByDateKey, getError, t, tDays, tDaysFull, updateCatalogDraft,
+  isLightColor, shortMkt, groupByDateKey, getError, t, tDays, tDaysFull, tMonthsShort, updateCatalogDraft,
   hexToRgbChannels, shadeHexColor
 } from '@/lib/ui';
 
@@ -97,7 +97,6 @@ export default function Home() {
   const [requisites, setRequisites] = useState<Requisites>(DEFAULT_REQUISITES);
   const [requisitesDraft, setRequisitesDraft] = useState<Requisites>(DEFAULT_REQUISITES);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [allDbInvoices, setAllDbInvoices] = useState<Invoice[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [vazvratAllRows, setVazvratAllRows] = useState<import('@/types/domain').VazvratRecord[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -354,6 +353,25 @@ const [manualOpen, setManualOpen] = useState(false);
     return filteredInvoices.filter((invoice) => selected.has(invoice.invNo));
   }, [filteredInvoices, selected]);
 
+  // Matrix row index list — O(catalog × invoices) when hideZero is on. Memoized here
+  // (above the early returns, so it's an unconditional hook) instead of recomputed on
+  // every Home render (every matrix keystroke, autosave tick, toast, etc.).
+  const matrixIndices = useMemo(
+    () =>
+      catalog
+        .map((product, index) => ({ product, index }))
+        .filter(({ product, index }) => {
+          const q = pivotSearch.trim().toLowerCase();
+          if (q && !product.name.toLowerCase().includes(q) && !product.sku.toLowerCase().includes(q)) return false;
+          if (hideZero) {
+            const total = filteredInvoices.reduce((sum, invoice) => sum + (invoice.lines[index]?.qty || 0), 0);
+            if (total === 0) return false;
+          }
+          return true;
+        }),
+    [catalog, pivotSearch, hideZero, filteredInvoices]
+  );
+
   const totals = useMemo(
     () => {
       const active = filteredInvoices.filter((inv) => inv.status === 'delivered');
@@ -402,31 +420,41 @@ const [manualOpen, setManualOpen] = useState(false);
       if (sessionsResult.length > 0) {
         try {
           const latest = sessionsResult[0]; // sorted newest first
-          const sessionRecord = await api.session(authToken, latest._id);
+          // Fetch the session snapshot and the DB status maps concurrently — they are
+          // independent, so this collapses the old session→invoices serial waterfall
+          // into a single round-trip. The status-sync arm resolves to null on ANY
+          // failure (incl. ApiError) — the snapshot invoices are still rendered below,
+          // so a flaky/expired status fetch never blocks or hides the session restore.
+          const [sessionRecord, statusSync] = await Promise.all([
+            api.session(authToken, latest._id),
+            Promise.all([
+              api.invoices(authToken),
+              api.listCancelledInvoices(authToken).catch(() => [] as Invoice[]),
+            ])
+              .then(([dbInvoices, cancelledInvoices]) => ({ dbInvoices, cancelledInvoices }))
+              .catch((e) => {
+                console.warn('[loadCore] DB status sync failed:', e);
+                return null;
+              }),
+          ]);
           if (sessionRecord?.snapshot) {
             // restoreSnapshot needs setInvoices etc — call inline here
             const snap = sessionRecord.snapshot;
-            setInvoices(snap.invoices || []);
             // Use live catalog (up-to-date prices); fall back to snapshot only if live catalog is empty
             const liveCatalog = catalogResult.length > 0 ? catalogResult : (snap.catalog ?? []);
             setCatalog(liveCatalog);
             setCatalogDraft(liveCatalog);
-            // Sync DB statuses on top of snapshot
-            try {
-              const [dbInvoices, cancelledInvoices] = await Promise.all([
-                api.invoices(authToken),
-                api.listCancelledInvoices(authToken).catch(() => [] as Invoice[]),
-              ]);
-              // setAllDbInvoices faqat Analytics tabida yuklanadi (loadAnalytics da)
+            // Always render the snapshot invoices; overlay live DB statuses when the
+            // status-sync succeeded, else show them as-is and flag the sync failure.
+            // setAllDbInvoices faqat Analytics tabida yuklanadi (loadAnalytics da)
+            if (statusSync) {
               const statusMap: Record<number, Invoice['status']> = {};
-              for (const d of dbInvoices) statusMap[d.invNo] = d.status;
-              for (const d of cancelledInvoices) statusMap[d.invNo] = 'cancelled';
-              setInvoices((prev) => prev.map((inv) => ({ ...inv, status: statusMap[inv.invNo] ?? inv.status ?? 'saved' })));
-            } catch (e) {
-              // Re-throw ApiError (e.g. 401) so the outer loadCore catch handles auth; warn on everything else.
-              if (e instanceof ApiError) throw e;
-              console.warn('[loadCore] DB status sync failed:', e);
-              setToast({ kind: 'err', text: "Holat yangilanmadi — tarmoq xatosi." });
+              for (const d of statusSync.dbInvoices) statusMap[d.invNo] = d.status;
+              for (const d of statusSync.cancelledInvoices) statusMap[d.invNo] = 'cancelled';
+              setInvoices((snap.invoices || []).map((inv) => ({ ...inv, status: statusMap[inv.invNo] ?? inv.status ?? 'saved' })));
+            } else {
+              setInvoices(snap.invoices || []);
+              setToast({ kind: 'err', text: t(lang, 'toast_status_not_updated') });
             }
           }
         } catch (e) { console.warn('[loadCore] No session available:', e); }
@@ -458,7 +486,7 @@ const [manualOpen, setManualOpen] = useState(false);
             setToken(null);
             setUser(null);
           } else {
-            setToast({ kind: 'err', text: "Ma'lumotlar yuklanmadi. Sahifani yangilang." });
+            setToast({ kind: 'err', text: t(lang, 'toast_data_load_failed') });
           }
         });
       })
@@ -487,9 +515,9 @@ const [manualOpen, setManualOpen] = useState(false);
       setUser(result.user);
       await loadCore(result.accessToken, result.user.role);
       if (result.user.role === 'admin') setView('analytics');
-      showToast('ok', 'Вход выполнен');
+      showToast('ok', t(lang, 'toast_login_ok'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     } finally {
       setBusy(false);
     }
@@ -518,7 +546,7 @@ const [manualOpen, setManualOpen] = useState(false);
     if (!token) return;
     const raw = overrideSap ?? sapRaw;
     if (!raw.trim()) {
-      showToast('err', 'SAP faylini yuklang');
+      showToast('err', t(lang, 'toast_upload_sap'));
       return;
     }
     setBusy(true);
@@ -531,9 +559,9 @@ const [manualOpen, setManualOpen] = useState(false);
       setCatalogDraft(result.catalog);
       setSelected(new Set(result.invoices.map((invoice) => invoice.invNo)));
       setUnsaved(true); // Saqlash kerakligi ko'rsatiladi
-      showToast('ok', `Tayyor: ${result.invoices.length} ta hujjat. "Saqlash" tugmasini bosing!`);
+      showToast('ok', t(lang, 'toast_parse_ready').replace('{n}', String(result.invoices.length)));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     } finally {
       setBusy(false);
     }
@@ -564,7 +592,7 @@ const [manualOpen, setManualOpen] = useState(false);
       if (!silent) {
         const dup = await api.checkSessionDuplicate(token, dateIso, sessionName);
         if (dup.exists) {
-          const confirmed = window.confirm(`"${sessionName}" nomli sessiya mavjud.\n\nUstiga yozilsinmi?\n\n"Bekor" — yangi nom bilan saqlash`);
+          const confirmed = window.confirm(t(lang, 'confirm_overwrite_session').replace('{name}', sessionName));
           if (!confirmed) {
             // Find next free name
             let n = 2;
@@ -593,11 +621,11 @@ const [manualOpen, setManualOpen] = useState(false);
       }
       await refreshSessions();
       if (!silent) {
-        showToast('ok', `Сессия сохранена: ${sessionName}`);
+        showToast('ok', t(lang, 'toast_session_saved').replace('{name}', sessionName));
         setView('register');
       }
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -648,12 +676,12 @@ const [manualOpen, setManualOpen] = useState(false);
         if (!isoDate) continue;
         records.push({ orderNo: lastOrderNo || '-', date: isoDate, marketCode: lastMarketCode || '-', marketName: lastMarketName || '-', sapCode, productName: productName || sapCode, qty: qty || 0, pricePerUnit: price || 0, totalWithVat: totalWithVat || 0 });
       }
-      if (!records.length) { showToast('err', 'Hech qanday yozuv topilmadi'); return; }
+      if (!records.length) { showToast('err', t(lang, 'toast_no_records')); return; }
       await api.uploadVazvrat(token, records);
       const fresh = await api.queryVazvrat(token, '2020-01-01', new Date().toISOString().slice(0, 10));
       setVazvratAllRows(fresh);
-      showToast('ok', `${records.length} ta qaytarma yozuv yuklandi`);
-    } catch (e) { showToast('err', 'Xato: ' + String(e)); }
+      showToast('ok', t(lang, 'toast_vazvrat_loaded').replace('{n}', String(records.length)));
+    } catch (e) { showToast('err', getError(e, lang)); }
     finally { setVazvratUploadBusy(false); }
   }
 
@@ -681,7 +709,7 @@ const [manualOpen, setManualOpen] = useState(false);
       return hasCode && hasQty;
     });
     if (!validRows.length) {
-      showToast('err', "Do'kon kodi va kamida 1 mahsulot sonini kiriting");
+      showToast('err', t(lang, 'toast_need_store_qty'));
       return;
     }
     setBusy(true);
@@ -730,10 +758,10 @@ const [manualOpen, setManualOpen] = useState(false);
       setManual({ storeCode: '', storeName: '', address: '', order: '', dateIso });
       await saveCurrentSession(currentInvoices, lastCatalog, true);
       showToast('ok', addedNos.length === 1
-        ? `Накладная № ${addedNos[0]} добавлена`
-        : `${addedNos.length} ta hujjat qo'shildi: №${addedNos.join(', №')}`);
+        ? t(lang, 'toast_invoice_added_one').replace('{n}', String(addedNos[0]))
+        : t(lang, 'toast_invoice_added_many').replace('{n}', String(addedNos.length)).replace('{nos}', '№' + addedNos.join(', №')));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     } finally {
       setBusy(false);
     }
@@ -775,20 +803,20 @@ const [manualOpen, setManualOpen] = useState(false);
       } catch (e) {
         console.warn('[loadSession] DB status sync skipped (snapshot used):', e);
       }
-      showToast('ok', `Sessiya yuklandi: ${session.name || fmtDateRu(session.invoiceDate)}`);
+      showToast('ok', t(lang, 'toast_session_loaded').replace('{name}', session.name || fmtDateRu(session.invoiceDate)));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
   async function deleteSession(id: string, name?: string) {
-    if (!token || !window.confirm(`"${name || id}" sessiyasini o'chirilsinmi?`)) return;
+    if (!token || !window.confirm(t(lang, 'confirm_delete_session').replace('{name}', name || id))) return;
     try {
       await api.deleteSession(token, id);
       await refreshSessions();
-      showToast('ok', 'Sessiya o\'chirildi');
+      showToast('ok', t(lang, 'toast_session_deleted'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -803,9 +831,9 @@ const [manualOpen, setManualOpen] = useState(false);
       );
       setCatalog(saved);
       setCatalogDraft(saved);
-      showToast('ok', 'Каталог сохранён');
+      showToast('ok', t(lang, 'toast_catalog_saved'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     } finally {
       setBusy(false);
     }
@@ -817,27 +845,27 @@ const [manualOpen, setManualOpen] = useState(false);
       setCatalogDraft((previous) => previous.filter((item) => item !== product));
       return;
     }
-    if (!window.confirm(`Удалить ${product.name}?`)) return;
+    if (!window.confirm(t(lang, 'confirm_delete_product').replace('{name}', product.name))) return;
     try {
       await api.deleteProduct(token, product.id);
       const next = catalogDraft.filter((item) => item.id !== product.id);
       setCatalog(next);
       setCatalogDraft(next);
-      showToast('ok', 'Товар удалён');
+      showToast('ok', t(lang, 'toast_product_deleted'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
   async function resetCatalog() {
-    if (!token || !window.confirm('Сбросить каталог к исходному списку?')) return;
+    if (!token || !window.confirm(t(lang, 'confirm_reset_catalog'))) return;
     try {
       const result = await api.resetCatalog(token);
       setCatalog(result);
       setCatalogDraft(result);
-      showToast('ok', 'Каталог сброшен');
+      showToast('ok', t(lang, 'toast_catalog_reset'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -847,21 +875,21 @@ const [manualOpen, setManualOpen] = useState(false);
       const result = await api.updateRequisites(token, requisitesDraft);
       setRequisites(result);
       setRequisitesDraft(result);
-      showToast('ok', 'Реквизиты сохранены');
+      showToast('ok', t(lang, 'toast_requisites_saved'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
   async function resetRequisites() {
-    if (!token || !window.confirm('Сбросить реквизиты?')) return;
+    if (!token || !window.confirm(t(lang, 'confirm_reset_requisites'))) return;
     try {
       const result = await api.resetRequisites(token);
       setRequisites(result);
       setRequisitesDraft(result);
-      showToast('ok', 'Реквизиты сброшены');
+      showToast('ok', t(lang, 'toast_requisites_reset'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -871,9 +899,9 @@ const [manualOpen, setManualOpen] = useState(false);
       const result = await api.createUser(token, newUser);
       setUsers((previous) => [result, ...previous]);
       setNewUser({ name: '', email: '', password: '', role: 'user' });
-      showToast('ok', 'Пользователь создан');
+      showToast('ok', t(lang, 'toast_user_created'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -883,7 +911,7 @@ const [manualOpen, setManualOpen] = useState(false);
       const result = await api.updateUser(token, target.id, { active: !target.active });
       setUsers((previous) => previous.map((item) => (item.id === result.id ? result : item)));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -894,9 +922,9 @@ const [manualOpen, setManualOpen] = useState(false);
       const result = await api.uploadImport(token, importFile);
       setImports((previous) => [result, ...previous]);
       setImportFile(null);
-      showToast('ok', `Импорт ${result.fileName} завершён`);
+      showToast('ok', t(lang, 'toast_import_done').replace('{name}', result.fileName));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     } finally {
       setUploading(false);
     }
@@ -909,9 +937,9 @@ const [manualOpen, setManualOpen] = useState(false);
       // Keep in list as cancelled (matches DB state; snapshot stays consistent)
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'cancelled' } : inv));
       setInvoiceDetail(null);
-      showToast('ok', `Накладная № ${invNo} ўчирилди`);
+      showToast('ok', t(lang, 'toast_invoice_deleted').replace('{n}', String(invNo)));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -921,9 +949,9 @@ const [manualOpen, setManualOpen] = useState(false);
       const updated = await api.restoreInvoice(token, invNo);
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: updated.status } : inv));
       setInvoiceDetail((prev) => prev?.invNo === invNo ? { ...prev, status: updated.status } : prev);
-      showToast('ok', `Накладная № ${invNo} тикланди`);
+      showToast('ok', t(lang, 'toast_invoice_restored').replace('{n}', String(invNo)));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -940,7 +968,7 @@ const [manualOpen, setManualOpen] = useState(false);
         .then((updated) => setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: updated.status } : inv)))
         .catch((error) => {
           setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: prevStatus } : inv));
-          showToast('err', getError(error));
+          showToast('err', getError(error, lang));
         });
     }
   }
@@ -948,16 +976,16 @@ const [manualOpen, setManualOpen] = useState(false);
   async function confirmUndeliver() {
     if (!token || !undeliverModal) return;
     const { invNo, comment } = undeliverModal;
-    if (!comment.trim()) { showToast('err', 'Izoh kiritish majburiy!'); return; }
+    if (!comment.trim()) { showToast('err', t(lang, 'toast_comment_required')); return; }
     setUndeliverModal(null);
     setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'saved', undeliverComment: comment.trim(), undeliveredAt: new Date().toISOString() } : inv));
     try {
       const updated = await api.undeliverInvoice(token, invNo, comment.trim());
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, ...updated, undeliverComment: updated.undeliverComment ?? comment.trim() } : inv));
-      showToast('ok', 'Yetkazib berish bekor qilindi');
+      showToast('ok', t(lang, 'toast_delivery_cancelled'));
     } catch (error) {
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'delivered' } : inv));
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -976,7 +1004,7 @@ const [manualOpen, setManualOpen] = useState(false);
       showToast('ok', `✓ ${T('lbl_invoices')} №${invNo} ${T('tarix_restored')} — ${fmtDateRu(date)}`);
     } catch (error) {
       setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'saved' } : inv));
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -990,7 +1018,7 @@ const [manualOpen, setManualOpen] = useState(false);
         await api.deleteInvoice(token, invNo);
       } catch (error) {
         setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'saved' } : inv));
-        showToast('err', getError(error));
+        showToast('err', getError(error, lang));
       }
     } else {
       // Turning ON → restore from DB
@@ -1001,7 +1029,7 @@ const [manualOpen, setManualOpen] = useState(false);
         setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, ...updated } : inv));
       } catch (error) {
         setInvoices((prev) => prev.map((inv) => inv.invNo === invNo ? { ...inv, status: 'cancelled' } : inv));
-        showToast('err', getError(error));
+        showToast('err', getError(error, lang));
       }
     }
   }
@@ -1011,15 +1039,15 @@ const [manualOpen, setManualOpen] = useState(false);
     try {
       const result = await api.deliverOrder(token, orderId);
       setOrders((previous) => previous.map((o) => (o.id === orderId ? result : o)));
-      showToast('ok', 'Заказ доставлен');
+      showToast('ok', t(lang, 'toast_order_delivered'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
   async function createOrder() {
     if (!token || !newOrderCustomer || !newOrderItems.length) {
-      showToast('err', 'Укажите клиента и хотя бы один товар');
+      showToast('err', t(lang, 'toast_need_client_item'));
       return;
     }
     try {
@@ -1042,9 +1070,9 @@ const [manualOpen, setManualOpen] = useState(false);
       setNewOrderCustomer('');
       setNewOrderNotes('');
       setNewOrderItems([]);
-      showToast('ok', 'Заказ создан');
+      showToast('ok', t(lang, 'toast_order_created'));
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
@@ -1060,34 +1088,16 @@ const [manualOpen, setManualOpen] = useState(false);
       setDashboardStats(stats);
       setProductStats(pStats);
       setInventoryStats(iStats);
-
-      // Merge ALL saved sessions' invoices for analytics (use _id, not invoiceDate)
-      try {
-        const allSnaps = await Promise.all(
-          sessions.map(s => api.session(token, s._id).catch(() => null))
-        );
-        const merged: Invoice[] = [];
-        const seen = new Set<number>();
-        for (const rec of allSnaps) {
-          if (!rec?.snapshot?.invoices) continue;
-          // Tag each invoice with its session date so date filtering works
-          const sessionDate = rec.invoiceDate;
-          for (const inv of rec.snapshot.invoices as Invoice[]) {
-            if (!seen.has(inv.invNo)) {
-              seen.add(inv.invNo);
-              merged.push({ ...inv, dateIso: inv.dateIso || sessionDate });
-            }
-          }
-        }
-        setAllDbInvoices(merged);
-      } catch (e) { console.warn('[loadAnalytics] sessions merge failed:', e); }
+      // Removed: the per-session snapshot fan-out (sessions.map(api.session)) that
+      // populated `allDbInvoices`. That state had no readers, so this was N heavy
+      // snapshot fetches (the slowest requests on the page) for nothing.
     } catch (error) {
-      showToast('err', getError(error));
+      showToast('err', getError(error, lang));
     }
   }
 
   function print(list = selectedInvoices) {
-    if (!list.length) { showToast('err', 'Нет накладных для печати'); return; }
+    if (!list.length) { showToast('err', t(lang, 'toast_no_invoices_print')); return; }
 
     const doRender = () => {
       // Build SVG barcodes for each invoice with an order number
@@ -1323,29 +1333,20 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
     XLSX.writeFile(wb, `reestr_${dateIso}.xlsx`);
   }
 
+  // Defined before the early returns so it's usable on the login/boot screens too.
+  const T = (key: string) => t(lang, key);
+
   if (booting) {
     return <div className="boot">ГДЕ ТОРТ?</div>;
   }
 
   if (!user || !token) {
-    return <LoginScreen busy={busy} onLogin={handleLogin} toast={toast} />;
+    return <LoginScreen busy={busy} onLogin={handleLogin} toast={toast} T={T} />;
   }
 
   const isAdmin = user.role === 'admin';
-  const T = (key: string) => t(lang, key);
   const dayNames = tDays(lang);
   const dayNamesFull = tDaysFull(lang);
-  const matrixIndices = catalog
-    .map((product, index) => ({ product, index }))
-    .filter(({ product, index }) => {
-      const q = pivotSearch.trim().toLowerCase();
-      if (q && !product.name.toLowerCase().includes(q) && !product.sku.toLowerCase().includes(q)) return false;
-      if (hideZero) {
-        const total = filteredInvoices.reduce((sum, invoice) => sum + (invoice.lines[index]?.qty || 0), 0);
-        if (total === 0) return false;
-      }
-      return true;
-    });
 
   return (
     <>
@@ -1364,7 +1365,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
               <div className="topbar-date">
                 <span className="topbar-date-day">{dateIso.slice(8,10)}</span>
                 <div className="topbar-date-rest">
-                  <span className="topbar-date-month">{['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(dateIso.slice(5,7))-1]}</span>
+                  <span className="topbar-date-month">{tMonthsShort(lang)[Number(dateIso.slice(5,7))-1]}</span>
                   <span className="topbar-date-year">{dateIso.slice(0,4)}</span>
                 </div>
               </div>
@@ -1400,7 +1401,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
           <Tab             active={view === 'schedule'}    icon={<MapIcon size={18} />}            label={T('nav_schedule')}  onClick={() => setView('schedule')} />
           {!isAdmin && <Tab active={view === 'stats'}      icon={<TrendingUp size={18} />}    label={T('nav_stats')}     onClick={() => setView('stats')} />}
           {isAdmin  && <Tab active={view === 'analytics'}  icon={<BarChart3 size={18} />}     label={T('nav_analytics')} onClick={() => { setView('analytics'); void loadAnalytics(); }} />}
-          <Tab             active={view === 'undelivered'} icon={<AlertTriangle size={18} />} label="Qaytgan" onClick={() => setView('undelivered')}
+          <Tab             active={view === 'undelivered'} icon={<AlertTriangle size={18} />} label={T('nav_undelivered')} onClick={() => setView('undelivered')}
             badge={invoices.filter(i => i.status === 'saved').length || undefined} />
           {!isAdmin && <Tab active={view === 'manual-list'} icon={<PenLine size={18} />} label="Qo'lda" onClick={() => setView('manual-list')}
             badge={invoices.filter(i => i.manual && i.status !== 'cancelled').length || undefined} />}
@@ -1422,6 +1423,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       sessions={sessions}
                       currentDate={dateIso}
                       onSelect={(d) => loadSession(d)}
+                      T={T}
                     />
                     <div style={{ display: 'flex', gap: 6, flex: 1 }}>
                       {!isAdmin && <button className="small dark" type="button" onClick={() => setManualOpen(true)} style={{ flex: 1 }}>
@@ -1443,8 +1445,8 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   <table className="data">
                     <thead>
                       <tr>
-                        <th title={T('lbl_delivered')}>Status</th>
-                        <th className="check" title="Chop etish uchun tanlash" style={{ whiteSpace: 'nowrap' }}>
+                        <th title={T('lbl_delivered')}>{T('col_status')}</th>
+                        <th className="check" title={T('print_select_title')} style={{ whiteSpace: 'nowrap' }}>
                           <input type="checkbox"
                             style={{ accentColor: 'var(--berry)', cursor: 'pointer' }}
                             checked={filteredInvoices.length > 0 && filteredInvoices.every(i => selected.has(i.invNo))}
@@ -1452,7 +1454,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                               if (e.target.checked) setSelected(new Set(filteredInvoices.map(i => i.invNo)));
                               else setSelected(new Set());
                             }} />
-                          {' '}Print
+                          {' '}{T('lbl_print')}
                         </th>
                         <th>№</th>
                         <th>{T('lbl_order')}</th>
@@ -1482,7 +1484,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                               type="checkbox"
                               checked={selected.has(invoice.invNo)}
                               style={{ accentColor: 'var(--berry)', cursor: 'pointer' }}
-                              title="Chop uchun tanlash"
+                              title={T('print_select_title')}
                               onChange={() => setSelected(prev => {
                                 const n = new Set(prev);
                                 n.has(invoice.invNo) ? n.delete(invoice.invNo) : n.add(invoice.invNo);
@@ -1495,7 +1497,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                               <span className="invoiceNo">{invoice.invNo}</span>
                             </button>
                             {invoice.originalDateIso && invoice.originalDateIso !== invoice.dateIso && (
-                              <span title={`Ko'chirilgan: ${fmtDateRu(invoice.originalDateIso)} → ${fmtDateRu(invoice.dateIso)}`}
+                              <span title={`${T('moved_label')}: ${fmtDateRu(invoice.originalDateIso)} → ${fmtDateRu(invoice.dateIso)}`}
                                 style={{ marginLeft: 5, fontSize: 10, background: 'rgba(70,191,114,0.18)', color: 'var(--ok)', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle', cursor: 'default' }}>
                                 📅 {fmtDateRu(invoice.dateIso)}
                               </span>
@@ -1513,10 +1515,10 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                             {fmt(invoice.sumTotal)}
                           </td>
                           <td style={{ width: 1, whiteSpace: 'nowrap' }}>
-                            <button className="mini" type="button" title="Chop etish"
+                            <button className="mini" type="button" title={T('lbl_print')}
                               onClick={e => { e.stopPropagation(); print([invoice]); }}
                               style={{ padding: '3px 8px', fontSize: 11 }}>
-                              <Printer size={12} /> Print
+                              <Printer size={12} /> {T('lbl_print')}
                             </button>
                           </td>
                         </tr>
@@ -1533,17 +1535,17 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
             <div className="modalBackdrop" onClick={() => setUndeliverModal(null)}>
               <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
                 <div className="modalHead">
-                  <h3>⚠️ Yetkazib berishni bekor qilish</h3>
+                  <h3>⚠️ {T('undeliver_title')}</h3>
                   <button className="iconbtn" type="button" onClick={() => setUndeliverModal(null)}>✕</button>
                 </div>
                 <div className="modalBody" style={{ padding: '20px 24px' }}>
                   <p style={{ color: 'var(--muted)', marginBottom: 12, fontSize: 14 }}>
-                    Hujjat №{undeliverModal.invNo} uchun yetkazish statusini o&apos;chiryapsiz. Sabab ko&apos;rsatish <b style={{ color: 'var(--fg)' }}>majburiy</b>:
+                    {T('undeliver_warn').replace('{n}', String(undeliverModal.invNo))}
                   </p>
                   <textarea
                     autoFocus
                     rows={3}
-                    placeholder="Izoh kiriting (masalan: noto'g'ri belgilandi, mijoz rad etdi...)"
+                    placeholder={T('undeliver_ph')}
                     value={undeliverModal.comment}
                     onChange={(e) => setUndeliverModal({ ...undeliverModal, comment: e.target.value })}
                     style={{
@@ -1555,14 +1557,14 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   />
                 </div>
                 <div className="modalFoot" style={{ gap: 8 }}>
-                  <button className="small" type="button" onClick={() => setUndeliverModal(null)}>Bekor</button>
+                  <button className="small" type="button" onClick={() => setUndeliverModal(null)}>{T('lbl_cancel')}</button>
                   <button
                     className="small"
                     type="button"
                     style={{ background: 'var(--danger)', color: '#fff', opacity: undeliverModal.comment.trim() ? 1 : 0.4 }}
                     onClick={confirmUndeliver}
                   >
-                    Tasdiqlash
+                    {T('act_confirm')}
                   </button>
                 </div>
               </div>
@@ -1580,7 +1582,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 <div className="modalBody" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                   {/* Date picker */}
                   <div>
-                    <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Yetkazib berish sanasi</label>
+                    <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>{T('restore_date')}</label>
                     <input
                       type="date"
                       autoFocus
@@ -1592,13 +1594,13 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   {/* Editable product lines */}
                   {restoreModal.lines.length > 0 && (
                     <div>
-                      <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 8 }}>Mahsulotlar (sonini o&apos;zgartiring)</label>
+                      <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 8 }}>{T('restore_items')}</label>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
                         {restoreModal.lines.map((line, i) => (
                           <div key={line.sku} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(var(--hi-rgb),0.04)', borderRadius: 8 }}>
                             <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
                               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.name}</div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmt(line.price * 1.12)} so&apos;m / {line.unit}</div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmt(line.price * 1.12)} {T('lbl_sum')} / {line.unit}</div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                               <button type="button"
@@ -1631,19 +1633,19 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                         ))}
                       </div>
                       <div style={{ marginTop: 8, fontSize: 13, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Jami dona: <b style={{ color: 'var(--fg)' }}>{restoreModal.lines.reduce((s, l) => s + l.qty, 0)}</b></span>
-                        <span>Jami summa: <b style={{ color: 'var(--honey)' }}>{fmt(restoreModal.lines.reduce((s, l) => s + Math.round(l.qty * l.price * 1.12 * 100) / 100, 0))}</b></span>
+                        <span>{T('total_qty')}: <b style={{ color: 'var(--fg)' }}>{restoreModal.lines.reduce((s, l) => s + l.qty, 0)}</b></span>
+                        <span>{T('total_sum')}: <b style={{ color: 'var(--honey)' }}>{fmt(restoreModal.lines.reduce((s, l) => s + Math.round(l.qty * l.price * 1.12 * 100) / 100, 0))}</b></span>
                       </div>
                     </div>
                   )}
                 </div>
                 <div className="modalFoot" style={{ gap: 8 }}>
-                  <button className="small" type="button" onClick={() => setRestoreModal(null)}>Bekor</button>
+                  <button className="small" type="button" onClick={() => setRestoreModal(null)}>{T('lbl_cancel')}</button>
                   <button
                     className="small" type="button"
                     style={{ background: 'rgba(47,209,88,0.18)', color: 'var(--ok)', borderColor: 'rgba(47,209,88,0.3)' }}
                     onClick={confirmRestore}
-                  >✓ Tiklash</button>
+                  >✓ {T('lbl_restore')}</button>
                 </div>
               </div>
             </div>
@@ -1663,13 +1665,13 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     <div><span>{T('lbl_order')}</span><b>{invoiceDetail.order || '—'}</b></div>
                     <div><span>{T('lbl_date')}</span><b>{fmtDateRu(invoiceDetail.dateIso)}</b></div>
                     <div><span>{T('lbl_total')}</span><b style={{ color: 'var(--honey)', fontSize: 15 }}>{fmt(invoiceDetail.sumTotal)} {T('lbl_sum')}</b></div>
-                    <div><span>Status</span><b style={{ color: invoiceDetail.status === 'delivered' ? 'var(--ok)' : invoiceDetail.status === 'cancelled' ? 'var(--danger)' : 'var(--muted)' }}>
-                      {invoiceDetail.status === 'delivered' ? '✓ Yetkazildi' : invoiceDetail.status === 'cancelled' ? '✗ Bekor' : '— Yetkazilmagan'}
+                    <div><span>{T('col_status')}</span><b style={{ color: invoiceDetail.status === 'delivered' ? 'var(--ok)' : invoiceDetail.status === 'cancelled' ? 'var(--danger)' : 'var(--muted)' }}>
+                      {invoiceDetail.status === 'delivered' ? '✓ ' + T('lbl_delivered') : invoiceDetail.status === 'cancelled' ? '✗ ' + T('st_cancelled') : '— ' + T('st_undelivered')}
                     </b></div>
                     {invoiceDetail.status === 'saved' && invoiceDetail.undeliverComment && (
                       <div style={{ gridColumn: '1 / -1', background: 'rgba(255,160,0,0.10)', border: '1px solid rgba(255,160,0,0.25)', borderRadius: 8, padding: '8px 12px', marginTop: 4 }}>
                         <span style={{ color: 'var(--muted)', fontSize: 12, display: 'block', marginBottom: 3 }}>
-                          ⚠️ Bekor qilish sababi{invoiceDetail.undeliveredAt ? ` · ${new Date(invoiceDetail.undeliveredAt).toLocaleString('uz-UZ')}` : ''}:
+                          ⚠️ {T('col_reason')}{invoiceDetail.undeliveredAt ? ` · ${new Date(invoiceDetail.undeliveredAt).toLocaleString('uz-UZ')}` : ''}:
                         </span>
                         <b style={{ fontSize: 13, color: 'var(--warn)' }}>{invoiceDetail.undeliverComment}</b>
                       </div>
@@ -1816,7 +1818,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                                       }}
                                       inputMode="decimal"
                                       placeholder=""
-                                      title={line?.init ? `Макс: ${line.init}` : ''}
+                                      title={line?.init ? `${T('max_label')}: ${line.init}` : ''}
                                     />
                                   )}
                                 </td>
@@ -1845,13 +1847,13 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
             <section className="pane">
               <div className="subtabs" style={{ position: 'static', marginTop: 0, paddingTop: 0, background: 'transparent' }}>
                 <button className={ordersTab === 'import' ? 'active' : ''} type="button" onClick={() => setOrdersTab('import')}>
-                  <FileText size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Buyurtma yuklash
+                  <FileText size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> {T('btn_upload_order')}
                 </button>
                 <button className={ordersTab === 'vazvrat' ? 'active' : ''} type="button" onClick={() => setOrdersTab('vazvrat')}>
-                  <Download size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Qaytarma
+                  <Download size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> {T('tarix_qaytarma')}
                 </button>
                 <button className={ordersTab === 'history' ? 'active' : ''} type="button" onClick={() => setOrdersTab('history')}>
-                  <ClipboardList size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Buyurtma tarixi
+                  <ClipboardList size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} /> {T('btn_order_history')}
                   <span style={{ fontSize: 11, background: 'rgba(var(--ink-rgb),0.08)', borderRadius: 10, padding: '1px 7px', marginLeft: 4 }}>{sessions.length}</span>
                 </button>
               </div>
@@ -1876,16 +1878,16 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                         const ws = wb.Sheets[defaultSheet];
                         const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
                         setSapRaw(rows.map((r) => r.join('\t')).join('\n'));
-                        showToast('ok', `Fayl yuklandi: ${rows.length} qator`);
-                      } catch { showToast('err', "Faylni o'qishda xatolik"); }
+                        showToast('ok', t(lang, 'toast_file_loaded').replace('{n}', String(rows.length)));
+                      } catch { showToast('err', t(lang, 'toast_file_read_error')); }
                     }}
                   />
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: sapRaw ? 'rgba(var(--berry-rgb),0.15)' : 'rgba(var(--ink-rgb),0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <ExcelIcon size={22} />
                   </div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: sapRaw ? 'var(--berry)' : 'var(--ink)' }}>{sapRaw ? '✓ Fayl yuklandi' : 'Excel faylni tanlang'}</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>.xls yoki .xlsx formatda</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: sapRaw ? 'var(--berry)' : 'var(--ink)' }}>{sapRaw ? '✓ ' + T('file_loaded_ok') : T('file_choose')}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{T('file_format')}</div>
                   </div>
                   {xlsSheets.length > 1 && (
                     <select value={xlsSelectedSheet} style={{ fontSize: 12, borderRadius: 8, padding: '4px 8px', position: 'relative', zIndex: 1, marginLeft: 'auto' }}
@@ -1908,32 +1910,32 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 {/* Settings row */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>Sana</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>{T('lbl_date')}</div>
                     <input type="date" value={dateIso} onChange={(e) => setDateIso(e.target.value)} style={{ width: '100%' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>Hujjat № dan</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>{T('doc_from')}</div>
                     <input type="number" value={startId} onChange={(e) => setStartId(Number(e.target.value))} style={{ width: '100%' }} />
                   </div>
                 </div>
 
                 {/* Sessiya nomi */}
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>Sessiya nomi <span style={{ color: '#ef4444' }}>*</span></div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', marginBottom: 4 }}>{T('session_name_label')} <span style={{ color: '#ef4444' }}>*</span></div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(var(--ink-rgb),0.04)', border: `1px solid ${!sessionSuffix.trim() ? 'rgba(239,68,68,0.5)' : 'rgba(var(--ink-rgb),0.09)'}`, borderRadius: 10, padding: '2px 10px 2px 4px' }}>
                     <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)', background: 'rgba(var(--ink-rgb),0.06)', borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap' }}>{dateIso}</span>
-                    <input type="text" placeholder="— nom kiriting (majburiy)" value={sessionSuffix} onChange={(e) => setSessionSuffix(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13 }} />
+                    <input type="text" placeholder={T('session_name_ph')} value={sessionSuffix} onChange={(e) => setSessionSuffix(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13 }} />
                   </div>
                 </div>
 
                 {/* Buttons */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <button type="button" disabled={busy || !sapRaw || !sessionSuffix.trim()} onClick={() => {
-                    if (!sessionSuffix.trim()) { showToast('err', 'Sessiya nomini kiriting!'); return; }
+                    if (!sessionSuffix.trim()) { showToast('err', t(lang, 'toast_session_name_required')); return; }
                     generateInvoices();
                   }}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, border: 'none', cursor: busy || !sapRaw || !sessionSuffix.trim() ? 'not-allowed' : 'pointer', opacity: busy || !sapRaw || !sessionSuffix.trim() ? 0.45 : 1, background: 'linear-gradient(135deg, var(--berry) 0%, var(--berry-dark) 100%)', color: '#fff', boxShadow: sapRaw && sessionSuffix.trim() ? '0 4px 12px rgba(var(--berry-rgb),0.35)' : 'none' }}>
-                    <FileText size={15} /> Buyurtma yuklash
+                    <FileText size={15} /> {T('btn_upload_order')}
                   </button>
                   <button type="button" disabled={busy || !invoices.length || !sessionSuffix.trim()} onClick={() => saveCurrentSession()}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, border: 'none', cursor: busy || !invoices.length || !sessionSuffix.trim() ? 'not-allowed' : 'pointer', opacity: busy || !invoices.length || !sessionSuffix.trim() ? 0.4 : 1, background: '#107C41', color: '#fff' }}>
@@ -1945,10 +1947,10 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 {invoices.length > 0 && (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                     {[
-                      { label: 'Hujjatlar', value: `${invoices[0].invNo}–${invoices[invoices.length-1].invNo}` },
-                      { label: 'Jami dona', value: invoices.length },
-                      { label: 'Summa', value: `${fmt0(totals.sum)} so'm` },
-                      { label: 'Tanlangan', value: selected.size || invoices.length },
+                      { label: T('feat_inv'), value: `${invoices[0].invNo}–${invoices[invoices.length-1].invNo}` },
+                      { label: T('total_qty'), value: invoices.length },
+                      { label: T('sum_label'), value: `${fmt0(totals.sum)} ${T('lbl_sum')}` },
+                      { label: T('lbl_selected'), value: selected.size || invoices.length },
                     ].map(item => (
                       <div key={item.label} style={{ background: 'rgba(var(--ink-rgb),0.03)', border: '1px solid rgba(var(--ink-rgb),0.08)', borderRadius: 10, padding: '8px 12px' }}>
                         <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{item.label}</div>
@@ -1970,14 +1972,14 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       <ExcelIcon size={22} />
                     </div>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>Vazvrat Excel faylini tanlang</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>.xls yoki .xlsx formatda</div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{T('vazvrat_choose')}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{T('file_format')}</div>
                     </div>
                   </label>
-                  {vazvratUploadBusy && <div style={{ fontSize: 13, color: 'var(--muted)' }}>Yuklanmoqda...</div>}
+                  {vazvratUploadBusy && <div style={{ fontSize: 13, color: 'var(--muted)' }}>{T('loading')}</div>}
                   {vazvratAllRows.length > 0 && (
                     <div style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600 }}>
-                      ✓ Jami {vazvratAllRows.length} ta qaytarma yozuvi mavjud
+                      ✓ {T('vazvrat_count').replace('{n}', String(vazvratAllRows.length))}
                     </div>
                   )}
                 </div>
@@ -1989,13 +1991,13 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   <div style={{ marginTop: 8 }}>
                     {/* Date filter */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>Sana:</span>
-                      <DateRangePicker from={histFrom} to={histTo} setFrom={setHistFrom} setTo={setHistTo} />
-                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filteredSessions.length} ta sessiya</span>
+                      <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{T('lbl_date')}:</span>
+                      <DateRangePicker from={histFrom} to={histTo} setFrom={setHistFrom} setTo={setHistTo} T={T} />
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>{T('sessions_count').replace('{n}', String(filteredSessions.length))}</span>
                     </div>
                     <div className="sessionList">
                       {filteredSessions.length === 0 ? (
-                        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Bu oraliqda buyurtma yo'q</div>
+                        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>{T('empty_no_orders_range')}</div>
                       ) : filteredSessions.map((session, si) => (
                         <div className="sessionRow" key={session._id || session.invoiceDate + '-' + si}>
                           <b>{session.name || session.invoiceDate}</b>
@@ -2103,7 +2105,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 </h3>
                 <div style={{ display: 'flex', gap: 8, padding: '8px 14px', flexWrap: 'wrap' }}>
                   <DateRangePicker from={orderFilters.dateFrom} to={orderFilters.dateTo}
-                    onChange={(f, t) => setOrderFilters(prev => ({ ...prev, dateFrom: f, dateTo: t }))} />
+                    onChange={(f, t) => setOrderFilters(prev => ({ ...prev, dateFrom: f, dateTo: t }))} T={T} />
                   <input placeholder={T('clients_name')} value={orderFilters.customer} onChange={(e) => setOrderFilters({ ...orderFilters, customer: e.target.value })} style={{ width: 160 }} />
                   <select value={orderFilters.status} onChange={(e) => setOrderFilters({ ...orderFilters, status: e.target.value })} style={{ width: 140 }}>
                     <option value="">{T('ops_all_statuses')}</option>
@@ -2121,7 +2123,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                           <th className="check">✓</th>
                           <th>{T('clients_name')}</th>
                           <th>{T('lbl_date')}</th>
-                          <th>Status</th>
+                          <th>{T('col_status')}</th>
                           <th className="right">{T('lbl_qty')}</th>
                           <th className="right">{T('lbl_total')}</th>
                         </tr>
@@ -2168,10 +2170,10 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       <thead>
                         <tr>
                           <th>{T('lbl_date')}</th>
-                          <th>SKU</th>
-                          <th>Type</th>
+                          <th>{T('col_sku')}</th>
+                          <th>{T('col_type')}</th>
                           <th className="right">{T('lbl_qty')}</th>
-                          <th>Ref</th>
+                          <th>{T('col_ref')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2202,7 +2204,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                         onChange={(event) => setImportFile(event.target.files?.[0] || null)}
                       />
                       <button className="small dark" type="button" disabled={!importFile || uploading} onClick={uploadImportFile}>
-                        {uploading ? 'Загрузка...' : 'Загрузить'}
+                        {uploading ? T('loading') : T('act_upload')}
                       </button>
                     </div>
                     {imports.length ? (
@@ -2210,10 +2212,10 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                         <table className="data compact">
                           <thead>
                             <tr>
-                              <th>File</th>
-                              <th>Status</th>
+                              <th>{T('col_file')}</th>
+                              <th>{T('col_status')}</th>
                               <th className="right">{T('lbl_qty')}</th>
-                              <th className="right">Err</th>
+                              <th className="right">{T('col_err')}</th>
                               <th>{T('lbl_date')}</th>
                             </tr>
                           </thead>
@@ -2242,8 +2244,8 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                           <thead>
                             <tr>
                               <th>{T('clients_name')}</th>
-                              <th>Action</th>
-                              <th>Entity</th>
+                              <th>{T('col_action')}</th>
+                              <th>{T('col_entity')}</th>
                               <th className="right">{T('lbl_date')}</th>
                             </tr>
                           </thead>
@@ -2292,6 +2294,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
             setRestoreModal={setRestoreModal}
             fmt={fmt}
             todayIso={todayIso}
+            T={T}
           />}
 
 
@@ -2302,27 +2305,27 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
             return (
               <section className="pane">
                 <PaneHead
-                  title="Qo'lda kiritilgan hujjatlar"
-                  meta={manualInvoices.length ? `${manualInvoices.length} ta · ${fmt0(manualInvoices.reduce((s,i)=>s+i.sumTotal,0))} so'm` : '—'}
+                  title={T('manuallist_title')}
+                  meta={manualInvoices.length ? `${manualInvoices.length} · ${fmt0(manualInvoices.reduce((s,i)=>s+i.sumTotal,0))} ${T('lbl_sum')}` : '—'}
                   actions={
                     <button className="small dark" type="button" onClick={() => setManualOpen(true)}>
-                      <Plus size={15} /> Yangi hujjat
+                      <Plus size={15} /> {T('btn_new_doc')}
                     </button>
                   }
                 />
                 {!manualInvoices.length ? (
-                  <Empty title="Qo'lda kiritilgan hujjat yo'q" />
+                  <Empty title={T('empty_manual')} />
                 ) : (
                   <div className="tablewrap" style={{ maxHeight: 'calc(100dvh - 240px)', overflowY: 'auto' }}>
                     <table className="data">
                       <thead>
                         <tr>
                           <th>№</th>
-                          <th>Sana</th>
-                          <th>Do'kon</th>
-                          <th>Manzil</th>
-                          <th className="right">Summa</th>
-                          <th>Status</th>
+                          <th>{T('col_day')}</th>
+                          <th>{T('col_store')}</th>
+                          <th>{T('clients_addr')}</th>
+                          <th className="right">{T('sum_label')}</th>
+                          <th>{T('col_status')}</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -2336,14 +2339,14 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                             <td className="right">{fmt0(inv.sumTotal)}</td>
                             <td>
                               <span className={`badge ${inv.status === 'delivered' ? 'green' : 'yellow'}`}>
-                                {inv.status === 'delivered' ? 'Yetkazildi' : 'Saqlanda'}
+                                {inv.status === 'delivered' ? T('lbl_delivered') : T('st_saved')}
                               </span>
                             </td>
                             {isAdmin && (
                             <td>
                               <button className="icon-btn danger" type="button"
-                                onClick={e => { e.stopPropagation(); if (window.confirm(`№ ${inv.invNo} hujjatni o'chirish?`)) void deleteInvoice(inv.invNo); }}
-                                title="O'chirish">
+                                onClick={e => { e.stopPropagation(); if (window.confirm(T('confirm_delete_invoice').replace('{n}', String(inv.invNo)))) void deleteInvoice(inv.invNo); }}
+                                title={T('lbl_delete')}>
                                 <Trash2 size={14} />
                               </button>
                             </td>
@@ -2473,14 +2476,14 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 <button className={(settingsView as string) === 'exceptions' ? 'active' : ''} type="button" onClick={() => setSettingsView('exceptions')}>{T('settings_exc')}</button>
                 <button className={settingsView === 'sessions' ? 'active' : ''} type="button" onClick={() => setSettingsView('sessions')}>{T('settings_hist')}</button>
                 {isAdmin && <button className={settingsView === 'users' ? 'active' : ''} type="button" onClick={() => setSettingsView('users')}>{T('settings_access')}</button>}
-                <button className={(settingsView as string) === 'doverennost' ? 'active' : ''} type="button" onClick={() => setSettingsView('doverennost' as any)}>Ishonchnoma</button>
-                {isAdmin && <button className={(settingsView as string) === 'trash' ? 'active' : ''} type="button" onClick={() => setSettingsView('trash' as any)} style={(settingsView as string) === 'trash' ? {} : { color: '#ef4444' }}>🗑 Arxiv</button>}
+                <button className={(settingsView as string) === 'doverennost' ? 'active' : ''} type="button" onClick={() => setSettingsView('doverennost' as any)}>{T('tab_doverennost')}</button>
+                {isAdmin && <button className={(settingsView as string) === 'trash' ? 'active' : ''} type="button" onClick={() => setSettingsView('trash' as any)} style={(settingsView as string) === 'trash' ? {} : { color: '#ef4444' }}>🗑 {T('tab_trash')}</button>}
               </div>
 
               {settingsView === 'catalog' && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0 10px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 13, color: 'var(--muted)', flex: 1 }}>{catalogDraft.length} ta mahsulot</span>
+                    <span style={{ fontSize: 13, color: 'var(--muted)', flex: 1 }}>{T('set_catalog_count').replace('{n}', String(catalogDraft.length))}</span>
                     {isAdmin && <>
                       <button className="small dark" type="button" onClick={() => setCatalogDraft((previous) => [...previous, { sku: '', name: T('lbl_product'), unit: T('lbl_unit'), price: 0 }])}>
                         <Plus size={14} /> {T('lbl_add')}
@@ -2488,7 +2491,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       <button className="small" type="button" onClick={saveCatalogDraft} style={{ background: '#107C41', color: '#fff', border: 'none' }}>
                         <Save size={14} /> {T('lbl_save')}
                       </button>
-                      <button className="iconbtn" type="button" onClick={resetCatalog} title="Yangilash">
+                      <button className="iconbtn" type="button" onClick={resetCatalog} title={T('act_refresh')}>
                         <RefreshCcw size={14} />
                       </button>
                     </>}
@@ -2497,11 +2500,11 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     <table className="data editable" style={{ tableLayout: 'auto', width: 'max-content', minWidth: '100%' }}>
                       <thead>
                         <tr>
-                          <th style={{ whiteSpace: 'nowrap' }}>SKU</th>
+                          <th style={{ whiteSpace: 'nowrap' }}>{T('col_sku')}</th>
                           <th style={{ whiteSpace: 'nowrap' }}>{T('lbl_product')}</th>
                           <th style={{ whiteSpace: 'nowrap' }}>{T('lbl_unit')}</th>
                           <th className="right" style={{ whiteSpace: 'nowrap' }}>{T('lbl_price')}</th>
-                          <th className="right" style={{ whiteSpace: 'nowrap' }}>NDS (+12%)</th>
+                          <th className="right" style={{ whiteSpace: 'nowrap' }}>{T('col_vat')}</th>
                           {isAdmin && <th style={{ width: '40px' }} />}
                         </tr>
                       </thead>
@@ -2615,7 +2618,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 <>
                   <div className="panel">
                     <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
-                      Қуйидаги саналарда график бузилишлари ҳисобланмайди (байрам, махсус кун).
+                      {T('exceptions_help')}
                     </p>
                     <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                       <input
@@ -2650,11 +2653,11 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   <PaneHead title={T('settings_users_title')} meta={`${users.length}`} />
                   <div className="userCreate">
                     <input placeholder={T('clients_name')} value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} />
-                    <input placeholder="email" value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} />
-                    <input placeholder="Parol" type="password" value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} />
+                    <input placeholder={T('login_email')} value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} />
+                    <input placeholder={T('login_password')} type="password" value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} />
                     <select value={newUser.role} onChange={(event) => setNewUser({ ...newUser, role: event.target.value as 'admin' | 'user' })}>
-                      <option value="user">user</option>
-                      <option value="admin">admin</option>
+                      <option value="user">{T('role_user')}</option>
+                      <option value="admin">{T('role_admin')}</option>
                     </select>
                     <button className="small dark" type="button" onClick={createUser}>
                       <UserPlus size={15} /> {T('lbl_add')}
@@ -2665,9 +2668,9 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       <thead>
                         <tr>
                           <th>{T('clients_name')}</th>
-                          <th>Email</th>
-                          <th>Role</th>
-                          <th>Status</th>
+                          <th>{T('login_email')}</th>
+                          <th>{T('col_role')}</th>
+                          <th>{T('col_status')}</th>
                           <th />
                         </tr>
                       </thead>
@@ -2677,12 +2680,12 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                             <td>{item.name}</td>
                             <td className="mono">{item.email}</td>
                             <td>
-                              <span className="rolechip">{item.role}</span>
+                              <span className="rolechip">{item.role === 'admin' ? T('role_admin') : T('role_user')}</span>
                             </td>
-                            <td>{item.active ? 'активен' : 'выключен'}</td>
+                            <td>{item.active ? T('user_active') : T('user_inactive')}</td>
                             <td className="actions">
                               <button className="mini" type="button" onClick={() => toggleUserActive(item)}>
-                                {item.active ? 'Выключить' : 'Включить'}
+                                {item.active ? T('act_disable') : T('act_enable')}
                               </button>
                             </td>
                           </tr>
@@ -2753,14 +2756,14 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
         <div className="modalBackdrop">
           <div className="modal manual-modal">
             <div className="modalHead">
-              <h3>Qo&apos;lda hujjat</h3>
+              <h3>{T('modal_manual')}</h3>
               <button className="iconbtn" type="button" onClick={() => { setManualOpen(false); setManualStores([emptyStoreRow()]); }}>✕</button>
             </div>
             <div className="modalBody manual-modal-body">
               {/* Top bar: date + QQS toggle + add store + total + submit */}
               <div className="manual-topbar">
                 <label className="manual-date-field">
-                  <span>Sana</span>
+                  <span>{T('lbl_date')}</span>
                   <input type="date" value={manual.dateIso} onChange={(e) => setManual({ ...manual, dateIso: e.target.value })} />
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
@@ -2769,10 +2772,10 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     <span style={{ position: 'absolute', inset: 0, borderRadius: 20, background: manualWithVat ? '#16a34a' : 'rgba(var(--ink-rgb),0.18)', transition: 'background 0.2s' }} />
                     <span style={{ position: 'absolute', top: 3, left: manualWithVat ? 19 : 3, width: 14, height: 14, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left 0.2s' }} />
                   </span>
-                  <span>Narx QQS bilan</span>
+                  <span>{T('manual_with_vat')}</span>
                 </label>
                 <button type="button" className="small" onClick={() => setManualStores([...manualStores, emptyStoreRow()])}>
-                  + Do&apos;kon
+                  {T('manual_add_store')}
                 </button>
                 <div className="manual-topbar-spacer" style={{ flex: 1 }} />
                 {(() => {
@@ -2789,7 +2792,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   }
                   return grandTotal > 0 ? (
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-                      Jami: <span style={{ color: 'var(--honey)', fontWeight: 700 }}>{fmt0(Math.round(grandTotal))} so&apos;m</span>
+                      {T('lbl_total')}: <span style={{ color: 'var(--honey)', fontWeight: 700 }}>{fmt0(Math.round(grandTotal))} {T('lbl_sum')}</span>
                     </span>
                   ) : null;
                 })()}
@@ -2800,27 +2803,27 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 <table className="manual-table">
                   <thead>
                     <tr>
-                      <th className="manual-prodcol">Mahsulot</th>
+                      <th className="manual-prodcol">{T('lbl_product')}</th>
                       {manualStores.map((col, ci) => (
                         <React.Fragment key={ci}>
                           <th className="manual-storecol" style={{ borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', width: 46, textAlign: 'center', verticalAlign: 'bottom', padding: '3px 2px' }}>
-                            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Son</div>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{T('manual_qty_abbr')}</div>
                           </th>
                           <th className="manual-storecol" style={{ borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', borderRight: '2px solid rgba(var(--ink-rgb),0.10)', width: 80, textAlign: 'center', verticalAlign: 'bottom', paddingBottom: 4 }}>
                             <div style={{ marginBottom: 3 }}>
                               <div className="manual-store-header" style={{ justifyContent: 'center' }}>
-                                <input className="manual-inp" placeholder="Kod" value={col.storeCode}
+                                <input className="manual-inp" placeholder={T('ph_store_code')} value={col.storeCode}
                                   onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeCode: e.target.value }; setManualStores(u); }} />
-                                <input className="manual-inp manual-inp-grow" placeholder="Market nomi" value={col.storeName}
+                                <input className="manual-inp manual-inp-grow" placeholder={T('ph_market_name')} value={col.storeName}
                                   onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], storeName: e.target.value }; setManualStores(u); }} />
                                 <button type="button" className="manual-del"
                                   onClick={() => setManualStores(manualStores.length > 1 ? manualStores.filter((_, i) => i !== ci) : [emptyStoreRow()])}>×</button>
                               </div>
-                              <input className="manual-inp manual-inp-full" placeholder="№ Zakaz" value={col.order}
+                              <input className="manual-inp manual-inp-full" placeholder={T('ph_order_no')} value={col.order}
                                 onChange={(e) => { const u = [...manualStores]; u[ci] = { ...u[ci], order: e.target.value }; setManualStores(u); }}
                                 style={{ marginTop: 3 }} />
                             </div>
-                            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Narx</div>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{T('lbl_price')}</div>
                           </th>
                         </React.Fragment>
                       ))}
@@ -2871,7 +2874,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 {T('lbl_cancel')}
               </button>
               <button className="small manual-foot-submit" type="button" onClick={createManualInvoice} disabled={busy}>
-                {busy ? 'Saqlanmoqda…' : `+ Qo'shish (${manualStores.filter(r => r.storeCode.trim()).length})`}
+                {busy ? T('saving') : `${T('btn_add_plus')} (${manualStores.filter(r => r.storeCode.trim()).length})`}
               </button>
             </div>
           </div>
@@ -2904,7 +2907,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
               <div style={{ marginTop: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontWeight: 900, fontSize: 11, color: 'var(--muted)' }}>{T('lbl_product').toUpperCase()}</span>
-                  <button className="mini" type="button" onClick={() => setNewOrderItems([...newOrderItems, { sku: '', name: '', unit: 'шт', qty: 1, price: 0 }])}>+ Добавить</button>
+                  <button className="mini" type="button" onClick={() => setNewOrderItems([...newOrderItems, { sku: '', name: '', unit: 'шт', qty: 1, price: 0 }])}>{T('btn_add_plus')}</button>
                 </div>
                 {newOrderItems.map((item, idx) => (
                   <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 60px 80px auto', gap: 6, marginBottom: 6 }}>
@@ -2914,16 +2917,16 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       updated[idx] = { ...item, sku: e.target.value, name: product?.name || '', unit: product?.unit || 'шт', price: product?.price || 0 };
                       setNewOrderItems(updated);
                     }}>
-                      <option value="">Выбрать товар</option>
+                      <option value="">{T('ph_select_product')}</option>
                       {catalog.map((p) => <option key={p.sku} value={p.sku}>{p.name}</option>)}
                     </select>
-                    <input placeholder="Ед." value={item.unit} readOnly />
-                    <input type="number" placeholder="Кол" value={item.qty} min={1} onChange={(e) => {
+                    <input placeholder={T('lbl_unit')} value={item.unit} readOnly />
+                    <input type="number" placeholder={T('manual_qty_abbr')} value={item.qty} min={1} onChange={(e) => {
                       const updated = [...newOrderItems];
                       updated[idx] = { ...item, qty: Number(e.target.value) };
                       setNewOrderItems(updated);
                     }} />
-                    <input type="number" placeholder="Цена" value={item.price} min={0} onChange={(e) => {
+                    <input type="number" placeholder={T('lbl_price')} value={item.price} min={0} onChange={(e) => {
                       const updated = [...newOrderItems];
                       updated[idx] = { ...item, price: Number(e.target.value) };
                       setNewOrderItems(updated);
@@ -2949,11 +2952,13 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
 function LoginScreen({
   busy,
   onLogin,
-  toast
+  toast,
+  T
 }: {
   busy: boolean;
   onLogin: (email: string, password: string) => Promise<void>;
   toast: Toast;
+  T: (k: string) => string;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -2965,15 +2970,15 @@ function LoginScreen({
         {/* Logo */}
         <div style={{ marginBottom: 36, textAlign: 'center' }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, var(--berry), var(--berry-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 auto 12px', boxShadow: '0 8px 24px rgba(var(--berry-rgb),0.35)' }}>GT</div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Добро пожаловать</h1>
-          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Введите свои учётные данные</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>{T('login_welcome')}</h1>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>{T('login_subtitle')}</p>
         </div>
 
         <form style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}
           onSubmit={(event) => { event.preventDefault(); void onLogin(email, password); }}>
 
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Email</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>{T('login_email')}</div>
             <input
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -2983,7 +2988,7 @@ function LoginScreen({
           </div>
 
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Пароль</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>{T('login_password')}</div>
             <input
               type="password"
               value={password}
@@ -2995,7 +3000,7 @@ function LoginScreen({
 
           <button type="submit" disabled={busy}
             style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 15, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1, background: 'linear-gradient(135deg, var(--berry) 0%, var(--berry-dark) 100%)', color: '#fff', boxShadow: '0 4px 16px rgba(var(--berry-rgb),0.35)', transition: 'all 0.2s', width: '100%' }}>
-            <Shield size={17} /> Войти
+            <Shield size={17} /> {T('login_submit')}
           </button>
         </form>
 
@@ -3013,19 +3018,19 @@ function LoginScreen({
           {/* Headline */}
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)', color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 18 }}>
-              <Shield size={13} /> Soliq · B2B savdo platformasi
+              <Shield size={13} /> {T('login_tagline')}
             </div>
-            <h2 style={{ color: '#fff', fontSize: 30, lineHeight: 1.15, fontWeight: 900, margin: 0, letterSpacing: '-0.025em' }}>ГДЕ ТОРТ?<br />система управления</h2>
-            <p style={{ color: 'rgba(255,255,255,0.78)', fontSize: 14.5, margin: '12px 0 0', maxWidth: 400 }}>Накладные, аналитика, экспедиция и реестр — в одном месте, в реальном времени.</p>
+            <h2 style={{ color: '#fff', fontSize: 30, lineHeight: 1.15, fontWeight: 900, margin: 0, letterSpacing: '-0.025em' }}>ГДЕ ТОРТ?<br />{T('login_system')}</h2>
+            <p style={{ color: 'rgba(255,255,255,0.78)', fontSize: 14.5, margin: '12px 0 0', maxWidth: 400 }}>{T('login_hero')}</p>
           </div>
 
           {/* Feature cards (glass) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {[
-              { icon: <FileText size={18} />,   title: 'Накладные',   sub: 'Avtomatik shakllantirish' },
-              { icon: <BarChart3 size={18} />,  title: 'Аналитика',   sub: 'Savdo · qaytarma · KPI' },
-              { icon: <Truck size={18} />,      title: 'Экспедиция',  sub: 'Marshrut · haydovchilar' },
-              { icon: <ClipboardList size={18} />, title: 'Реестр',   sub: 'Tarix · arxiv · hujjatlar' },
+              { icon: <FileText size={18} />,   title: T('feat_inv'),       sub: T('feat_inv_sub') },
+              { icon: <BarChart3 size={18} />,  title: T('an_title'),       sub: T('feat_an_sub') },
+              { icon: <Truck size={18} />,      title: T('feat_disp'),      sub: T('feat_disp_sub') },
+              { icon: <ClipboardList size={18} />, title: T('nav_register'), sub: T('feat_reg_sub') },
             ].map((f) => (
               <div key={f.title} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
                 <div style={{ width: 38, height: 38, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.20)', color: '#fff' }}>{f.icon}</div>
@@ -3040,8 +3045,8 @@ function LoginScreen({
           {/* KPI highlight strip (glass) */}
           <div style={{ display: 'flex', gap: 12 }}>
             {[
-              { icon: <TrendingUp size={15} />, val: 'Real-time', lbl: "Ma'lumotlar" },
-              { icon: <Users size={15} />,      val: 'Multi-user', lbl: 'Rollar · audit' },
+              { icon: <TrendingUp size={15} />, val: T('feat_realtime'),  lbl: T('feat_realtime_sub') },
+              { icon: <Users size={15} />,      val: T('feat_multiuser'), lbl: T('feat_multiuser_sub') },
             ].map((k) => (
               <div key={k.lbl} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 14, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)' }}>
                 <span style={{ color: '#fff', display: 'flex' }}>{k.icon}</span>
@@ -3090,10 +3095,12 @@ function SessionPicker({
   sessions,
   currentDate,
   onSelect,
+  T,
 }: {
   sessions: SessionSummary[];
   currentDate: string;
   onSelect: (id: string) => void;
+  T: (k: string) => string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
@@ -3158,7 +3165,7 @@ function SessionPicker({
             <input
               autoFocus
               type="text"
-              placeholder="Qidirish..."
+              placeholder={T('ph_search')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               style={{
@@ -3173,7 +3180,7 @@ function SessionPicker({
           </div>
           <div style={{ maxHeight: 220, overflowY: 'auto' }}>
             {filtered.length === 0 && (
-              <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--muted)' }}>Topilmadi</div>
+              <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--muted)' }}>{T('msg_not_found')}</div>
             )}
             {filtered.map((s) => {
               const active = s.invoiceDate === currentDate;
@@ -3253,7 +3260,7 @@ function DateGroupHeader({ dateKey, count, expanded, onToggle }: { dateKey: stri
 }
 
 // ─── Confirm Modal ───────────────────────────────────────────────────────────
-function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+function ConfirmModal({ message, onConfirm, onCancel, T }: { message: string; onConfirm: () => void; onCancel: () => void; T: (k: string) => string }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onCancel}>
@@ -3261,11 +3268,11 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
         onClick={e => e.stopPropagation()}>
         <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.5 }}>{message}</div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button className="small" type="button" onClick={onCancel}>Bekor qilish</button>
+          <button className="small" type="button" onClick={onCancel}>{T('lbl_cancel')}</button>
           <button className="small dark" type="button"
             style={{ background: '#ef4444', borderColor: '#ef4444' }}
             onClick={() => { onConfirm(); onCancel(); }}>
-            Ha, o'chirish
+            {T('lbl_delete')}
           </button>
         </div>
       </div>
@@ -3334,7 +3341,7 @@ function TrashPane({ token, fmt0, fmtDateRu, T }: {
     });
   };
 
-  if (busy) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Yuklanmoqda…</div>;
+  if (busy) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>{T('loading')}</div>;
 
   const row = (key: string, left: React.ReactNode, right: React.ReactNode) => (
     <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid rgba(239,68,68,0.4)', borderRadius: 10 }}>
@@ -3345,7 +3352,7 @@ function TrashPane({ token, fmt0, fmtDateRu, T }: {
 
   return (
     <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} T={T} />}
 
       {/* Tabs */}
       <div className="subtabs" style={{ position: 'static', padding: 0, background: 'transparent' }}>
@@ -3360,7 +3367,7 @@ function TrashPane({ token, fmt0, fmtDateRu, T }: {
       {/* Invoices tab */}
       {arxivTab === 'invoices' && (
         invoices.length === 0
-          ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>O'chirilgan hujjatlar yo'q</div>
+          ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>{T('empty_trash_invoices')}</div>
           : (() => {
               const byDate: Record<string, typeof invoices> = {};
               for (const inv of invoices) { if (!byDate[inv.dateIso]) byDate[inv.dateIso] = []; byDate[inv.dateIso].push(inv); }
@@ -3376,7 +3383,7 @@ function TrashPane({ token, fmt0, fmtDateRu, T }: {
                         <span style={{ fontWeight: 700, fontSize: 13, fontFamily: 'var(--mono)', color: '#ef4444', minWidth: 52 }}>№{inv.invNo}</span>
                         <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 55 }}>{inv.order || '—'}</span>
                         <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.market || inv.storeCode}</span>
-                        <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmt0(inv.sumTotal ?? 0)} so'm</span>
+                        <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmt0(inv.sumTotal ?? 0)} {T('lbl_sum')}</span>
                       </>,
                       <>
                         <button className="mini" type="button" disabled={actionBusy.has(`inv-${inv.invNo}`)}
@@ -3400,14 +3407,14 @@ function TrashPane({ token, fmt0, fmtDateRu, T }: {
       {/* Sessions tab */}
       {arxivTab === 'sessions' && (
         sessions.length === 0
-          ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>O'chirilgan sessiyalar yo'q</div>
+          ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>{T('empty_trash_sessions')}</div>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {sessions.map(s => row(
                 s._id,
                 <>
                   <span style={{ fontSize: 13, fontWeight: 700, minWidth: 110 }}>{s.invoiceDate}</span>
                   <span style={{ fontSize: 12, color: 'var(--muted)', flex: 1 }}>{s.name || '—'}</span>
-                  <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{s.invoiceCount} ta · {fmt0(s.sumTotal)} so'm</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{s.invoiceCount} · {fmt0(s.sumTotal)} {T('lbl_sum')}</span>
                 </>,
                 <>
                   <button className="mini" type="button" disabled={actionBusy.has(`sess-${s._id}`)}
@@ -3447,8 +3454,8 @@ function NaklHistory({ sessions, expandedDates, toggleDateGroup, loadSession, de
               <div className="sessionRow" key={session._id} style={{ marginBottom: 6, marginLeft: multi ? 12 : 0 }}>
                 {multi && <span style={{ color: 'var(--muted)', fontWeight: 700 }}>›</span>}
                 <b>{session.name || session.invoiceDate}</b>
-                <span className="sess-badge">{session.invoiceCount} накл.</span>
-                <span className="sess-sum">{fmt0(session.sumTotal)} сум</span>
+                <span className="sess-badge">{session.invoiceCount} {T('lbl_invoices')}</span>
+                <span className="sess-sum">{fmt0(session.sumTotal)} {T('lbl_sum')}</span>
                 <button className="mini" type="button" onClick={() => loadSession(session._id)}>{T('lbl_restore')}</button>
                 {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(session._id, session.name)}><Trash2 size={15} /></button>}
               </div>
@@ -3628,11 +3635,11 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
         if (!isoDate) continue;
         records.push({ orderNo: lastOrderNo || '-', date: isoDate, marketCode: lastMarketCode || '-', marketName: lastMarketName || '-', sapCode, productName: productName || sapCode, qty: qty || 0, pricePerUnit: price || 0, totalWithVat: totalWithVat || 0 });
       }
-      if (!records.length) { alert('Hech qanday yozuv topilmadi'); return; }
+      if (!records.length) { alert(T('toast_no_records')); return; }
       await api.uploadVazvrat(token, records);
       const fresh = await api.queryVazvrat(token, '2020-01-01', new Date().toISOString().slice(0, 10));
       setVazvratAllRows(fresh);
-    } catch (e) { alert('Xato: ' + String(e)); }
+    } catch (e) { alert(getError(e)); }
     finally { setVazvratBusy(false); }
   };
 
@@ -3674,14 +3681,14 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
             <RefreshCcw size={13} /> Yangilash
           </button>
           {/* Date range */}
-          <DateRangePicker from={pvFrom} to={pvTo} setFrom={setPvFrom} setTo={setPvTo}
+          <DateRangePicker from={pvFrom} to={pvTo} setFrom={setPvFrom} setTo={setPvTo} T={T}
             inputStyle={{ fontSize: 12, fontWeight: 500, border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 8, padding: '4px 6px', background: 'var(--surface)', color: 'var(--ink)' }} />
         </div>
       </div>
 
       {/* Nakladnoy tab */}
       {tab === 'nakl' && (() => {
-        return filteredSessions.length === 0 ? <Empty title="Hujjat tarixi yo'q" /> :
+        return filteredSessions.length === 0 ? <Empty title={T('empty_no_doc_history')} /> :
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {filteredSessions.map(s => {
             return (
@@ -3765,7 +3772,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
                   onClick={() => setShowDeletePanel(false)}>
                   <div style={{ background: 'var(--shell)', borderRadius: 16, padding: 24, width: 360, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
                     onClick={e => e.stopPropagation()}>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>Sanani tanlang</div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{T('pick_date')}</div>
 
                     {/* Search */}
                     <input type="text" placeholder="Qidirish (yyyy-mm-dd)..." value={deleteDateSearch}
@@ -3775,9 +3782,9 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
                     {/* Date list */}
                     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320 }}>
                       {datesBusy ? (
-                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Yuklanmoqda…</div>
+                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{T('loading')}</div>
                       ) : filteredDeleteDates.length === 0 ? (
-                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Topilmadi</div>
+                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{T('msg_not_found')}</div>
                       ) : filteredDeleteDates.map(d => (
                         <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: selectedDeleteDates.has(d) ? 'rgba(239,68,68,0.08)' : 'var(--surface)', border: `1px solid ${selectedDeleteDates.has(d) ? '#ef4444' : 'rgba(var(--ink-rgb),0.08)'}` }}>
                           <input type="checkbox" checked={selectedDeleteDates.has(d)} onChange={() => toggleDeleteDate(d)} style={{ accentColor: '#ef4444' }} />
@@ -3793,7 +3800,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
 
                     {/* Actions */}
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <button className="small" type="button" onClick={() => setShowDeletePanel(false)}>Bekor</button>
+                      <button className="small" type="button" onClick={() => setShowDeletePanel(false)}>{T('lbl_cancel')}</button>
                       <button className="small dark" type="button"
                         disabled={selectedDeleteDates.size === 0 || vazvratBusy}
                         onClick={confirmDeleteDates}
@@ -3830,7 +3837,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
                           {m.replace(/^korzinka\s*[-,]?\s*/i, '').replace(/\s*\/\d+$/, '') || m}
                         </th>
                       ))}
-                      <th style={{ ...thStyle, position: 'sticky', top: 0, zIndex: 10, background: '#fffbf0', borderLeft: '2px solid #e8a825', minWidth: 90 }}>Jami</th>
+                      <th style={{ ...thStyle, position: 'sticky', top: 0, zIndex: 10, background: '#fffbf0', borderLeft: '2px solid #e8a825', minWidth: 90 }}>{T('lbl_total')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3857,7 +3864,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td style={{ ...tdStyle, ...stickyCol, fontWeight: 800, background: '#fffbf0', borderTop: '2px solid #e8a825' }}>Jami</td>
+                      <td style={{ ...tdStyle, ...stickyCol, fontWeight: 800, background: '#fffbf0', borderTop: '2px solid #e8a825' }}>{T('lbl_total')}</td>
                       {markets.map(m => (
                         <td key={m} style={{ ...tdStyle, fontWeight: 700, background: '#fffbf0', borderTop: '2px solid #e8a825' }}>
                           <div>{colTotals[m]?.qty ?? 0}</div>
@@ -3890,7 +3897,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
           g.totalSum  += s.sumTotal || 0;
         }
         const groups = [...dateMap.values()].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
-        return groups.length === 0 ? <Empty title="Buyurtma tarixi yo'q" /> : (
+        return groups.length === 0 ? <Empty title={T('empty_order_history')} /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {groups.map(g => {
               const open = expandedDates.has('zakas-' + g.dateKey);
@@ -3929,7 +3936,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
 
       {/* Ishonchnoma tab */}
       {tab === 'dov' && (
-        dovHistory.length === 0 ? <Empty title="Ishonchnoma tarixi yo'q" /> :
+        dovHistory.length === 0 ? <Empty title={T('empty_no_dov_history')} /> :
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {dovHistory.map((h, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #059669', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
@@ -3974,7 +3981,7 @@ function UnifiedHistory({ sessions, dovHistory, qaytganInvoices, vazvratRows, ex
   }
   const dateKeys = Object.keys(map).sort((a, b) => b.localeCompare(a));
 
-  if (!dateKeys.length) return <Empty title="Hali tarix yo'q" />;
+  if (!dateKeys.length) return <Empty title={T('empty_no_history')} />;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -4021,7 +4028,7 @@ function UnifiedHistory({ sessions, dovHistory, qaytganInvoices, vazvratRows, ex
                     <span style={{ fontWeight: 700, fontSize: 13 }}>{ev.data.driver || '—'}</span>
                     <span style={{ fontSize: 12, color: 'var(--muted)' }}>{ev.data.plate} · {ev.data.car}</span>
                     <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 'auto' }}>{new Date(ev.data.printedAt).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
-                    <button className="mini" type="button" onClick={() => { setDovFields(ev.data); setSettingsView('doverennost'); }}>Yuklash</button>
+                    <button className="mini" type="button" onClick={() => { setDovFields(ev.data); setSettingsView('doverennost'); }}>{T('tarix_load')}</button>
                   </>)}
 
                   {ev.kind === 'qayt' && (<>
@@ -4085,7 +4092,6 @@ function AnalyticsPane({
   const [savdoFrom, setSavdoFrom] = useState(today);
   const [savdoTo,   setSavdoTo]   = useState(today);
   const [vazvratRows, setVazvratRows] = useState<import('@/types/domain').VazvratRecord[]>([]);
-  const [savdoInvoices, setSavdoInvoices] = useState<Invoice[]>([]);
   const [savdoAnalytics, setSavdoAnalytics] = useState<{ sku: string; name: string; berilganQty: number; berilganSum: number; vazvratQty: number; vazvratSum: number }[]>([]);
   const [savdoBusy, setSavdoBusy] = useState(false);
   const [savdoUploading, setSavdoUploading] = useState(false);
@@ -4157,25 +4163,17 @@ function AnalyticsPane({
     if (!token) return;
     setSavdoBusy(true);
     try {
-      // Per-date yukla (200 limit muammosini hal qiladi)
-      const dates: string[] = [];
-      const cur2 = new Date(savdoFrom); const end2 = new Date(savdoTo);
-      while (cur2 <= end2) { dates.push(cur2.toISOString().slice(0, 10)); cur2.setDate(cur2.getDate() + 1); }
-
-      const [rows, analytics, ...dayResults] = await Promise.all([
+      // Removed: the per-date api.invoices(token, d) fan-out that populated the
+      // `savdoInvoices` state — that state had no readers (SavdoTab consumes
+      // `filteredInvoices`, derived from the session snapshot). It was one network
+      // request per day in the range for data that was never displayed.
+      const [rows, analytics] = await Promise.all([
         api.queryVazvrat(token, savdoFrom, savdoTo),
         api.vazvratAnalytics(token, savdoFrom, savdoTo),
-        ...dates.map(d => api.invoices(token, d).catch(() => [] as Invoice[])),
       ]);
       setVazvratRows(rows);
       setSavdoAnalytics(analytics);
-      const allInvoices: Invoice[] = [];
-      const seen = new Set<number>();
-      for (const list of dayResults as Invoice[][]) {
-        for (const inv of list) { if (!seen.has(inv.invNo)) { seen.add(inv.invNo); allInvoices.push(inv); } }
-      }
-      setSavdoInvoices(allInvoices);
-    } catch (e) { console.warn('[loadSavdo] analytics load failed:', e); onToast('err', 'Statistikani yuklashda xato'); } finally { setSavdoBusy(false); }
+    } catch (e) { console.warn('[loadSavdo] analytics load failed:', e); onToast('err', T('toast_stats_error')); } finally { setSavdoBusy(false); }
   }
 
   async function handleVazvratExcel(file: File) {
@@ -4223,7 +4221,7 @@ function AnalyticsPane({
         if (marketCode) { lastMarketCode = marketCode; lastMarketName = marketName; }
         records.push({ date, marketCode, marketName, sapCode, productName, qty, pricePerUnit, totalWithVat, orderNo });
       }
-      if (!records.length) { alert('Faylda ma\'lumot topilmadi'); return; }
+      if (!records.length) { alert(T('alert_no_data_file')); return; }
 
       // ─── Duplicate detection (TWO passes) ────────────────────────────────
       // Pass 1: same orderNo+sap+qty  → same physical delivery row uploaded twice
@@ -4253,13 +4251,13 @@ function AnalyticsPane({
 
       if (duplicates.length > 0) {
         const dupLines = duplicates.slice(0, 5).map((g) =>
-          `  • ${g.date} | ${g.marketCode} | SAP: ${g.sapCode} | qty:${g.qty} — ${g.count}x (+${Math.round(g.totalSum*(g.count-1)/g.count).toLocaleString()} so'm ortiqcha)`
+          `  • ${g.date} | ${g.marketCode} | SAP: ${g.sapCode} | qty:${g.qty} — ${g.count}x (+${Math.round(g.totalSum*(g.count-1)/g.count).toLocaleString()} ${T('lbl_sum')} ${T('dup_extra')})`
         );
-        const more = duplicates.length > 5 ? `\n  ... va yana ${duplicates.length - 5} ta` : '';
+        const more = duplicates.length > 5 ? `\n  ... ${T('dup_more').replace('{n}', String(duplicates.length - 5))}` : '';
         const proceed = window.confirm(
-          `⚠️ Faylda ${duplicates.length} ta dublikat topildi!\n\n${dupLines.join('\n')}${more}\n\n` +
-          `Ortiqcha summa: ~${Math.round(dupSumTotal).toLocaleString()} so'm\n\n` +
-          `Tizim dublikatlarni AVTOMATIK olib tashlab saqlaydi.\nDavom etasizmi?`
+          `${T('confirm_dup_found').replace('{n}', String(duplicates.length))}\n\n${dupLines.join('\n')}${more}\n\n` +
+          `${T('confirm_dup_extra_sum').replace('{sum}', Math.round(dupSumTotal).toLocaleString())}\n\n` +
+          `${T('confirm_dup_auto')}`
         );
         if (!proceed) return;
         // AUTO-DEDUPLICATE: keep only first occurrence of each content-based key
@@ -4277,10 +4275,10 @@ function AnalyticsPane({
       // ──────────────────────────────────────────────────────────────────────
 
       const result = await api.uploadVazvrat(token, records);
-      const dupMsg = duplicates.length > 0 ? ` | ⚠️ ${duplicates.length} ta dublikat` : '';
-      onToast('ok', `✓ ${result.inserted} qator saqlandi (${result.dates.join(', ')})${dupMsg}`);
+      const dupMsg = duplicates.length > 0 ? ` | ⚠️ ${duplicates.length} ${T('dup_label')}` : '';
+      onToast('ok', `✓ ${T('toast_rows_saved').replace('{n}', String(result.inserted))} (${result.dates.join(', ')})${dupMsg}`);
       await loadVazvrat();
-    } catch (e) { onToast('err', 'Xato: ' + String(e)); } finally { setSavdoUploading(false); }
+    } catch (e) { onToast('err', getError(e)); } finally { setSavdoUploading(false); }
   }
 
   // sessionInvoices — live status/sumTotal + snapshot init
@@ -4302,12 +4300,13 @@ function AnalyticsPane({
 
   const filteredProductRows = useMemo(() => {
     // Invoice lines dan to'g'ridan-to'g'ri o'qi — catalog bo'sh bo'lsa ham ishlaydi
+    const catBySku = new Map(catalog.map((p) => [p.sku, p]));
     const map: Record<string, { product: { sku: string; name: string; unit: string; price: number }; initTotal: number; givenQty: number; givenSum: number }> = {};
     for (const inv of filteredInvoices) {
       for (const line of (inv.lines || [])) {
         if (!line.sku || !(line.qty > 0)) continue;
         if (!map[line.sku]) {
-          const cat = catalog.find(p => p.sku === line.sku);
+          const cat = catBySku.get(line.sku);
           map[line.sku] = { product: { sku: line.sku, name: cat?.name || (line as any).name || line.sku, unit: cat?.unit || (line as any).unit || '', price: cat?.price || line.price || 0 }, initTotal: 0, givenQty: 0, givenSum: 0 };
         }
         map[line.sku].givenQty += line.qty;
@@ -4400,15 +4399,15 @@ function AnalyticsPane({
         {/* Row 1: Title + KPI summary cards (savdo + returns report up front) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <BarChart3 size={17} style={{ color: 'var(--berry)' }} />
-          <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.01em' }}>Analitika</span>
+          <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.01em' }}>{T('an_title')}</span>
           <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{savdoFrom} — {savdoTo}</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
           {[
-            { label: 'Zakaz · keldi', dona: aBuyurtmaDona, sum: aBuyurtmaSum, accent: 'var(--berry)',  icon: <ClipboardList size={14} /> },
-            { label: 'Berilgan',      dona: aBerildiDona,  sum: aBerildiSum,  accent: '#16a34a',       icon: <TrendingUp size={14} /> },
-            { label: 'Qaytarma',      dona: aQaytarmaDona, sum: aQaytarmaSum, accent: '#dc2626',       icon: <RefreshCcw size={14} /> },
-            { label: 'Sof savdo',     dona: aSavdoDona,    sum: aSavdoSum,    accent: aSavdoSum < 0 ? '#dc2626' : '#16a34a', icon: <BarChart3 size={14} /> },
+            { label: T('kpi_ordered'),   dona: aBuyurtmaDona, sum: aBuyurtmaSum, accent: 'var(--berry)',  icon: <ClipboardList size={14} /> },
+            { label: T('kpi_given'),     dona: aBerildiDona,  sum: aBerildiSum,  accent: '#16a34a',       icon: <TrendingUp size={14} /> },
+            { label: T('kpi_returned'),  dona: aQaytarmaDona, sum: aQaytarmaSum, accent: '#dc2626',       icon: <RefreshCcw size={14} /> },
+            { label: T('kpi_net_sales'), dona: aSavdoDona,    sum: aSavdoSum,    accent: aSavdoSum < 0 ? '#dc2626' : '#16a34a', icon: <BarChart3 size={14} /> },
           ].map(k => (
             <div key={k.label} style={{ position: 'relative', overflow: 'hidden', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '12px 14px', boxShadow: 'var(--shadow-sm)' }}>
               <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: k.accent }} />
@@ -4417,13 +4416,13 @@ function AnalyticsPane({
                 <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k.label}</span>
               </div>
               <div style={{ fontSize: 19, fontWeight: 900, color: k.accent, fontFamily: 'var(--mono)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>{fmt0(k.sum)}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3, fontWeight: 600 }}>{fmt0(k.dona)} dona</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3, fontWeight: 600 }}>{fmt0(k.dona)} {T('lbl_pcs')}</div>
             </div>
           ))}
         </div>
         {/* Row 2: DateRange + refresh + toggles — horizontal scroll on mobile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto', paddingBottom: 2, flexWrap: 'nowrap' }}>
-          <DateRangePicker from={savdoFrom} to={savdoTo} onChange={(f,t) => { setSavdoFrom(f); setSavdoTo(t); }} />
+          <DateRangePicker from={savdoFrom} to={savdoTo} onChange={(f,t) => { setSavdoFrom(f); setSavdoTo(t); }} T={T} />
           {tab === 'savdo'
             ? <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
                 style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
@@ -4439,19 +4438,19 @@ function AnalyticsPane({
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <button type="button" onClick={() => setTab('products')}
               style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'products' ? 'rgba(46,168,85,0.09)' : 'var(--surface)', color: tab === 'products' ? 'var(--ok)' : 'var(--ink)' }}>
-              📦 Mahsulot <span style={{ background: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'products' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredProductRows.length}</span>
+              📦 {T('an_tab_products')} <span style={{ background: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'products' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredProductRows.length}</span>
             </button>
             <button type="button" onClick={() => setTab('markets')}
               style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'markets' ? 'rgba(245,158,11,0.09)' : 'var(--surface)', color: tab === 'markets' ? '#b45309' : 'var(--ink)' }}>
-              🏪 Market <span style={{ background: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'markets' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredMarkets.length}</span>
+              🏪 {T('an_tab_market')} <span style={{ background: tab === 'markets' ? '#f59e0b' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'markets' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredMarkets.length}</span>
             </button>
             <button type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}
               style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'savdo' ? '#6366f1' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'savdo' ? 'rgba(99,102,241,0.09)' : 'var(--surface)', color: tab === 'savdo' ? '#4f46e5' : 'var(--ink)' }}>
-              📊 Savdo
+              📊 {T('an_tab_sales')}
             </button>
             <button type="button" onClick={() => { setTab('qaytarma'); void loadVazvrat(); }}
               style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'qaytarma' ? 'rgba(217,119,6,0.09)' : 'var(--surface)', color: tab === 'qaytarma' ? '#b45309' : 'var(--ink)' }}>
-              ↩️ Qaytarma <span style={{ background: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'qaytarma' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{vazvratRows.length}</span>
+              ↩️ {T('an_tab_returns')} <span style={{ background: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'qaytarma' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{vazvratRows.length}</span>
             </button>
         </div>
       </div>
@@ -4468,7 +4467,7 @@ function AnalyticsPane({
               return (
                 <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5MarketsBySum.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>🏆 Eng ko'p zakaz (top 5)</div>
-                  {top5MarketsBySum.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Ma'lumot yo'q</div>}
+                  {top5MarketsBySum.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>{T('msg_no_data')}</div>}
                   {top5MarketsBySum.map((m, i) => (
                     <div key={m.storeCode} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 90px', gap: 6, alignItems: 'center', padding: '9px 16px', borderBottom: i < top5MarketsBySum.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
@@ -4486,7 +4485,7 @@ function AnalyticsPane({
               return (
                 <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>⚠️ Eng ko'p qaytarma market (top 5)</div>
-                  {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Qaytarma yo'q</div>}
+                  {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>{T('empty_no_returns')}</div>}
                   {top5.map((m, i) => (
                     <div key={m.name + i} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 80px', gap: 6, alignItems: 'center', padding: '9px 16px', borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#dc2626' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
@@ -4503,7 +4502,7 @@ function AnalyticsPane({
               return (
                 <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5ProductsByQty.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>📦 Eng ko'p sotilgan tovar (top 5)</div>
-                  {top5ProductsByQty.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Ma'lumot yo'q</div>}
+                  {top5ProductsByQty.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>{T('msg_no_data')}</div>}
                   {top5ProductsByQty.map((r, i) => (
                     <div key={r.product.sku} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 45px 80px', gap: 6, alignItems: 'start', padding: '9px 16px', borderBottom: i < top5ProductsByQty.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center', paddingTop: 2 }}>{i + 1}</span>
@@ -4522,7 +4521,7 @@ function AnalyticsPane({
               return (
                 <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>🔄 Eng ko'p qaytarma tovar (top 5)</div>
-                  {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>Qaytarma yo'q</div>}
+                  {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>{T('empty_no_returns')}</div>}
                   {top5.map((p, i) => (
                     <div key={p.name + i} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 45px 80px', gap: 6, alignItems: 'start', padding: '9px 16px', borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f97316' : 'var(--muted)', textAlign: 'center', paddingTop: 2 }}>{i + 1}</span>
@@ -4540,17 +4539,17 @@ function AnalyticsPane({
 
       {tab === 'products' && (
         filteredProductRows.length === 0
-          ? <Empty title="Sana oralig'ida ma'lumot yo'q" />
+          ? <Empty title={T('empty_no_data_range')} />
           : <div className="tablewrap" style={{ flex: 1, overflow: 'auto' }}>
               <table className="data">
                 <thead>
                   <tr>
                     <th style={{ width: 24 }}>#</th>
                     <th>{T('lbl_product')}</th>
-                    <th className="right">Zakaz</th>
-                    <th className="right" style={{ color: '#d97706' }}>Kamaydi</th>
-                    <th className="right" style={{ color: 'var(--ok)' }}>Berildi</th>
-                    <th className="right">Summa (so'm)</th>
+                    <th className="right">{T('col_ordered')}</th>
+                    <th className="right" style={{ color: '#d97706' }}>{T('col_decreased')}</th>
+                    <th className="right" style={{ color: 'var(--ok)' }}>{T('col_given')}</th>
+                    <th className="right">{T('col_sum')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4600,7 +4599,7 @@ function AnalyticsPane({
 
       {tab === 'markets' && (
         filteredMarkets.length === 0
-          ? <Empty title="Sana oralig'ida ma'lumot yo'q" />
+          ? <Empty title={T('empty_no_data_range')} />
           : <div className="tablewrap" style={{ flex: 1, overflow: 'auto' }}>
               <table className="data">
                 <thead>
@@ -4608,8 +4607,8 @@ function AnalyticsPane({
                     <th style={{ width: 24 }}>#</th>
                     <th>{T('lbl_store')}</th>
                     <th className="right">Zakaz</th>
-                    <th className="right" style={{ color: 'var(--ok)' }}>Berildi</th>
-                    <th className="right">Summa (so'm)</th>
+                    <th className="right" style={{ color: 'var(--ok)' }}>{T('col_given')}</th>
+                    <th className="right">{T('col_sum')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4785,7 +4784,7 @@ function AnalyticsPane({
 
             {/* Report: product / market (sortable) */}
             {(qView === 'product' || qView === 'market') && (
-              sorted.length === 0 ? <Empty title="Sana oralig‘ida qaytarma yo‘q" /> : (
+              sorted.length === 0 ? <Empty title={T('empty_no_returns_range')} /> : (
                 <div style={{ flex: 1, overflow: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
                   {(() => {
                     const fBerQty = sorted.reduce((s, r) => s + (r.bQty || 0), 0);
@@ -4826,7 +4825,7 @@ function AnalyticsPane({
                     </tbody>
                     <tfoot>
                       <tr style={{ fontWeight: 800 }}>
-                        <td style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', background: 'var(--surface-hi)' }}>Jami</td>
+                        <td style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', background: 'var(--surface-hi)' }}>{T('lbl_total')}</td>
                         <td style={{ ...num, background: 'var(--surface-hi)' }}>{fBerQty > 0 ? fmt0(fBerQty) : '—'}</td>
                         <td style={{ ...num, background: 'var(--surface-hi)' }}>{fBerSum > 0 ? fmt0(fBerSum) : '—'}</td>
                         <td style={{ ...num, background: 'var(--surface-hi)' }}>{fmt0(fRetQty)}</td>
@@ -4853,14 +4852,14 @@ function AnalyticsPane({
               }
               const mk = [...markets].sort();
               const pr = [...products].sort((a, b) => (rowT[b] || 0) - (rowT[a] || 0));
-              return pr.length === 0 ? <Empty title="Sana oralig‘ida qaytarma yo‘q" /> : (
+              return pr.length === 0 ? <Empty title={T('empty_no_returns_range')} /> : (
                 <div style={{ flex: 1, overflow: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
                   <table className="data matrix" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
                     <thead>
                       <tr>
-                        <th className="productcol" style={{ position: 'sticky', left: 0, zIndex: 3, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>Mahsulot</th>
+                        <th className="productcol" style={{ position: 'sticky', left: 0, zIndex: 3, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>{T('lbl_product')}</th>
                         {mk.map(m => <th key={m} title={m} style={{ whiteSpace: 'nowrap' }}>{m.replace(/^Korzinka\s*[-–]\s*/i, '')}</th>)}
-                        <th style={{ color: '#d97706', whiteSpace: 'nowrap' }}>Jami</th>
+                        <th style={{ color: '#d97706', whiteSpace: 'nowrap' }}>{T('lbl_total')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4874,7 +4873,7 @@ function AnalyticsPane({
                     </tbody>
                     <tfoot>
                       <tr style={{ fontWeight: 800 }}>
-                        <td className="productcol" style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>Jami</td>
+                        <td className="productcol" style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>{T('lbl_total')}</td>
                         {mk.map(m => <td key={m} style={{ textAlign: 'center', color: '#d97706' }}>{colT[m] || 0}</td>)}
                         <td style={{ textAlign: 'center', color: '#d97706' }}>{gQty}</td>
                       </tr>
@@ -4892,14 +4891,14 @@ function AnalyticsPane({
         sessions={sessions} vazvratRows={vazvratRows} invoices={invoices}
         savdoFrom={savdoFrom} savdoTo={savdoTo} savdoInvoices={filteredInvoices}
         savdoAnalytics={savdoAnalytics} savdoTab={savdoTab} setSavdoTab={setSavdoTab}
-        fmtDateRu={fmtDateRu} fmt0={fmt0}
+        fmtDateRu={fmtDateRu} fmt0={fmt0} T={T}
       />}
 
     </section>
   );
 }
 
-function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, setInvoiceDetail, setRestoreModal, fmt, todayIso }: {
+function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, setInvoiceDetail, setRestoreModal, fmt, todayIso, T }: {
   invoices: Invoice[];
   undeliveredFilter: { from: string; to: string };
   setUndeliveredFilter: (v: { from: string; to: string }) => void;
@@ -4907,6 +4906,7 @@ function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, se
   setRestoreModal: (v: { invNo: number; date: string; lines: { sku: string; name: string; unit: string; price: number; qty: number; initQty: number }[] } | null) => void;
   fmt: (n: number) => string;
   todayIso: () => string;
+  T: (k: string) => string;
 }) {
   const all = invoices.filter(i => i.status === 'saved');
   const undeliveredList = all.filter(i => {
@@ -4918,22 +4918,22 @@ function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, se
   return (
     <section className="pane">
       <PaneHead
-        title="Yetkazilmagan hujjatlar"
-        meta={`${undeliveredList.length} / ${all.length} ta`}
+        title={T('undeliv_title')}
+        meta={`${undeliveredList.length} / ${all.length}`}
         actions={
           <DateRangePicker from={undeliveredFilter.from} to={undeliveredFilter.to}
-            onChange={(f, t) => setUndeliveredFilter({ from: f, to: t })} />
+            onChange={(f, t) => setUndeliveredFilter({ from: f, to: t })} T={T} />
         }
       />
       {undeliveredList.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>✓ Barcha hujjatlar yetkazilgan</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>✓ {T('undeliv_empty')}</div>
       ) : (
         <div className="tablewrap">
           <table className="data">
             <thead>
               <tr>
-                <th>№</th><th>Buyurtma</th><th>Do&apos;kon</th>
-                <th className="right">Summa</th><th>Bekor qilish sababi</th><th>Vaqt</th><th></th>
+                <th>{T('col_num')}</th><th>{T('lbl_order')}</th><th>{T('col_store')}</th>
+                <th className="right">{T('sum_label')}</th><th>{T('col_reason')}</th><th>{T('col_time')}</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -4965,7 +4965,7 @@ function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, se
                           return { sku: l.sku, name: l.name, unit: l.unit, price: l.price, qty: initQty, initQty };
                         }),
                       })}>
-                      ↩ Tiklash
+                      ↩ {T('lbl_restore')}
                     </button>
                   </td>
                 </tr>
@@ -4978,13 +4978,14 @@ function UndeliveredPane({ invoices, undeliveredFilter, setUndeliveredFilter, se
   );
 }
 
-function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoInvoices, savdoAnalytics, savdoTab, setSavdoTab, fmtDateRu, fmt0 }: {
+function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoInvoices, savdoAnalytics, savdoTab, setSavdoTab, fmtDateRu, fmt0, T }: {
   sessions: import('@/types/domain').SessionSummary[]; vazvratRows: import('@/types/domain').VazvratRecord[];
   invoices: Invoice[]; savdoFrom: string; savdoTo: string;
   savdoInvoices: Invoice[];
   savdoAnalytics: { sku: string; name: string; berilganQty: number; berilganSum: number; vazvratQty: number; vazvratSum: number }[];
   savdoTab: string; setSavdoTab: React.Dispatch<React.SetStateAction<'kunlik' | 'dokonlar' | 'mahsulotlar'>>;
   fmtDateRu: (d: string) => string; fmt0: (n: number) => string;
+  T: (k: string) => string;
 }) {
   // Berilgan = Tarix sessiyalarining snapshot'idan, har bir invoice'ning dateIso'si
   // FAYL NOMI (sessionDate) bo'yicha guruhlanadi — jonli invoice'lar invNo bo'yicha
@@ -5052,14 +5053,14 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
       <div className="subtabs" style={{ marginBottom: 12 }}>
         {(['kunlik', 'dokonlar', 'mahsulotlar'] as const).map(st => (
           <button key={st} type="button" onClick={() => setSavdoTab(st)} className={savdoTab === st ? 'active' : ''}>
-            {st === 'kunlik' ? 'Kunlik' : st === 'dokonlar' ? "Do'konlar" : 'Mahsulotlar'}
+            {st === 'kunlik' ? T('an_sub_daily') : st === 'dokonlar' ? T('an_sub_stores') : T('an_sub_products')}
           </button>
         ))}
       </div>
       {savdoTab === 'kunlik' && (
         <div className="tablewrap">
           <table className="data">
-            <thead><tr><th>Sana</th><th className="right">Hujjat</th><th className="right">Berilgan</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
+            <thead><tr><th>{T('col_day')}</th><th className="right">{T('col_doc')}</th><th className="right">{T('kpi_given')}</th><th className="right">{T('kpi_returned')}</th><th className="right">{T('an_tab_sales')}</th></tr></thead>
             <tbody>
               {dayRows.map(([date, d]) => (
                 <tr key={date}>
@@ -5070,10 +5071,10 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
                   <td className="right mono" style={{ color: (d.berilgan-d.vazvrat) < 0 ? 'var(--danger)' : 'var(--ok)', fontWeight: 600 }}>{fmt0(d.berilgan-d.vazvrat)}</td>
                 </tr>
               ))}
-              {dayRows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Ma'lumot yo'q</td></tr>}
+              {dayRows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{T('msg_no_data')}</td></tr>}
             </tbody>
             {dayRows.length > 0 && <tfoot><tr>
-              <td style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 11, padding: '8px 12px' }}>JAMI</td>
+              <td style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 11, padding: '8px 12px' }}>{T('pv_jami')}</td>
               <td className="right mono" style={{ fontWeight: 700 }}>{savdoInvoices.length}</td>
               <td className="right mono" style={{ fontWeight: 700 }}>{fmt0(totBerilgan)}</td>
               <td className="right mono" style={{ fontWeight: 700, color: totVazvrat > 0 ? 'var(--danger)' : undefined }}>{fmt0(totVazvrat)}</td>
@@ -5085,7 +5086,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
       {savdoTab === 'dokonlar' && (
         <div className="tablewrap">
           <table className="data">
-            <thead><tr><th>Do'kon</th><th className="right">Berilgan</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
+            <thead><tr><th>{T('col_store')}</th><th className="right">{T('kpi_given')}</th><th className="right">{T('kpi_returned')}</th><th className="right">{T('an_tab_sales')}</th></tr></thead>
             <tbody>
               {mktRows.map(r => (
                 <tr key={r.code}>
@@ -5095,7 +5096,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
                   <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(r.berilgan-r.vazvrat)}</td>
                 </tr>
               ))}
-              {mktRows.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)' }}>Ma'lumot yo'q</td></tr>}
+              {mktRows.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)' }}>{T('msg_no_data')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -5103,7 +5104,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
       {savdoTab === 'mahsulotlar' && (
         <div className="tablewrap">
           <table className="data">
-            <thead><tr><th>Mahsulot</th><th className="right">B.dona</th><th className="right">Berilgan</th><th className="right">V.dona</th><th className="right">Qaytarma</th><th className="right">Savdo</th></tr></thead>
+            <thead><tr><th>{T('an_tab_products')}</th><th className="right">{T('col_given_qty')}</th><th className="right">{T('kpi_given')}</th><th className="right">{T('col_returned_qty')}</th><th className="right">{T('kpi_returned')}</th><th className="right">{T('an_tab_sales')}</th></tr></thead>
             <tbody>
               {prodRows.map((r) => (
                 <tr key={r.sku}>
@@ -5115,7 +5116,7 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
                   <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(r.berilganSum-r.vazvratSum)}</td>
                 </tr>
               ))}
-              {prodRows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)' }}>Ma'lumot yo'q</td></tr>}
+              {prodRows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)' }}>{T('msg_no_data')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -5181,15 +5182,15 @@ function StatsPane({
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{T('stats_title')}</h2>
         </div>
         <div className="stats-kpi-bar">
-          <span className="skpi"><span className="skpi-lbl">Keldi</span><span className="skpi-val">{fmt0(totalInit)}</span></span>
+          <span className="skpi"><span className="skpi-lbl">{T('stats_keldi')}</span><span className="skpi-val">{fmt0(totalInit)}</span></span>
           <span className="skpi-sep" />
-          <span className="skpi"><span className="skpi-lbl">Kamaydi</span><span className="skpi-val" style={totalReduced > 0 ? { color: 'var(--danger)' } : undefined}>{fmt0(totalReduced)}</span></span>
+          <span className="skpi"><span className="skpi-lbl">{T('col_decreased')}</span><span className="skpi-val" style={totalReduced > 0 ? { color: 'var(--danger)' } : undefined}>{fmt0(totalReduced)}</span></span>
           <span className="skpi-sep" />
-          <span className="skpi"><span className="skpi-lbl">Berildi</span><span className="skpi-val">{fmt0(totalGiven)}</span></span>
+          <span className="skpi"><span className="skpi-lbl">{T('col_given')}</span><span className="skpi-val">{fmt0(totalGiven)}</span></span>
           <span className="skpi-sep" />
-          <span className="skpi"><span className="skpi-lbl">Zakaz summa</span><span className="skpi-val">{fmt0(totalInitSum)}</span></span>
+          <span className="skpi"><span className="skpi-lbl">{T('stats_order_sum')}</span><span className="skpi-val">{fmt0(totalInitSum)}</span></span>
           <span className="skpi-sep" />
-          <span className="skpi"><span className="skpi-lbl">Berilgan summa</span><span className="skpi-val skpi-accent">{fmt0(totalSum)}</span></span>
+          <span className="skpi"><span className="skpi-lbl">{T('stats_given_sum')}</span><span className="skpi-val skpi-accent">{fmt0(totalSum)}</span></span>
         </div>
         <div className="statsTabs">
           <button className={`statsTab${statsTab === 'products' ? ' active' : ''}`} onClick={() => setStatsTab('products')}>
@@ -5208,11 +5209,11 @@ function StatsPane({
             <thead>
               <tr>
                 <th>#</th>
-                <th>Mahsulot nomi</th>
-                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>ZAKAZ</th>
-                <th style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--danger)' }}>KAMAYDI</th>
-                <th style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--ok)' }}>BERILDI</th>
-                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>SUMMA (SO'M)</th>
+                <th>{T('col_product_name')}</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{T('col_ordered')}</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--danger)' }}>{T('col_decreased')}</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--ok)' }}>{T('col_given')}</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{T('col_sum')}</th>
               </tr>
             </thead>
             <tbody>
@@ -5270,11 +5271,11 @@ function StatsPane({
             <thead>
               <tr>
                 <th>#</th>
-                <th>Market nomi</th>
-                <th style={{ textAlign: 'right' }}>Hujjat</th>
-                <th style={{ textAlign: 'right' }}>Dona</th>
-                <th style={{ textAlign: 'right' }}>Summa (so'm)</th>
-                <th style={{ textAlign: 'right' }}>Grafik</th>
+                <th>{T('col_market_name')}</th>
+                <th style={{ textAlign: 'right' }}>{T('col_doc')}</th>
+                <th style={{ textAlign: 'right' }}>{T('lbl_pcs')}</th>
+                <th style={{ textAlign: 'right' }}>{T('col_sum')}</th>
+                <th style={{ textAlign: 'right' }}>{T('stats_col_schedule')}</th>
               </tr>
             </thead>
             <tbody>
@@ -5529,10 +5530,12 @@ function CalIcon({ size = 15 }: { size?: number }) {
 }
 
 // Single-month calendar grid with range highlighting.
-function CalendarPanel({ from, to, anchor, todayStr, isoFn, parseFn, onPick }: {
+function CalendarPanel({ from, to, anchor, todayStr, isoFn, parseFn, onPick, T }: {
   from: string; to: string; anchor: string | null; todayStr: string;
   isoFn: (d: Date) => string; parseFn: (s: string) => Date; onPick: (ds: string) => void;
+  T?: (k: string) => string;
 }) {
+  const L = (k: string, uz: string) => (T ? T(k) : uz);
   const seed = parseFn(to || from || todayStr);
   const [view, setView] = React.useState({ y: seed.getFullYear(), m: seed.getMonth() });
   const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
@@ -5546,12 +5549,12 @@ function CalendarPanel({ from, to, anchor, todayStr, isoFn, parseFn, onPick }: {
   return (
     <div className="cal-panel">
       <div className="cal-nav">
-        <button type="button" className="cal-arrow" onClick={prev} aria-label="Oldingi oy">‹</button>
-        <span className="cal-title">{MONTHS_UZ_FULL[view.m]} {view.y}</span>
-        <button type="button" className="cal-arrow" onClick={next} aria-label="Keyingi oy">›</button>
+        <button type="button" className="cal-arrow" onClick={prev} aria-label={L('aria_prev_month','Oldingi oy')}>‹</button>
+        <span className="cal-title">{(T ? T('months_full').split(',') : MONTHS_UZ_FULL)[view.m]} {view.y}</span>
+        <button type="button" className="cal-arrow" onClick={next} aria-label={L('aria_next_month','Keyingi oy')}>›</button>
       </div>
       <div className="cal-grid">
-        {WEEKDAYS_UZ.map(w => <span key={w} className="cal-wd">{w}</span>)}
+        {(T ? T('days').split(',') : WEEKDAYS_UZ).map((w, wi) => <span key={wi} className="cal-wd">{w}</span>)}
       </div>
       <div className="cal-grid">
         {cells.map((d, i) => {
@@ -5572,12 +5575,16 @@ function CalendarPanel({ from, to, anchor, todayStr, isoFn, parseFn, onPick }: {
   );
 }
 
-function DateRangePicker({ from, to, onChange, setFrom, setTo }: {
+function DateRangePicker({ from, to, onChange, setFrom, setTo, T }: {
   from: string; to: string;
   onChange?: (from: string, to: string) => void;
   setFrom?: (v: string) => void; setTo?: (v: string) => void;
   inputStyle?: React.CSSProperties;
+  T?: (k: string) => string;
 }) {
+  // Localize preset labels when a T is supplied; otherwise keep the Uzbek defaults
+  // so the existing (unthreaded) call sites are unaffected.
+  const L = (k: string, uz: string) => (T ? T(k) : uz);
   const [open, setOpen] = React.useState(false);
   const [anchor, setAnchor] = React.useState<string | null>(null);
 
@@ -5599,17 +5606,17 @@ function DateRangePicker({ from, to, onChange, setFrom, setTo }: {
     const prevMonthStart = new Date(y, m - 1, 1);
     const prevMonthEnd   = new Date(y, m, 0);
     return [
-      { label: 'Bugun',       from: todayStr,            to: todayStr },
-      { label: 'Bu hafta',    from: iso(monDate),         to: todayStr },
-      { label: 'Bu oy',       from: iso(new Date(y,m,1)), to: todayStr },
-      { label: "O'tgan oy",   from: iso(prevMonthStart),  to: iso(prevMonthEnd) },
+      { label: L('preset_today','Bugun'),          from: todayStr,            to: todayStr },
+      { label: L('preset_week','Bu hafta'),         from: iso(monDate),         to: todayStr },
+      { label: L('preset_month','Bu oy'),           from: iso(new Date(y,m,1)), to: todayStr },
+      { label: L('preset_prev_month',"O'tgan oy"),  from: iso(prevMonthStart),  to: iso(prevMonthEnd) },
     ];
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayStr]);
+  }, [todayStr, T]);
 
   const activeLabel = presets.find(p => p.from === from && p.to === to)?.label;
-  const fmtShort = (s: string) => { if (!s) return '—'; const d = parse(s); return `${d.getDate()} ${MONTHS_UZ_SHORT[d.getMonth()]}`; };
-  const triggerLabel = (from || to) ? `${fmtShort(from)} – ${fmtShort(to)}` : 'Sana tanlang';
+  const fmtShort = (s: string) => { if (!s) return '—'; const d = parse(s); return `${d.getDate()} ${(T ? T('months_short').split(',') : MONTHS_UZ_SHORT)[d.getMonth()]}`; };
+  const triggerLabel = (from || to) ? `${fmtShort(from)} – ${fmtShort(to)}` : L('pick_date','Sana tanlang');
 
   const close = () => { setOpen(false); setAnchor(null); };
 
@@ -5642,8 +5649,8 @@ function DateRangePicker({ from, to, onChange, setFrom, setTo }: {
           <div className="cal-backdrop" onMouseDown={close} />
           <div className="cal-modal" role="dialog" aria-modal="true">
             <div className="cal-modal-head">
-              <span className="cal-modal-title">Sana oralig&apos;i</span>
-              <button type="button" className="cal-close" onClick={close} aria-label="Yopish">×</button>
+              <span className="cal-modal-title">{L('date_range',"Sana oralig'i")}</span>
+              <button type="button" className="cal-close" onClick={close} aria-label={L('aria_close','Yopish')}>×</button>
             </div>
             <div className="cal-presets-row">
               {presets.map(p => (
@@ -5653,7 +5660,7 @@ function DateRangePicker({ from, to, onChange, setFrom, setTo }: {
                 </button>
               ))}
             </div>
-            <CalendarPanel from={from} to={to} anchor={anchor} todayStr={todayStr} isoFn={iso} parseFn={parse} onPick={pick} />
+            <CalendarPanel from={from} to={to} anchor={anchor} todayStr={todayStr} isoFn={iso} parseFn={parse} onPick={pick} T={T} />
           </div>
         </>,
         document.body
@@ -5746,13 +5753,16 @@ function SchedulePane({
     setScheduleDrivers(drivers);
     localStorage.setItem('gdetort_schedule', JSON.stringify(rows));
     localStorage.setItem('gdetort_schedule_drivers', JSON.stringify(drivers));
-    showToast('ok', `График юкланди: ${rows.length} магазин, ${drivers.length} ҳайдовчи`);
+    showToast('ok', T('toast_schedule_loaded').replace('{n}', String(rows.length)).replace('{m}', String(drivers.length)));
   }
 
   // Per-invoice schedule status
   const invoiceStatus = useMemo(() => {
+    // .reverse() so that on duplicate storeCodes the FIRST row wins (matches the
+    // previous Array.find() semantics; scheduleRows comes from an Excel upload).
+    const srByStore = new Map(scheduleRows.map((r) => [r.storeCode, r] as const).reverse());
     return invoices.map((inv) => {
-      const sr = scheduleRows.find((r) => r.storeCode === inv.storeCode);
+      const sr = srByStore.get(inv.storeCode);
       if (!sr) return { storeCode: inv.storeCode, market: inv.market, scheduled: null, scheduledToday: false, driver: '' };
       return {
         storeCode: inv.storeCode,
@@ -5784,7 +5794,7 @@ function SchedulePane({
                 <>
                   <span style={{ fontSize: 11, color: 'var(--ok)', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', display: 'inline-block' }} />
-                    Saqlangan
+                    {T('sch_saved')}
                   </span>
                   <button type="button" className="small" style={{ fontSize: 11, padding: '3px 10px', color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.3)' }}
                     onClick={() => {
@@ -5792,14 +5802,14 @@ function SchedulePane({
                       setScheduleDrivers([]);
                       localStorage.removeItem('gdetort_schedule');
                       localStorage.removeItem('gdetort_schedule_drivers');
-                      showToast('ok', 'График o\'chirildi');
+                      showToast('ok', T('toast_schedule_deleted'));
                     }}>
-                    O&apos;chirish
+                    {T('act_clear')}
                   </button>
                 </>
               )}
               <label className="small dark" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Download size={14} /> {scheduleRows.length > 0 ? 'Yangilash' : T('schedule_upload')}
+                <Download size={14} /> {scheduleRows.length > 0 ? T('act_refresh') : T('schedule_upload')}
                 <input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void loadScheduleExcel(f); e.target.value = ''; }} />
               </label>
             </div>
@@ -5813,16 +5823,16 @@ function SchedulePane({
       {invoices.length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <div className={isException ? 'sched-ok' : offSchedule.length > 0 ? 'sched-err' : scheduleRows.length === 0 ? 'sched-warn' : 'sched-ok'}>
-            {isException ? '✓ Бугун истисно кун — график бузилиши ҳисобланмайди' :
-             offSchedule.length > 0 ? `⚠ ${offSchedule.length} та магазин бугун графикда йўқ (${dayNamesFull[dow]})` :
-             scheduleRows.length === 0 ? '— График юкланмаган' :
-             `✓ Барча магазинлар графикда (${dayNamesFull[dow]})`}
+            {isException ? '✓ ' + T('sch_exception_day') :
+             offSchedule.length > 0 ? '⚠ ' + T('sch_off_count').replace('{n}', String(offSchedule.length)).replace('{day}', dayNamesFull[dow]) :
+             scheduleRows.length === 0 ? '— ' + T('sch_not_loaded') :
+             '✓ ' + T('sch_all_ok').replace('{day}', dayNamesFull[dow])}
           </div>
           {notInSchedule.length > 0 && (
             <details className="sched-warn" style={{ cursor: 'pointer' }}>
               <summary style={{ listStyle: 'none', display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}>
-                <span>ℹ {notInSchedule.length} та магазин графикда топилмади</span>
-                <span style={{ fontSize: 10, opacity: 0.6 }}>▼ ko'rish</span>
+                <span>ℹ {T('sch_not_found').replace('{n}', String(notInSchedule.length))}</span>
+                <span style={{ fontSize: 10, opacity: 0.6 }}>▼ {T('act_view')}</span>
               </summary>
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
                 {notInSchedule.map((s) => (
@@ -5839,14 +5849,14 @@ function SchedulePane({
 
       {scheduleRows.length === 0 ? (
         <div className="panel">
-          <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>Excel формати:</p>
+          <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>{T('sch_excel_format')}</p>
           <div className="schedule-tablewrap" style={{ maxWidth: 760 }}>
           <table className="data compact">
             <thead><tr>
-              <th className="sched-freeze sched-freeze-1">{T('lbl_store')} (код)</th>
+              <th className="sched-freeze sched-freeze-1">{T('lbl_store')} ({T('ph_store_code')})</th>
               <th className="sched-freeze sched-freeze-2">{T('lbl_store')}</th>
               <th className="sched-freeze sched-freeze-3">{T('lbl_driver')}</th>
-              <th className="sched-day">Dushanba</th><th className="sched-day">Seshanba</th><th className="sched-day">Chorshanba</th><th className="sched-day">Payshanba</th><th className="sched-day">Juma</th><th className="sched-day">Shanba</th><th className="sched-day">Yakshanba</th>
+              {dayNamesFull.map((d) => <th key={d} className="sched-day">{d}</th>)}
             </tr></thead>
             <tbody>
               <tr>
@@ -5870,7 +5880,7 @@ function SchedulePane({
           <table className="data">
             <thead>
               <tr>
-                <th className="sched-freeze sched-freeze-1">{T('lbl_store')} (код)</th>
+                <th className="sched-freeze sched-freeze-1">{T('lbl_store')} ({T('ph_store_code')})</th>
                 <th className="sched-freeze sched-freeze-2">{T('lbl_store')}</th>
                 <th className="sched-freeze sched-freeze-3">{T('lbl_driver')}</th>
                 {dayNames.map((d, i) => <th key={i} className={`sched-day${i === dow ? ' today-col' : ''}`}>{d}</th>)}
@@ -5933,10 +5943,13 @@ function DispatchPane({
   }, [drivers.length]);
 
   const markets = useMemo(() => {
+    // .reverse() so that on duplicate storeCodes the FIRST row wins (matches the
+    // previous Array.find() semantics; scheduleRows comes from an Excel upload).
+    const srByStore = new Map(scheduleRows.map((r) => [r.storeCode, r] as const).reverse());
     const seen = new Set<string>();
     return invoices.filter((inv) => { if (seen.has(inv.storeCode)) return false; seen.add(inv.storeCode); return true; })
       .map((inv) => {
-        const sr = scheduleRows.find((r) => r.storeCode === inv.storeCode);
+        const sr = srByStore.get(inv.storeCode);
         return { storeCode: inv.storeCode, market: inv.market, defaultDriver: sr?.driver ?? '' };
       });
   }, [invoices, scheduleRows]);
@@ -6016,7 +6029,7 @@ function DispatchPane({
       }
     </style></head><body>
     <h2>${driver} — P${part}</h2>
-    <p>${dateFmt} · ${filteredInvoices.length} hujjat · ${grandTotal} dona</p>
+    <p>${dateFmt} · ${filteredInvoices.length} ${T('lbl_invoices')} · ${grandTotal} ${T('lbl_pcs')}</p>
     <table>
       <colgroup><col>${uniqueMarkets.map(() => `<col style="width:${CW}px">`).join('')}<col style="width:46px"></colgroup>
       <thead><tr><th style="text-align:left;vertical-align:bottom;padding:3px 5px;border:1px solid #aaa;background:#e8e8e8;font-size:8.5pt">${T('lbl_product')}</th>${diagTh}<th style="width:46px;vertical-align:bottom;padding:3px;border:1px solid #aaa;background:#d8d8d8;font-size:8.5pt">${T('lbl_total')}</th></tr></thead>

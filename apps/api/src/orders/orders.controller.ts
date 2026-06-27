@@ -15,7 +15,8 @@ export class OrdersController {
 
   @Get()
   list(@Query() query: ListOrdersDto) {
-    return this.ordersService.list(query);
+    const { dateFrom, dateTo, customer, status, page, limit } = query;
+    return this.ordersService.list({ dateFrom, dateTo, customer, status }, page, limit);
   }
 
   @Get(':id')

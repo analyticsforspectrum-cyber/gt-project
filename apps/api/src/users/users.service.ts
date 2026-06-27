@@ -41,8 +41,19 @@ export class UsersService implements OnModuleInit {
   }
 
   async list(): Promise<PublicUser[]> {
-    const users = await this.userModel.find().sort({ createdAt: -1 }).exec();
-    return users.map((user) => this.toPublicUser(user));
+    // `.lean()` skips hydration for this read-only list; map _id->id and the public
+    // fields directly (lean drops the `id` virtual toPublicUser relies on).
+    const users = await this.userModel.find().sort({ createdAt: -1 }).lean().exec();
+    return users.map((u) => ({
+      id: String(u._id),
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      active: u.active,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+      passwordChangedAt: u.passwordChangedAt
+    }));
   }
 
   async create(dto: CreateUserDto): Promise<PublicUser> {

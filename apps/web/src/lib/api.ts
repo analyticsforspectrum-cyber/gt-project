@@ -60,6 +60,35 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
+// GET /orders is server-paginated and returns { items, pages }. The UI keeps all
+// orders in memory and filters client-side, so fetch page 1, then fan out the
+// remaining pages in parallel and return the flat array — same contract callers
+// relied on before, but each request/DB query is now bounded. Mirrors api.invoices.
+async function fetchAllOrders(
+  token: string,
+  params: Record<string, string> = {},
+  limit = 200
+): Promise<Order[]> {
+  const buildQs = (p: number) =>
+    new URLSearchParams({ ...params, page: String(p), limit: String(limit) }).toString();
+  const first = await request<{ items: Order[]; pages?: number }>(`/orders?${buildQs(1)}`, token);
+  const totalPages = typeof first.pages === 'number' && first.pages > 1 ? first.pages : 1;
+  if (totalPages <= 1) return first.items;
+  const results = await Promise.allSettled(
+    Array.from({ length: totalPages - 1 }, (_, i) =>
+      request<{ items: Order[] }>(`/orders?${buildQs(i + 2)}`, token).then((r) => r.items)
+    )
+  );
+  const rejections = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (rejections.length > 0) {
+    const is401 = rejections.every((r) => r.reason instanceof ApiError && r.reason.status === 401);
+    if (is401) throw new ApiError(401, 'Unauthorized');
+    throw new Error(`Failed to load ${rejections.length} of ${totalPages} order pages`);
+  }
+  const extra = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+  return [...first.items, ...extra];
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<LoginResponse>('/auth/login', null, {
@@ -207,7 +236,7 @@ export const api = {
     request<Invoice>(`/invoices/${invNo}/deliver`, token, { method: 'PATCH' }),
   undeliverInvoice: (token: string, invNo: number, comment: string) =>
     request<Invoice>(`/invoices/${invNo}/undeliver`, token, { method: 'PATCH', body: JSON.stringify({ comment }) }),
-  orders: (token: string) => request<Order[]>('/orders', token),
+  orders: (token: string) => fetchAllOrders(token),
   inventoryMovements: (token: string) => request<InventoryMovement[]>('/inventory/movements', token),
   createInventoryMovement: (
     token: string,
@@ -250,12 +279,11 @@ export const api = {
   ordersFiltered: (
     token: string,
     params: { dateFrom?: string; dateTo?: string; customer?: string; status?: string }
-  ) => {
-    const qs = new URLSearchParams(
+  ) =>
+    fetchAllOrders(
+      token,
       Object.fromEntries(Object.entries(params).filter(([, v]) => v)) as Record<string, string>
-    );
-    return request<Order[]>(`/orders?${qs}`, token);
-  },
+    ),
   createOrder: (
     token: string,
     input: Pick<Order, 'customer' | 'deliveryDate' | 'items' | 'notes'>
