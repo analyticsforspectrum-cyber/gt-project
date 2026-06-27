@@ -63,43 +63,13 @@ import {
   Requisites,
   SessionSummary
 } from '@/types/domain';
+import {
+  View, SettingsView, Theme, Density, AnalyticsTab, Toast, Lang, HistoryEvent, TarixTab,
+  BG_PRESETS, TOKEN_KEY, VAZVRAT_DEFAULT_DAYS, KIND_STYLE, MONTHS_UZ_FULL, MONTHS_UZ_SHORT, WEEKDAYS_UZ, DISPATCH_COLORS,
+  isLightColor, shortMkt, groupByDateKey, getError, t, tDays, tDaysFull, updateCatalogDraft,
+  hexToRgbChannels, shadeHexColor
+} from '@/lib/ui';
 
-type View = 'register' | 'matrix' | 'documents' | 'stats' | 'settings' | 'operations' | 'customers' | 'analytics' | 'orders' | 'schedule' | 'dispatch' | 'undelivered' | 'preferences' | 'manual-list';
-type SettingsView = 'catalog' | 'requisites' | 'sessions' | 'users' | 'exceptions' | 'doverennost' | 'trash';
-type Theme = 'dark' | 'light';
-type Density = 'tight' | 'compact' | 'cozy' | 'comfortable';
-
-// Curated backgrounds guaranteed to match the rest of the UI. `theme` is the
-// readable text/surface theme each background pairs with.
-const BG_PRESETS: { id: string; label: string; value: string; theme: Theme }[] = [
-  { id: 'white',    label: 'Oq',       value: '#ffffff', theme: 'light' },
-  { id: 'paper',    label: 'Paper',    value: 'linear-gradient(180deg, #eef1f6 0%, #e4e9f1 100%)', theme: 'light' },
-];
-
-// Relative luminance of a #rrggbb color → decide light vs dark text/surfaces.
-function isLightColor(hex: string): boolean {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return false;
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6;
-}
-type AnalyticsTab = 'overview' | 'products' | 'inventory' | 'customers';
-type Toast = { kind: 'ok' | 'err' | 'info'; text: string } | null;
-
-const TOKEN_KEY = 'gde_tort_token';
-/** Initial vazvrat fetch window. Shown in the UI so users know the visible range. */
-const VAZVRAT_DEFAULT_DAYS = 90;
-
-/** "Korzinka Go - Bashlyk /1" → "Bashlyk" */
-function shortMkt(name: string): string {
-  // Remove "korzinka" word and its separators (case-insensitive)
-  // e.g. "korzinka - Abay /1" → "Abay", "korzinka Abay" → "Abay", "Abay /1" → "Abay"
-  let s = name.replace(/^korzinka\s*[-,]?\s*/i, '').trim();
-  // Remove trailing store number like "/1", "/2"
-  s = s.replace(/\s*\/\d+$/, '').trim();
-  return s || name.replace(/\s*\/\d+$/, '').trim();
-}
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
@@ -202,6 +172,10 @@ export default function Home() {
   // any stray accent (e.g. orange) that was saved earlier. Switchable in Preferences.
   const [accent, setAccent] = useState<string>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('pref_accent_v3') || 'soliq') : 'soliq'
+  );
+  // User-defined custom accent (any hex), applied everywhere when accent === 'custom'.
+  const [customAccent, setCustomAccent] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('pref_accent_custom') || '#0e5fbf') : '#0e5fbf'
   );
 
   // Ishonchnoma (power of attorney) fields
@@ -306,6 +280,13 @@ export default function Home() {
     { id: 'purple',   label: "Binafsha",  main: '#8b5cf6', dark: '#7c3aed', ok: '#8b5cf6', okRgb: '139,92,246', rgb: '139,92,246' },
     { id: 'orange',   label: "To'q sariq",main: '#f97316', dark: '#ea580c', ok: '#f97316', okRgb: '249,115,22', rgb: '249,115,22' },
     { id: 'teal',     label: "Feruza",    main: '#14b8a6', dark: '#0d9488', ok: '#14b8a6', okRgb: '20,184,166', rgb: '20,184,166' },
+    { id: 'indigo',   label: "Indigo",    main: '#6366f1', dark: '#4f46e5', ok: '#22c55e', okRgb: '34,197,94',  rgb: '99,102,241' },
+    { id: 'rose',     label: "Atirgul",   main: '#f43f5e', dark: '#e11d48', ok: '#22c55e', okRgb: '34,197,94',  rgb: '244,63,94' },
+    { id: 'amber',    label: "Kahrabo",   main: '#f59e0b', dark: '#d97706', ok: '#22c55e', okRgb: '34,197,94',  rgb: '245,158,11' },
+    { id: 'cyan',     label: "Moviy",     main: '#06b6d4', dark: '#0891b2', ok: '#22c55e', okRgb: '34,197,94',  rgb: '6,182,212' },
+    { id: 'emerald',  label: "Zumrad",    main: '#10b981', dark: '#059669', ok: '#10b981', okRgb: '16,185,129', rgb: '16,185,129' },
+    { id: 'slate',    label: "Tun",       main: '#475569', dark: '#334155', ok: '#22c55e', okRgb: '34,197,94',  rgb: '71,85,105' },
+    { id: 'crimson',  label: "Qizil",     main: '#dc2626', dark: '#b91c1c', ok: '#22c55e', okRgb: '34,197,94',  rgb: '220,38,38' },
   ];
 
   // Apply visual preferences to <html> so all token-based styling reacts.
@@ -315,20 +296,26 @@ export default function Home() {
     root.dataset.density = density;
     if (appBg) root.style.setProperty('--app-bg', appBg);
     else root.style.removeProperty('--app-bg');
-    // Apply accent colors
-    const ap = ACCENT_PRESETS.find(p => p.id === accent) ?? ACCENT_PRESETS[0];
+    // Apply accent colors. A 'custom' accent derives its dark/rgb from the picked hex.
+    const preset = ACCENT_PRESETS.find(p => p.id === accent) ?? ACCENT_PRESETS[0];
+    const ap = accent === 'custom'
+      ? { main: customAccent, dark: shadeHexColor(customAccent, -0.18), ok: preset.ok, okRgb: preset.okRgb, rgb: hexToRgbChannels(customAccent) }
+      : preset;
     root.style.setProperty('--berry', ap.main);
     root.style.setProperty('--berry-dark', ap.dark);
     root.style.setProperty('--ok', ap.ok);
     root.style.setProperty('--ok-rgb', ap.okRgb);
     root.style.setProperty('--accent', ap.main);
     root.style.setProperty('--berry-rgb', ap.rgb);
+    // Drive the topbar band from the accent too, so a custom color truly applies everywhere.
+    root.style.setProperty('--header-bg', `linear-gradient(180deg, ${ap.main} 0%, ${ap.dark} 100%)`);
     localStorage.setItem('pref_theme', theme);
     localStorage.setItem('pref_density', density);
     localStorage.setItem('pref_bg', appBg);
     localStorage.setItem('pref_accent_v3', accent);
+    localStorage.setItem('pref_accent_custom', customAccent);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theme, density, appBg, accent]);
+  }, [theme, density, appBg, accent, customAccent]);
   const [unsaved, setUnsaved] = useState(false);
 const [manualOpen, setManualOpen] = useState(false);
   const [manual, setManual] = useState({
@@ -1459,7 +1446,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                         <th title={T('lbl_delivered')}>Status</th>
                         <th className="check" title="Chop etish uchun tanlash" style={{ whiteSpace: 'nowrap' }}>
                           <input type="checkbox"
-                            style={{ accentColor: '#46bf72', cursor: 'pointer' }}
+                            style={{ accentColor: 'var(--berry)', cursor: 'pointer' }}
                             checked={filteredInvoices.length > 0 && filteredInvoices.every(i => selected.has(i.invNo))}
                             onChange={(e) => {
                               if (e.target.checked) setSelected(new Set(filteredInvoices.map(i => i.invNo)));
@@ -1494,7 +1481,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                             <input
                               type="checkbox"
                               checked={selected.has(invoice.invNo)}
-                              style={{ accentColor: '#46bf72', cursor: 'pointer' }}
+                              style={{ accentColor: 'var(--berry)', cursor: 'pointer' }}
                               title="Chop uchun tanlash"
                               onChange={() => setSelected(prev => {
                                 const n = new Set(prev);
@@ -1873,7 +1860,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
 
                 {/* Upload zone — compact */}
-                <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', border: `2px dashed ${sapRaw ? '#46bf72' : 'rgba(var(--ink-rgb),0.15)'}`, borderRadius: 12, background: sapRaw ? 'rgba(70,191,114,0.06)' : 'rgba(var(--ink-rgb),0.02)', cursor: 'pointer' }}>
+                <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', border: `2px dashed ${sapRaw ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.15)'}`, borderRadius: 12, background: sapRaw ? 'rgba(var(--berry-rgb),0.06)' : 'rgba(var(--ink-rgb),0.02)', cursor: 'pointer' }}>
                   <input type="file" accept=".xls,.xlsx" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
@@ -1893,11 +1880,11 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       } catch { showToast('err', "Faylni o'qishda xatolik"); }
                     }}
                   />
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: sapRaw ? 'rgba(70,191,114,0.15)' : 'rgba(var(--ink-rgb),0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: sapRaw ? 'rgba(var(--berry-rgb),0.15)' : 'rgba(var(--ink-rgb),0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <ExcelIcon size={22} />
                   </div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: sapRaw ? '#46bf72' : 'var(--ink)' }}>{sapRaw ? '✓ Fayl yuklandi' : 'Excel faylni tanlang'}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: sapRaw ? 'var(--berry)' : 'var(--ink)' }}>{sapRaw ? '✓ Fayl yuklandi' : 'Excel faylni tanlang'}</div>
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>.xls yoki .xlsx formatda</div>
                   </div>
                   {xlsSheets.length > 1 && (
@@ -1945,7 +1932,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     if (!sessionSuffix.trim()) { showToast('err', 'Sessiya nomini kiriting!'); return; }
                     generateInvoices();
                   }}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, border: 'none', cursor: busy || !sapRaw || !sessionSuffix.trim() ? 'not-allowed' : 'pointer', opacity: busy || !sapRaw || !sessionSuffix.trim() ? 0.45 : 1, background: 'linear-gradient(135deg, #46bf72 0%, #2ea855 100%)', color: '#fff', boxShadow: sapRaw && sessionSuffix.trim() ? '0 4px 12px rgba(70,191,114,0.35)' : 'none' }}>
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, border: 'none', cursor: busy || !sapRaw || !sessionSuffix.trim() ? 'not-allowed' : 'pointer', opacity: busy || !sapRaw || !sessionSuffix.trim() ? 0.45 : 1, background: 'linear-gradient(135deg, var(--berry) 0%, var(--berry-dark) 100%)', color: '#fff', boxShadow: sapRaw && sessionSuffix.trim() ? '0 4px 12px rgba(var(--berry-rgb),0.35)' : 'none' }}>
                     <FileText size={15} /> Buyurtma yuklash
                   </button>
                   <button type="button" disabled={busy || !invoices.length || !sessionSuffix.trim()} onClick={() => saveCurrentSession()}
@@ -2385,6 +2372,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     <button type="button" className={density === 'compact' ? 'on' : ''} onClick={() => setDensity('compact')}>{T('pref_compact')}</button>
                     <button type="button" className={density === 'cozy' ? 'on' : ''} onClick={() => setDensity('cozy')}>{T('pref_cozy')}</button>
                     <button type="button" className={density === 'comfortable' ? 'on' : ''} onClick={() => setDensity('comfortable')}>{T('pref_comfortable')}</button>
+                    <button type="button" className={density === 'spacious' ? 'on' : ''} onClick={() => setDensity('spacious')}>{T('pref_spacious')}</button>
                   </div>
                 </div>
 
@@ -2414,6 +2402,52 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                         <span style={{ fontSize: 11, fontWeight: 600, color: accent === ap.id ? ap.main : 'var(--muted)', whiteSpace: 'nowrap' }}>{ap.label}</span>
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                <div className="prefCard">
+                  <h3>{T('pref_custom_color')}</h3>
+                  <p className="prefHint">{T('pref_custom_color_hint')}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+                    <label
+                      style={{
+                        position: 'relative', width: 52, height: 52, borderRadius: 14, cursor: 'pointer',
+                        background: customAccent, flexShrink: 0,
+                        border: accent === 'custom' ? '3px solid var(--ink)' : '2px solid var(--border)',
+                        boxShadow: accent === 'custom' ? `0 4px 14px ${customAccent}55` : 'none',
+                      }}
+                      title={T('pref_custom_color')}
+                    >
+                      <input
+                        type="color"
+                        value={/^#[0-9a-fA-F]{6}$/.test(customAccent) ? customAccent : '#0e5fbf'}
+                        onChange={(e) => { setCustomAccent(e.target.value); setAccent('custom'); }}
+                        style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                      />
+                    </label>
+                    <input
+                      type="text"
+                      value={customAccent}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCustomAccent(v);
+                        if (/^#[0-9a-fA-F]{6}$/.test(v)) setAccent('custom');
+                      }}
+                      placeholder="#0e5fbf"
+                      maxLength={7}
+                      style={{ width: 110, padding: '9px 12px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--mono)', fontSize: 14, textTransform: 'lowercase' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAccent('custom')}
+                      style={{
+                        padding: '9px 16px', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                        border: 'none', color: '#fff',
+                        background: accent === 'custom' ? 'var(--berry-dark)' : 'var(--berry)',
+                      }}
+                    >
+                      {accent === 'custom' ? '✓ ' + T('pref_applied') : T('pref_apply')}
+                    </button>
                   </div>
                 </div>
 
@@ -2930,7 +2964,7 @@ function LoginScreen({
       <section className="login-split-form" style={{ flex: '0 0 420px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 52px', background: 'var(--surface)' }}>
         {/* Logo */}
         <div style={{ marginBottom: 36, textAlign: 'center' }}>
-          <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #46bf72, #2ea855)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 auto 12px', boxShadow: '0 8px 24px rgba(70,191,114,0.35)' }}>GT</div>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, var(--berry), var(--berry-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 auto 12px', boxShadow: '0 8px 24px rgba(var(--berry-rgb),0.35)' }}>GT</div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Добро пожаловать</h1>
           <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Введите свои учётные данные</p>
         </div>
@@ -2960,7 +2994,7 @@ function LoginScreen({
           </div>
 
           <button type="submit" disabled={busy}
-            style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 15, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1, background: 'linear-gradient(135deg, #46bf72 0%, #2ea855 100%)', color: '#fff', boxShadow: '0 4px 16px rgba(70,191,114,0.35)', transition: 'all 0.2s', width: '100%' }}>
+            style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 15, border: 'none', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1, background: 'linear-gradient(135deg, var(--berry) 0%, var(--berry-dark) 100%)', color: '#fff', boxShadow: '0 4px 16px rgba(var(--berry-rgb),0.35)', transition: 'all 0.2s', width: '100%' }}>
             <Shield size={17} /> Войти
           </button>
         </form>
@@ -2968,110 +3002,62 @@ function LoginScreen({
         {toast && <div className={`toast ${toast.kind}`} style={{ marginTop: 20, width: '100%' }}>{toast.text}</div>}
       </section>
 
-      {/* RIGHT: brand panel */}
-      <section className="login-split-brand" style={{ flex: 1, background: 'linear-gradient(160deg, #0f5c30 0%, #1a8c44 60%, #25b857 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 48px', position: 'relative', overflow: 'hidden', gap: 28 }}>
-        {/* Deco blobs */}
-        <div style={{ position: 'absolute', top: -120, right: -120, width: 400, height: 400, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
-        <div style={{ position: 'absolute', bottom: -100, left: -100, width: 320, height: 320, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
+      {/* RIGHT: brand panel — accent-driven hero (follows the chosen color) */}
+      <section className="login-split-brand" style={{ flex: 1, background: 'linear-gradient(150deg, var(--berry-dark) 0%, var(--berry) 55%, color-mix(in srgb, var(--berry) 78%, white) 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '56px 60px', position: 'relative', overflow: 'hidden', gap: 0 }}>
+        {/* Decorative depth: soft blobs + dotted grid */}
+        <div aria-hidden style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px)', backgroundSize: '22px 22px', opacity: 0.5, pointerEvents: 'none' }} />
+        <div aria-hidden style={{ position: 'absolute', top: -160, right: -140, width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.16), transparent 70%)' }} />
+        <div aria-hidden style={{ position: 'absolute', bottom: -160, left: -120, width: 420, height: 420, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.10), transparent 70%)' }} />
 
-        {/* Title */}
-        <div style={{ textAlign: 'center', zIndex: 1 }}>
-          <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: '0 0 6px', letterSpacing: '-0.02em' }}>ГДЕ ТОРТ? — система управления</h2>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, margin: 0 }}>Накладные · аналитика · экспедиция · реестр</p>
+        <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 30 }}>
+          {/* Headline */}
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)', color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 18 }}>
+              <Shield size={13} /> Soliq · B2B savdo platformasi
+            </div>
+            <h2 style={{ color: '#fff', fontSize: 30, lineHeight: 1.15, fontWeight: 900, margin: 0, letterSpacing: '-0.025em' }}>ГДЕ ТОРТ?<br />система управления</h2>
+            <p style={{ color: 'rgba(255,255,255,0.78)', fontSize: 14.5, margin: '12px 0 0', maxWidth: 400 }}>Накладные, аналитика, экспедиция и реестр — в одном месте, в реальном времени.</p>
+          </div>
+
+          {/* Feature cards (glass) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {[
+              { icon: <FileText size={18} />,   title: 'Накладные',   sub: 'Avtomatik shakllantirish' },
+              { icon: <BarChart3 size={18} />,  title: 'Аналитика',   sub: 'Savdo · qaytarma · KPI' },
+              { icon: <Truck size={18} />,      title: 'Экспедиция',  sub: 'Marshrut · haydovchilar' },
+              { icon: <ClipboardList size={18} />, title: 'Реестр',   sub: 'Tarix · arxiv · hujjatlar' },
+            ].map((f) => (
+              <div key={f.title} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+                <div style={{ width: 38, height: 38, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.20)', color: '#fff' }}>{f.icon}</div>
+                <div>
+                  <div style={{ color: '#fff', fontWeight: 800, fontSize: 14.5 }}>{f.title}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.66)', fontSize: 11.5, marginTop: 2 }}>{f.sub}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* KPI highlight strip (glass) */}
+          <div style={{ display: 'flex', gap: 12 }}>
+            {[
+              { icon: <TrendingUp size={15} />, val: 'Real-time', lbl: "Ma'lumotlar" },
+              { icon: <Users size={15} />,      val: 'Multi-user', lbl: 'Rollar · audit' },
+            ].map((k) => (
+              <div key={k.lbl} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 14, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                <span style={{ color: '#fff', display: 'flex' }}>{k.icon}</span>
+                <div>
+                  <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>{k.val}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.62)', fontSize: 11 }}>{k.lbl}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Tech footer */}
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11.5, margin: 0 }}>
+            MongoDB · Next.js · NestJS — Asia/Tashkent
+          </p>
         </div>
-
-        {/* Stacked mockup screenshots */}
-        <div style={{ position: 'relative', width: '100%', maxWidth: 460, height: 340, zIndex: 1 }}>
-
-          {/* Back card — Statistika */}
-          <div style={{ position: 'absolute', top: 40, left: 30, width: 380, height: 240, background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', transform: 'rotate(-4deg)', overflow: 'hidden', opacity: 0.85 }}>
-            <div style={{ background: '#f8f8fa', borderBottom: '1px solid #eee', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#666', marginLeft: 6 }}>Statistika</div>
-            </div>
-            <div style={{ padding: '10px 12px' }}>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                {['970', '0', '970', '24 765 261'].map((v, i) => (
-                  <div key={i} style={{ flex: 1, background: i === 3 ? '#e8f5ee' : '#f5f5f5', borderRadius: 8, padding: '6px 8px' }}>
-                    <div style={{ fontSize: 7, color: '#999', marginBottom: 2 }}>{['KELDI','KAMAYDI','BERILDI','SUMMA'][i]}</div>
-                    <div style={{ fontSize: i === 3 ? 8 : 11, fontWeight: 800, color: i === 3 ? '#1a8c44' : '#111' }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-              {[['Где торт? "Орешки" 350г', '120', '2 904 000'],['Баурсак 365 kun, 350г','110','2 798 400'],['Где торт? Рогалик 300г','100','2 365 000'],['Чак-чак 365 kun, 300г','90','2 332 800']].map(([n,q,s]) => (
-                <div key={n} style={{ display: 'flex', gap: 6, padding: '4px 0', borderBottom: '1px solid #f0f0f0', alignItems: 'center' }}>
-                  <div style={{ flex: 1, fontSize: 8, color: '#333', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{n}</div>
-                  <div style={{ fontSize: 8, fontWeight: 700, color: '#1a8c44', width: 24, textAlign: 'right' }}>{q}</div>
-                  <div style={{ fontSize: 8, color: '#666', width: 52, textAlign: 'right' }}>{s}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Middle card — Ro'yxat */}
-          <div style={{ position: 'absolute', top: 20, left: 10, width: 390, height: 250, background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', transform: 'rotate(2deg)', overflow: 'hidden', opacity: 0.92 }}>
-            <div style={{ background: '#f8f8fa', borderBottom: '1px solid #eee', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#666', marginLeft: 6 }}>Hujjatlar ro'yxati — 75 ta</div>
-            </div>
-            <div style={{ padding: '8px 12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '32px 40px 1fr 60px 60px', gap: 4, fontSize: 7, fontWeight: 800, color: '#aaa', textTransform: 'uppercase', marginBottom: 6, paddingBottom: 4, borderBottom: '2px solid #eee' }}>
-                <span>St.</span><span>№</span><span>Market</span><span style={{ textAlign:'right' }}>Dona</span><span style={{ textAlign:'right' }}>Jami</span>
-              </div>
-              {[['16301','Mercato /1','20','478 500'],['16302','Mercato /2','15','326 880'],['16303','Alayskiy /1','40','1 055 999'],['16304','Uchtepa /1','40','1 160 500'],['16305','Shedevr /1','10','241 999']].map(([no,m,d,s]) => (
-                <div key={no} style={{ display: 'grid', gridTemplateColumns: '32px 40px 1fr 60px 60px', gap: 4, padding: '4px 0', borderBottom: '1px solid #f5f5f5', alignItems: 'center' }}>
-                  <div style={{ width: 14, height: 14, borderRadius: 7, background: '#28c840' }} />
-                  <div style={{ fontSize: 8, fontWeight: 800, color: '#e07b00' }}>{no}</div>
-                  <div style={{ fontSize: 8, color: '#333' }}>{m}</div>
-                  <div style={{ fontSize: 8, color: '#999', textAlign: 'right' }}>{d}</div>
-                  <div style={{ fontSize: 8, fontWeight: 700, color: '#111', textAlign: 'right' }}>{s}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Front card — Savdo analytics */}
-          <div style={{ position: 'absolute', top: 0, left: 0, width: 400, height: 260, background: '#fff', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
-            <div style={{ background: '#f8f8fa', borderBottom: '1px solid #eee', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} /><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#666', marginLeft: 6 }}>Analitika · Savdo</div>
-              <div style={{ marginLeft: 'auto', fontSize: 9, background: '#e8f5ee', color: '#1a8c44', borderRadius: 6, padding: '2px 8px', fontWeight: 700 }}>14.06 — 20.06.2026</div>
-            </div>
-            <div style={{ padding: '10px 12px' }}>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 10, padding: '8px 10px' }}>
-                  <div style={{ fontSize: 8, color: '#999', marginBottom: 3 }}>BERILGAN</div>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: '#111' }}>24 472 661</div>
-                </div>
-                <div style={{ flex: 1, background: '#fff4f4', borderRadius: 10, padding: '8px 10px' }}>
-                  <div style={{ fontSize: 8, color: '#999', marginBottom: 3 }}>QAYTARMA</div>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: '#e84a5f' }}>24 756 671</div>
-                </div>
-                <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 10, padding: '8px 10px' }}>
-                  <div style={{ fontSize: 8, color: '#999', marginBottom: 3 }}>SAVDO</div>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: '#111' }}>−284 011</div>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 70px 70px', gap: 4, fontSize: 7, fontWeight: 800, color: '#aaa', textTransform: 'uppercase', marginBottom: 4, paddingBottom: 4, borderBottom: '2px solid #eee' }}>
-                <span>SANA</span><span style={{textAlign:'right'}}>HUJJAT</span><span style={{textAlign:'right'}}>BERILGAN</span><span style={{textAlign:'right'}}>QAYTARMA</span><span style={{textAlign:'right'}}>SAVDO</span>
-              </div>
-              {[['16.06.2026','–','–','8 903 454','−8 903 454'],['17.06.2026','–','–','5 254 479','−5 254 479'],['20.06.2026','75','24 472 661','–','24 472 661']].map(([d,n,b,v,s]) => (
-                <div key={d} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 70px 70px', gap: 4, padding: '4px 0', borderBottom: '1px solid #f5f5f5' }}>
-                  <span style={{ fontSize: 8, color: '#555' }}>{d}</span>
-                  <span style={{ fontSize: 8, color: '#999', textAlign: 'right' }}>{n}</span>
-                  <span style={{ fontSize: 8, fontWeight: 700, color: '#111', textAlign: 'right' }}>{b}</span>
-                  <span style={{ fontSize: 8, color: '#e84a5f', textAlign: 'right' }}>{v}</span>
-                  <span style={{ fontSize: 8, fontWeight: 700, color: s.startsWith('−') ? '#e84a5f' : '#1a8c44', textAlign: 'right' }}>{s}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom tagline */}
-        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, margin: 0, zIndex: 1, textAlign: 'center' }}>
-          Barcha ma'lumotlar real vaqtda · MongoDB · Next.js · NestJS
-        </p>
       </section>
     </main>
   );
@@ -3153,7 +3139,7 @@ function SessionPicker({
           cursor: 'pointer', whiteSpace: 'nowrap',
           transition: 'border-color 0.15s',
         }}
-        onMouseOver={(e) => (e.currentTarget.style.borderColor = 'rgba(70,191,114,0.55)')}
+        onMouseOver={(e) => (e.currentTarget.style.borderColor = 'rgba(var(--berry-rgb),0.55)')}
         onMouseOut={(e) => (e.currentTarget.style.borderColor = 'rgba(var(--ink-rgb),0.12)')}
       >
         <span style={{ fontSize: 13 }}>📅</span>
@@ -3199,7 +3185,7 @@ function SessionPicker({
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     width: '100%', padding: '7px 14px', border: 'none', textAlign: 'left',
-                    background: active ? 'rgba(70,191,114,0.12)' : 'transparent',
+                    background: active ? 'rgba(var(--berry-rgb),0.12)' : 'transparent',
                     color: active ? 'var(--ok)' : 'var(--ink)',
                     fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
                     borderBottom: '1px solid rgba(var(--ink-rgb),0.05)',
@@ -3248,17 +3234,6 @@ function Empty({ title }: { title: string }) {
   );
 }
 
-function groupByDateKey<T>(items: T[], getDate: (item: T) => string): { dateKey: string; items: T[] }[] {
-  const map: Record<string, T[]> = {};
-  for (const item of items) {
-    const d = getDate(item);
-    if (!map[d]) map[d] = [];
-    map[d].push(item);
-  }
-  return Object.keys(map)
-    .sort((a, b) => b.localeCompare(a))
-    .map(dateKey => ({ dateKey, items: map[dateKey] }));
-}
 
 function DateGroupHeader({ dateKey, count, expanded, onToggle }: { dateKey: string; count: number; expanded: boolean; onToggle: () => void }) {
   const dayLabel = new Date(dateKey + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -3268,7 +3243,7 @@ function DateGroupHeader({ dateKey, count, expanded, onToggle }: { dateKey: stri
       <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{dayLabel}</span>
       {count > 1 && (
         <button type="button" onClick={onToggle}
-          style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'rgba(70,191,114,0.1)', border: 'none', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'rgba(var(--berry-rgb),0.1)', border: 'none', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
           <span style={{ display: 'inline-block', transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.18s' }}>›</span> {count} ta
         </button>
       )}
@@ -3525,21 +3500,6 @@ function DovHistory({ dovHistory, expandedDates, toggleDateGroup, setDovFields, 
   );
 }
 
-type HistoryEvent =
-  | { kind: 'nakl'; dateKey: string; data: import('@/types/domain').SessionSummary }
-  | { kind: 'dov';  dateKey: string; data: import('@/types/domain').DovEntry }
-  | { kind: 'qayt'; dateKey: string; data: import('@/types/domain').Invoice }
-  | { kind: 'vazt'; dateKey: string; data: import('@/types/domain').VazvratRecord };
-
-const KIND_STYLE: Record<string, { labelKey: string; color: string; bg: string }> = {
-  nakl: { labelKey: 'tarix_hujjat',      color: '#2563eb', bg: 'rgba(37,99,235,0.09)' },
-  dov:  { labelKey: 'tarix_ishonchnoma', color: '#7c3aed', bg: 'rgba(124,58,237,0.09)' },
-  qayt: { labelKey: 'tarix_qaytgan',     color: '#dc2626', bg: 'rgba(220,38,38,0.09)' },
-  vazt: { labelKey: 'tarix_qaytarma',    color: '#d97706', bg: 'rgba(217,119,6,0.09)' },
-};
-
-// ─── TarixPane: tabbed history ────────────────────────────────────────────────
-type TarixTab = 'nakl' | 'vazvrat' | 'zakas' | 'dov';
 
 function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazvratAllRows, orders, token,
   expandedDates, toggleDateGroup, loadSession, deleteSession, setDovFields, setDovSaved, setSettingsView,
@@ -4032,7 +3992,7 @@ function UnifiedHistory({ sessions, dovHistory, qaytganInvoices, vazvratRows, ex
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{dayLabel}</span>
               {multi && (
                 <button type="button" onClick={() => toggleDateGroup('uni-' + dateKey)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'rgba(70,191,114,0.1)', border: 'none', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'rgba(var(--berry-rgb),0.1)', border: 'none', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
                   <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.18s' }}>›</span> {items.length} ta
                 </button>
               )}
@@ -4130,6 +4090,9 @@ function AnalyticsPane({
   const [savdoBusy, setSavdoBusy] = useState(false);
   const [savdoUploading, setSavdoUploading] = useState(false);
   const [savdoTab, setSavdoTab] = useState<'kunlik' | 'dokonlar' | 'mahsulotlar'>('kunlik');
+  // Qaytarma (returns) report: sub-view + sortable column state.
+  const [qView, setQView] = useState<'product' | 'market' | 'pivot'>('product');
+  const [qSort, setQSort] = useState<{ key: 'name' | 'bQty' | 'bSum' | 'rSum' | 'rQty' | 'rate'; dir: 'asc' | 'desc' }>({ key: 'rate', dir: 'desc' });
 
   // ─── Session-based invoices: FAQAT Tarixda saqlangan sessionlardan ─────────
   const [sessionInvoices, setSessionInvoices] = useState<Invoice[]>([]);
@@ -4434,19 +4397,27 @@ function AnalyticsPane({
 
       {/* ── FREEZE: Statistika header — KPI chips + Mahsulot/Market toggle ── */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid rgba(var(--ink-rgb),0.08)', paddingBottom: 10, marginBottom: 0 }}>
-        {/* Row 1: Title + KPI chips */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-          <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.01em', marginRight: 4 }}>Statistika</span>
+        {/* Row 1: Title + KPI summary cards (savdo + returns report up front) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <BarChart3 size={17} style={{ color: 'var(--berry)' }} />
+          <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.01em' }}>Analitika</span>
+          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{savdoFrom} — {savdoTo}</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
           {[
-            { label: 'KELDI',         val: aBuyurtmaDona,  color: 'var(--ink)' },
-            { label: 'KAMAYDI',       val: aKamaydiDona,   color: aKamaydiDona > 0 ? '#d97706' : 'var(--ink)' },
-            { label: 'BERILDI',       val: aBerildiDona,   color: 'var(--ok)' },
-            { label: 'ZAKAZ SUMMA',   val: aBuyurtmaSum,   color: 'var(--ink)', sum: true },
-            { label: 'BERILGAN SUMMA',val: aBerildiSum,    color: 'var(--ok)', sum: true },
+            { label: 'Zakaz · keldi', dona: aBuyurtmaDona, sum: aBuyurtmaSum, accent: 'var(--berry)',  icon: <ClipboardList size={14} /> },
+            { label: 'Berilgan',      dona: aBerildiDona,  sum: aBerildiSum,  accent: '#16a34a',       icon: <TrendingUp size={14} /> },
+            { label: 'Qaytarma',      dona: aQaytarmaDona, sum: aQaytarmaSum, accent: '#dc2626',       icon: <RefreshCcw size={14} /> },
+            { label: 'Sof savdo',     dona: aSavdoDona,    sum: aSavdoSum,    accent: aSavdoSum < 0 ? '#dc2626' : '#16a34a', icon: <BarChart3 size={14} /> },
           ].map(k => (
-            <div key={k.label} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.1)', borderRadius: 8, padding: '4px 10px' }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</span>
-              <span style={{ fontSize: 13, fontWeight: 800, color: k.color, fontFamily: 'var(--mono)', letterSpacing: '-0.01em' }}>{fmt0(k.val)}</span>
+            <div key={k.label} style={{ position: 'relative', overflow: 'hidden', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '12px 14px', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: k.accent }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: k.accent, marginBottom: 6 }}>
+                {k.icon}
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k.label}</span>
+              </div>
+              <div style={{ fontSize: 19, fontWeight: 900, color: k.accent, fontFamily: 'var(--mono)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>{fmt0(k.sum)}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3, fontWeight: 600 }}>{fmt0(k.dona)} dona</div>
             </div>
           ))}
         </div>
@@ -4728,100 +4699,189 @@ function AnalyticsPane({
           const d = v.date.slice(0, 10);
           return (!from || d >= from) && (!to || d <= to);
         });
-        const markets  = [...new Set(filtered.map(v => v.marketName || v.marketCode))].sort();
-        type PCell = { qty: number; sum: number };
-        const pivot: Record<string, Record<string, PCell>> = {};
-        const colTotals: Record<string, PCell> = {};
-        const rowTotals: Record<string, PCell> = {};
-        let grandQty = 0; let grandSum = 0;
-        for (const v of filtered) {
-          const p = v.productName; const m = v.marketName || v.marketCode;
-          if (!pivot[p]) pivot[p] = {};
-          if (!pivot[p][m]) pivot[p][m] = { qty: 0, sum: 0 };
-          pivot[p][m].qty += v.qty; pivot[p][m].sum += v.totalWithVat;
-          if (!rowTotals[p]) rowTotals[p] = { qty: 0, sum: 0 };
-          rowTotals[p].qty += v.qty; rowTotals[p].sum += v.totalWithVat;
-          if (!colTotals[m]) colTotals[m] = { qty: 0, sum: 0 };
-          colTotals[m].qty += v.qty; colTotals[m].sum += v.totalWithVat;
-          grandQty += v.qty; grandSum += v.totalWithVat;
-        }
-        // Sort products by total qty descending
-        const products = [...new Set(filtered.map(v => v.productName))]
-          .sort((a, b) => (rowTotals[b]?.qty ?? 0) - (rowTotals[a]?.qty ?? 0));
-        const thS: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
-        const tdS: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
-        const PROD_W = 220;
-        const stCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: PROD_W, maxWidth: 300, willChange: 'transform' };
+
+        // ── Per-product report: server pre-joined berilgan vs vazvrat per SKU ──
+        const prodRows = savdoAnalytics
+          .map(r => ({
+            name: r.name || r.sku,
+            bQty: r.berilganQty, bSum: r.berilganSum,
+            rQty: r.vazvratQty,  rSum: r.vazvratSum,
+            rate: r.berilganSum > 0 ? (r.vazvratSum / r.berilganSum) * 100 : (r.vazvratSum > 0 ? 100 : 0),
+          }))
+          .filter(r => r.rQty > 0 || r.bQty > 0);
+
+        // ── Per-market report: vazvrat by market + berilgan matched by normalized name ──
+        // Normalize market names across sources: drop chain prefix + trailing store-number suffix (/1, /2),
+        // so invoice "Turkmenskiy /1" matches vazvrat "Korzinka - Turkmenskiy".
+        const norm = (s: string) => (s || '').toLowerCase().replace(/korzinka|супермаркет|магазин/gi, '').replace(/\/\s*\d+\s*$/, '').replace(/[^a-zа-я0-9]/gi, '').trim();
+        const bByMarket: Record<string, { qty: number; sum: number }> = {};
+        filteredMarkets.forEach(m => {
+          const k = norm(m.label);
+          if (!bByMarket[k]) bByMarket[k] = { qty: 0, sum: 0 };
+          bByMarket[k].qty += m.qty; bByMarket[k].sum += m.sum;
+        });
+        const mktRows = vazvratByMarket.map(m => {
+          const b = bByMarket[norm(m.name)] || { qty: 0, sum: 0 };
+          return { name: m.name, bQty: b.qty, bSum: b.sum, rQty: m.qty, rSum: m.total, rate: b.sum > 0 ? (m.total / b.sum) * 100 : -1 };
+        });
+
+        const totBerilgan = prodRows.reduce((s, r) => s + r.bSum, 0);
+        const totQaytarma = filtered.reduce((s, v) => s + v.totalWithVat, 0);
+        const totQaytarmaQty = filtered.reduce((s, v) => s + v.qty, 0);
+        const overallRate = totBerilgan > 0 ? (totQaytarma / totBerilgan) * 100 : 0;
+        const markets  = [...new Set(filtered.map(v => v.marketName || v.marketCode))];
+        const products = [...new Set(filtered.map(v => v.productName))];
+
+        const rateColor = (r: number) => r < 0 ? 'var(--muted)' : r >= 15 ? '#dc2626' : r >= 5 ? '#d97706' : '#16a34a';
+        const rateBg    = (r: number) => r < 0 ? 'transparent' : r >= 15 ? 'rgba(220,38,38,0.10)' : r >= 5 ? 'rgba(217,119,6,0.10)' : 'rgba(22,163,74,0.10)';
+
+        const rows = (qView === 'market' ? mktRows : prodRows);
+        const sorted = [...rows].sort((a, b) => {
+          const dir = qSort.dir === 'asc' ? 1 : -1;
+          if (qSort.key === 'name') return a.name.localeCompare(b.name) * dir;
+          return (((a as unknown as Record<string, number>)[qSort.key] ?? 0) - ((b as unknown as Record<string, number>)[qSort.key] ?? 0)) * dir;
+        });
+        const setSort = (key: typeof qSort.key) => setQSort(p => p.key === key ? { key, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' });
+        const arrow = (key: string) => qSort.key === key ? (qSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+
         const kpi = [
-          { label: 'JAMI QAYTARMA', value: `${grandQty} dona`, sub: fmt0(grandSum) + ' so\'m', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
-          { label: 'MAHSULOT TURLARI', value: products.length, sub: 'xil tovar', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
-          { label: 'MARKETLAR', value: markets.length, sub: 'ta do\'kon', color: '#0891b2', bg: 'rgba(8,145,178,0.08)' },
-          { label: 'YOZUVLAR', value: filtered.length, sub: 'ta qayd', color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+          { label: 'Jami qaytarma', value: fmt0(totQaytarma), sub: `${fmt0(totQaytarmaQty)} dona`, accent: '#d97706', icon: <RefreshCcw size={14} /> },
+          { label: 'Qaytarma foizi', value: overallRate.toFixed(1) + '%', sub: 'berilgandan', accent: rateColor(overallRate), icon: <TrendingUp size={14} /> },
+          { label: 'Marketlar', value: String(markets.length), sub: "ta do'kon", accent: '#0891b2', icon: <MapIcon size={14} /> },
+          { label: 'Mahsulot turlari', value: String(products.length), sub: 'xil tovar', accent: '#7c3aed', icon: <FileText size={14} /> },
         ];
+
+        const thBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', fontWeight: 800, color: 'inherit', padding: 0, whiteSpace: 'nowrap' };
+
         return (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' }}>
-            <div className="qaytarma-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, flexShrink: 0 }}>
+            {/* KPI cards */}
+            <div className="qaytarma-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, flexShrink: 0 }}>
               {kpi.map(k => (
-                <div key={k.label} style={{ padding: '10px 14px', borderRadius: 12, background: k.bg, border: `1px solid ${k.color}33`, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: k.color, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{k.label}</span>
-                    <span style={{ fontSize: 22, fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.value}</span>
-                    <span style={{ fontSize: 10, color: k.color, opacity: 0.65, whiteSpace: 'nowrap' }}>{k.sub}</span>
+                <div key={k.label} style={{ position: 'relative', overflow: 'hidden', padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+                  <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: k.accent }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: k.accent, marginBottom: 5 }}>
+                    {k.icon}
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</span>
                   </div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: k.accent, fontFamily: 'var(--mono)', lineHeight: 1.05 }}>{k.value}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontWeight: 600 }}>{k.sub}</div>
                 </div>
               ))}
             </div>
-            {products.length === 0 ? <Empty title="Sana oralig'ida qaytarma yo'q" /> : (
-              <div style={{ flex: 1, overflowX: 'auto', overflowY: 'auto', borderRadius: 12, border: '1px solid rgba(var(--ink-rgb),0.09)' }}>
-                <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: 12 }}>
-                  <thead style={{ position: 'sticky', top: 0, zIndex: 15 }}>
-                    <tr>
-                      <th style={{ ...thS, ...stCol, zIndex: 25, background: 'var(--surface)', borderRight: '2px solid rgba(var(--ink-rgb),0.25)', overflow: 'hidden' }}>Mahsulot</th>
-                      {markets.map(m => {
-                        const short = m.replace(/^Korzinka\s*[-–]\s*/i,'').replace(/^Супермаркет\s*/i,'').replace(/^Магазин\s*/i,'');
-                        return (
-                          <th key={m} title={m} style={{ padding:'8px 6px', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'var(--ink)', background:'var(--surface)', border:'none', borderBottom:'1px solid rgba(var(--ink-rgb),0.15)', borderRight:'1px solid rgba(var(--ink-rgb),0.08)', textAlign:'center', verticalAlign:'middle' }}>
-                            {short}
-                          </th>
-                        );
-                      })}
-                      <th style={{ padding:'8px 10px', whiteSpace:'nowrap', fontSize:11, fontWeight:700, color:'#d97706', background:'#fffbf0', border:'none', borderBottom:'1px solid rgba(var(--ink-rgb),0.15)', borderLeft:'2px solid #e8a825', textAlign:'center', verticalAlign:'middle' }}>
-                        Jami
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((p, pi) => {
-                      const bg0 = 'var(--surface)';
-                      const bg1 = 'var(--surface-hi, #1d2737)';
-                      const rt = rowTotals[p] ?? { qty:0, sum:0 };
-                      return (
-                        <tr key={p} style={{ background: pi%2===0 ? bg0 : bg1 }}>
-                          <td style={{ ...tdS, ...stCol, background: pi%2===0 ? bg0 : bg1, borderRight: '2px solid rgba(var(--ink-rgb),0.2)', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.3, padding: '6px 10px' }}>{p}</td>
-                          {markets.map(m => { const c=pivot[p]?.[m]; return (
-                            <td key={m} style={{ ...tdS, color: c ? 'var(--ink)' : 'rgba(var(--ink-rgb),0.15)' }} title={c ? `${c.qty} dona · ${fmt0(c.sum)} so'm` : '—'}>{c ? c.qty : '—'}</td>
-                          );})}
-                          <td style={{ ...tdS, fontWeight:800, color:'#d97706', borderLeft:'2px solid #e8a825', background:'#fffbf0', minWidth:90 }} title={`${rt.qty} dona · ${fmt0(rt.sum)} so'm`}>
-                            {rt.qty} <span style={{ fontSize:10, fontWeight:400, color:'rgba(217,119,6,0.7)' }}>({fmt0(rt.sum)})</span>
+
+            {/* Sub-view toggle */}
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0, overflowX: 'auto', paddingBottom: 2 }}>
+              {([['product', '📦 Mahsulot bo‘yicha'], ['market', '🏪 Market bo‘yicha'], ['pivot', '▦ Pivot jadval']] as const).map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setQView(id)}
+                  style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                    border: '1.5px solid', borderColor: qView === id ? '#d97706' : 'var(--border)',
+                    background: qView === id ? 'rgba(217,119,6,0.10)' : 'var(--surface)', color: qView === id ? '#b45309' : 'var(--ink)' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Report: product / market (sortable) */}
+            {(qView === 'product' || qView === 'market') && (
+              sorted.length === 0 ? <Empty title="Sana oralig‘ida qaytarma yo‘q" /> : (
+                <div style={{ flex: 1, overflow: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
+                  {(() => {
+                    const fBerQty = sorted.reduce((s, r) => s + (r.bQty || 0), 0);
+                    const fBerSum = sorted.reduce((s, r) => s + (r.bSum || 0), 0);
+                    const fRetQty = sorted.reduce((s, r) => s + (r.rQty || 0), 0);
+                    const fRetSum = sorted.reduce((s, r) => s + (r.rSum || 0), 0);
+                    const fRate = fBerSum > 0 ? (fRetSum / fBerSum) * 100 : -1;
+                    const num: React.CSSProperties = { textAlign: 'right', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' };
+                    return (
+                  <table className="data" style={{ borderCollapse: 'collapse', width: '100%', minWidth: 680, fontSize: 12.5 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ position: 'sticky', left: 0, zIndex: 2, textAlign: 'left', minWidth: 160, maxWidth: 280 }}>
+                          <button type="button" style={thBtn} onClick={() => setSort('name')}>{qView === 'market' ? 'Market' : 'Mahsulot'}{arrow('name')}</button>
+                        </th>
+                        <th style={{ textAlign: 'right' }}><button type="button" style={thBtn} onClick={() => setSort('bQty')}>Berilgan dona{arrow('bQty')}</button></th>
+                        <th style={{ textAlign: 'right' }}><button type="button" style={thBtn} onClick={() => setSort('bSum')}>Berilgan summa{arrow('bSum')}</button></th>
+                        <th style={{ textAlign: 'right' }}><button type="button" style={thBtn} onClick={() => setSort('rQty')}>Qaytdi dona{arrow('rQty')}</button></th>
+                        <th style={{ textAlign: 'right' }}><button type="button" style={thBtn} onClick={() => setSort('rSum')}>Qaytarma summa{arrow('rSum')}</button></th>
+                        <th style={{ textAlign: 'right', minWidth: 88 }}><button type="button" style={thBtn} onClick={() => setSort('rate')}>Foiz %{arrow('rate')}</button></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.map((r, i) => (
+                        <tr key={r.name + i}>
+                          <td style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', fontWeight: 600, maxWidth: 280, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.name}>{r.name}</td>
+                          <td style={{ ...num, color: 'var(--ink-2)' }}>{r.bQty > 0 ? fmt0(r.bQty) : '—'}</td>
+                          <td style={{ ...num, color: 'var(--ink-2)' }}>{r.bSum > 0 ? fmt0(r.bSum) : '—'}</td>
+                          <td style={num}>{fmt0(r.rQty)}</td>
+                          <td style={{ ...num, fontWeight: 700, color: '#d97706' }}>{fmt0(r.rSum)}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <span style={{ display: 'inline-block', minWidth: 50, padding: '2px 8px', borderRadius: 999, fontWeight: 800, fontFamily: 'var(--mono)', fontSize: 11.5, color: rateColor(r.rate), background: rateBg(r.rate) }}>
+                              {r.rate < 0 ? '—' : r.rate.toFixed(1) + '%'}
+                            </span>
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot style={{ position:'sticky', bottom:0, zIndex:15 }}>
-                    <tr style={{ borderTop:'2px solid rgba(var(--ink-rgb),0.12)' }}>
-                      <td style={{ ...tdS, ...stCol, background:'var(--surface)', fontWeight:700, zIndex:25, borderRight:'2px solid rgba(var(--ink-rgb),0.2)' }}>Jami</td>
-                      {markets.map(m => { const ct=colTotals[m]??{qty:0,sum:0}; return (
-                        <td key={m} style={{ ...tdS, fontWeight:700, background:'#fffbf0', color:'#d97706' }} title={`${ct.qty} dona · ${fmt0(ct.sum)} so'm`}>{ct.qty}</td>
-                      );})}
-                      <td style={{ ...tdS, fontWeight:800, background:'#fff3d0', color:'#d97706', borderLeft:'2px solid #e8a825' }}>
-                        {grandQty} <span style={{ fontSize:10, fontWeight:400 }}>({fmt0(grandSum)})</span>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ fontWeight: 800 }}>
+                        <td style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', background: 'var(--surface-hi)' }}>Jami</td>
+                        <td style={{ ...num, background: 'var(--surface-hi)' }}>{fBerQty > 0 ? fmt0(fBerQty) : '—'}</td>
+                        <td style={{ ...num, background: 'var(--surface-hi)' }}>{fBerSum > 0 ? fmt0(fBerSum) : '—'}</td>
+                        <td style={{ ...num, background: 'var(--surface-hi)' }}>{fmt0(fRetQty)}</td>
+                        <td style={{ ...num, color: '#d97706', background: 'var(--surface-hi)' }}>{fmt0(fRetSum)}</td>
+                        <td style={{ ...num, color: rateColor(fRate), background: 'var(--surface-hi)' }}>{fRate < 0 ? '—' : fRate.toFixed(1) + '%'}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                    );
+                  })()}
+                </div>
+              )
             )}
+
+            {/* Pivot matrix (product × market) */}
+            {qView === 'pivot' && (() => {
+              const pivot: Record<string, Record<string, number>> = {};
+              const rowT: Record<string, number> = {}; const colT: Record<string, number> = {};
+              let gQty = 0;
+              for (const v of filtered) {
+                const p = v.productName; const m = v.marketName || v.marketCode;
+                (pivot[p] ??= {})[m] = (pivot[p][m] || 0) + v.qty;
+                rowT[p] = (rowT[p] || 0) + v.qty; colT[m] = (colT[m] || 0) + v.qty; gQty += v.qty;
+              }
+              const mk = [...markets].sort();
+              const pr = [...products].sort((a, b) => (rowT[b] || 0) - (rowT[a] || 0));
+              return pr.length === 0 ? <Empty title="Sana oralig‘ida qaytarma yo‘q" /> : (
+                <div style={{ flex: 1, overflow: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <table className="data matrix" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        <th className="productcol" style={{ position: 'sticky', left: 0, zIndex: 3, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>Mahsulot</th>
+                        {mk.map(m => <th key={m} title={m} style={{ whiteSpace: 'nowrap' }}>{m.replace(/^Korzinka\s*[-–]\s*/i, '')}</th>)}
+                        <th style={{ color: '#d97706', whiteSpace: 'nowrap' }}>Jami</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pr.map(p => (
+                        <tr key={p}>
+                          <td className="productcol" style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p}>{p}</td>
+                          {mk.map(m => { const c = pivot[p]?.[m]; return <td key={m} style={{ textAlign: 'center', color: c ? 'var(--ink)' : 'var(--ink-3)' }}>{c || '—'}</td>; })}
+                          <td style={{ textAlign: 'center', fontWeight: 800, color: '#d97706' }}>{rowT[p] || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ fontWeight: 800 }}>
+                        <td className="productcol" style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>Jami</td>
+                        {mk.map(m => <td key={m} style={{ textAlign: 'center', color: '#d97706' }}>{colT[m] || 0}</td>)}
+                        <td style={{ textAlign: 'center', color: '#d97706' }}>{gQty}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
@@ -5460,19 +5520,9 @@ function DocMeta({ label, value }: { label: string; value: string }) {
   );
 }
 
-function updateCatalogDraft(
-  current: CatalogProduct[],
-  index: number,
-  patch: Partial<CatalogProduct>
-): CatalogProduct[] {
-  return current.map((product, productIndex) => (productIndex === index ? { ...product, ...patch } : product));
-}
 
 // ─── Reusable date range picker with presets ──────────────────────────────────
 // ─── Calendar localization ────────────────────────────────────────────────
-const MONTHS_UZ_FULL = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
-const MONTHS_UZ_SHORT = ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','Okt','Noy','Dek'];
-const WEEKDAYS_UZ = ['Du','Se','Ch','Pa','Ju','Sh','Ya'];
 
 function CalIcon({ size = 15 }: { size?: number }) {
   return (
@@ -5649,247 +5699,7 @@ function ExcelIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-function getError(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
-  if (error instanceof Error) return error.message;
-  return 'Неизвестная ошибка';
-}
 
-// ─── i18n ─────────────────────────────────────────────────────────────────────
-type Lang = 'uz' | 'ru' | 'en';
-const I18N: Record<Lang, Record<string, string | string[]>> = {
-  uz: {
-    // nav
-    nav_orders:'Buyurtmalar', nav_register:"Ro'yxat", nav_matrix:'Jadval',
-    nav_docs:'Hujjatlar', nav_dispatch:'Marshrut', nav_schedule:'Grafik',
-    nav_stats:'Statistika', nav_ops:'Operatsiyalar', nav_clients:'Mijozlar',
-    nav_analytics:'Statistika', nav_settings:'Sozlamalar',
-    nav_preferences:'Shaxsiy',
-    pref_bg:"Orqa fon", pref_bg_hint:"Oq yoki boshqa açiq rang", pref_bg_custom:"O'z rangim", pref_reset:'Tiklash',
-    pref_density:'Zichlik', pref_density_hint:"Qatorlar va elementlar orasidagi masofa",
-    pref_tight:'Eng ixcham', pref_compact:'Ixcham', pref_cozy:"O'rtacha", pref_comfortable:'Keng',
-    pref_accent:"Rang uslubi", pref_accent_hint:"Tugmalar va asosiy elementlar rangi",
-    pref_lang:'Til', pref_lang_hint:'Interfeys tili',
-    // topbar
-    lbl_invoices:'hujjat', lbl_pcs:'dona', lbl_sum:"so'm", lbl_unsaved:'saqlanmagan',
-    lbl_logout:'Chiqish', lbl_store:'Market', lbl_driver:'Haydovchi',
-    lbl_print:'Chop etish', lbl_save:'Saqlash', lbl_add:"Qo'shish",
-    lbl_cancel:'Bekor', lbl_date:'Sana', lbl_order:'Buyurtma',
-    lbl_product:'Mahsulot', lbl_unit:'Birlik', lbl_qty:'Miqdor',
-    lbl_price:'Narx', lbl_total:'Jami', lbl_vat:'QQS',
-    lbl_delivered:'Yetkazildi', lbl_selected:'Tanlangan', lbl_restore:'Tiklash', lbl_delete:"O'chirish",
-    // pane titles/meta
-    reg_title:"Hujjatlar ro'yxati", reg_empty:"Hujjat yo'q",
-    reg_meta_docs:'hujjat', reg_manual:'Qo\'lda',
-    matrix_title:'Miqdor matritsasi', hide_zeros:"Nollarni yashir",
-    matrix_product:'Mahsulot', matrix_total:'Jami',
-    docs_title:'Hujjatlar', docs_print_sel:'Tanlanganlarni chop',
-    docs_empty:'Avval hujjat shakllantiring',
-    sap_title:'SAP import', sap_meta_ready:'hujjat tayyor', sap_meta_empty:'Excel yukla',
-    sap_batch:'Partiya nomi',
-    ops_title:'Operatsiyalar', ops_orders:'Buyurtmalar', ops_moves:'Harakatlar',
-    ops_imports:'Importlar', ops_audit:'Audit',
-    ops_empty_orders:"Buyurtma yo'q", ops_empty_moves:"Harakat yo'q",
-    ops_empty_imports:"Import yo'q", ops_empty_audit:"Audit bo'sh",
-    ops_new_order:'Yangi buyurtma', ops_all_statuses:'Barcha statuslar',
-    ops_status_new:'Yangi', ops_status_prod:'Ishlab chiqarish',
-    ops_status_del:'Yetkazildi', ops_status_can:"Bekor qilindi",
-    ops_last_moves:'So\'nggi harakatlar',
-    clients_title:'Mijozlar', clients_meta:'mijoz', clients_empty:"Mijoz yo'q",
-    clients_name:'Nomi', clients_phone:'Telefon', clients_addr:'Manzil', clients_notes:'Izoh',
-    dispatch_title:'Marshrut', dispatch_empty:'Avval hujjat shakllantiring',
-    schedule_title:'Yetkazib berish jadvali',
-    schedule_upload:'Grafik yuklash', schedule_view_only:"Ko'rish rejimi",
-    stats_title:'Statistika', stats_invoices:'Hujjatlar',
-    stats_items:'Dona', stats_sum:'Summa', stats_avg:'O\'rtacha',
-    analytics_title:'Statistika',
-    settings_cat:'Mahsulotlar', settings_req:'Tafsilot',
-    settings_exc:'Istisno kunlar', settings_hist:'Tarix', settings_access:'Kirish',
-    settings_cat_title:'Mahsulotlar', settings_req_title:'Tafsilot',
-    settings_hist_title:'Sessiya tarixi', settings_users_title:'Foydalanuvchilar',
-    settings_supplier:'Yetkazib beruvchi', settings_receiver:'Qabul qiluvchi',
-    settings_contract:'Shartnoma',
-    modal_manual:'Qo\'lda hujjat', modal_order:'Yangi buyurtma', modal_client:'Yangi mijoz',
-    // tarix
-    tarix_hujjat:'Hujjatlar', tarix_qaytarma:'Qaytarma', tarix_buyurtma:'Buyurtma', tarix_ishonchnoma:'Ishonchnoma',
-    tarix_qaytgan:'Qaytgan',
-    tarix_load:'Yuklash', tarix_delete:"O'chirish",
-    tarix_restored:"tiklandi",
-    // pivot / qaytarma
-    pv_dan:'Dan', pv_gacha:'Gacha', pv_mahsulot:'Mahsulot', pv_jami:'Jami',
-    pv_kpi_qaytarma:'Jami qaytarma', pv_kpi_mahsulot:'Mahsulot turlari',
-    pv_kpi_market:'Marketlar', pv_kpi_kunlar:'Kunlar',
-    pv_xil_tovar:'xil tovar', pv_ta_dokon:"ta do'kon", pv_ta_yozuv:'ta yozuv', pv_dona:'dona',
-    pv_empty:"Qaytarma tarixi yo'q",
-    pv_upload_btn:'Qaytarma Excel',
-    pv_del_all:"Barcha qaytarma yozuvlarini o'chirish?",
-    pv_del_date:"sanasidagi barcha qaytarmalarni o'chirish?",
-    // dov
-    dov_save:'Saqlash', dov_saved:'Saqlandi ✓', dov_print:'Chop etish',
-    dov_del_confirm:"Bu ishonchnomani tarixdan o'chirmoqchimisiz?",
-    // days
-    days:['Du','Se','Ch','Pa','Ju','Sh','Ya'],
-    days_full:['Dushanba','Seshanba','Chorshanba','Payshanba','Juma','Shanba','Yakshanba'],
-  },
-  ru: {
-    nav_orders:'Заказы', nav_register:'Реестр', nav_matrix:'Таблица',
-    nav_docs:'Документы', nav_dispatch:'Маршрут', nav_schedule:'График',
-    nav_stats:'Статистика', nav_ops:'Операции', nav_clients:'Клиенты',
-    nav_analytics:'Аналитика', nav_settings:'Настройки',
-    nav_preferences:'Настройки',
-    pref_bg:'Фон', pref_bg_hint:'Белый или светлый цвет фона', pref_bg_custom:'Свой цвет', pref_reset:'Сбросить',
-    pref_density:'Плотность', pref_density_hint:'Расстояние между строками и элементами',
-    pref_tight:'Очень плотно', pref_compact:'Компактно', pref_cozy:'Обычно', pref_comfortable:'Просторно',
-    pref_accent:'Цветовой стиль', pref_accent_hint:'Цвет кнопок и основных элементов',
-    pref_lang:'Язык', pref_lang_hint:'Язык интерфейса',
-    lbl_invoices:'накл.', lbl_pcs:'шт', lbl_sum:'сум', lbl_unsaved:'не сохранено',
-    lbl_logout:'Выйти', lbl_store:'Магазин', lbl_driver:'Водитель',
-    lbl_print:'Печать', lbl_save:'Сохранить', lbl_add:'Добавить',
-    lbl_cancel:'Отмена', lbl_date:'Дата', lbl_order:'Заказ',
-    lbl_product:'Товар', lbl_unit:'Ед.', lbl_qty:'Кол-во',
-    lbl_price:'Цена', lbl_total:'С НДС', lbl_vat:'НДС',
-    lbl_delivered:'Доставлен', lbl_selected:'Выбрано', lbl_restore:'Восстановить', lbl_delete:'Удалить',
-    reg_title:'Реестр накладных', reg_empty:'Накладных пока нет',
-    reg_meta_docs:'документов', reg_manual:'Вручную',
-    matrix_title:'Матрица количества', hide_zeros:'Скрыть нули',
-    matrix_product:'Товар', matrix_total:'Итого',
-    docs_title:'Документы', docs_print_sel:'Печать выбранных',
-    docs_empty:'Сначала сформируйте накладные',
-    sap_title:'SAP импорт', sap_meta_ready:'накладных готово', sap_meta_empty:'Загрузите Excel',
-    sap_batch:'Название партии',
-    ops_title:'Операции', ops_orders:'Заказы', ops_moves:'Движения',
-    ops_imports:'Импорты', ops_audit:'Аудит',
-    ops_empty_orders:'Заказы отсутствуют', ops_empty_moves:'Движений нет',
-    ops_empty_imports:'Импортов нет', ops_empty_audit:'Аудит пуст',
-    ops_new_order:'Новый заказ', ops_all_statuses:'Все статусы',
-    ops_status_new:'Новый', ops_status_prod:'В производстве',
-    ops_status_del:'Доставлен', ops_status_can:'Отменён',
-    ops_last_moves:'Последние движения',
-    clients_title:'Клиенты', clients_meta:'клиентов', clients_empty:'Клиентов пока нет',
-    clients_name:'Имя', clients_phone:'Телефон', clients_addr:'Адрес', clients_notes:'Примечания',
-    dispatch_title:'Маршрут', dispatch_empty:'Сначала сформируйте накладные',
-    schedule_title:'График доставки',
-    schedule_upload:'Загрузить график', schedule_view_only:'Режим просмотра',
-    stats_title:'Статистика', stats_invoices:'Накладных',
-    stats_items:'Позиций', stats_sum:'Сумма', stats_avg:'Средний чек',
-    analytics_title:'Statistika',
-    settings_cat:'Каталог', settings_req:'Реквизиты',
-    settings_exc:'Исключения', settings_hist:'История', settings_access:'Доступ',
-    settings_cat_title:'Каталог товаров', settings_req_title:'Реквизиты',
-    settings_hist_title:'История сессий', settings_users_title:'Пользователи',
-    settings_supplier:'Поставщик', settings_receiver:'Получатель',
-    settings_contract:'Договор',
-    modal_manual:'Накладная вручную', modal_order:'Новый заказ', modal_client:'Новый клиент',
-    // tarix
-    tarix_hujjat:'Документы', tarix_qaytarma:'Возвраты', tarix_buyurtma:'Заказы', tarix_ishonchnoma:'Доверенность',
-    tarix_qaytgan:'Возврат',
-    tarix_load:'Загрузить', tarix_delete:'Удалить',
-    tarix_restored:'восстановлен',
-    // pivot / qaytarma
-    pv_dan:'С', pv_gacha:'По', pv_mahsulot:'Товар', pv_jami:'Итого',
-    pv_kpi_qaytarma:'Всего возвратов', pv_kpi_mahsulot:'Видов товара',
-    pv_kpi_market:'Магазинов', pv_kpi_kunlar:'Дней',
-    pv_xil_tovar:'видов', pv_ta_dokon:'магазинов', pv_ta_yozuv:'записей', pv_dona:'шт',
-    pv_empty:'Нет истории возвратов',
-    pv_upload_btn:'Возврат Excel',
-    pv_del_all:'Удалить все записи возвратов?',
-    pv_del_date:'удалить все возвраты за эту дату?',
-    // dov
-    dov_save:'Сохранить', dov_saved:'Сохранено ✓', dov_print:'Печать',
-    dov_del_confirm:'Удалить эту доверенность из истории?',
-    // days
-    days:['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],
-    days_full:['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'],
-  },
-  en: {
-    nav_orders:'Orders', nav_register:'Registry', nav_matrix:'Table',
-    nav_docs:'Documents', nav_dispatch:'Dispatch', nav_schedule:'Schedule',
-    nav_stats:'Statistics', nav_ops:'Operations', nav_clients:'Clients',
-    nav_analytics:'Analytics', nav_settings:'Settings',
-    nav_preferences:'Preferences',
-    pref_bg:'Background', pref_bg_hint:'White or light background', pref_bg_custom:'Custom color', pref_reset:'Reset',
-    pref_density:'Density', pref_density_hint:'Row and element spacing',
-    pref_tight:'Ultra compact', pref_compact:'Compact', pref_cozy:'Normal', pref_comfortable:'Comfortable',
-    pref_accent:'Color style', pref_accent_hint:'Color of buttons and key elements',
-    pref_lang:'Language', pref_lang_hint:'Interface language',
-    lbl_invoices:'inv.', lbl_pcs:'pcs', lbl_sum:'UZS', lbl_unsaved:'unsaved',
-    lbl_logout:'Logout', lbl_store:'Store', lbl_driver:'Driver',
-    lbl_print:'Print', lbl_save:'Save', lbl_add:'Add',
-    lbl_cancel:'Cancel', lbl_date:'Date', lbl_order:'Order',
-    lbl_product:'Product', lbl_unit:'Unit', lbl_qty:'Qty',
-    lbl_price:'Price', lbl_total:'Total', lbl_vat:'VAT',
-    lbl_delivered:'Delivered', lbl_selected:'Selected', lbl_restore:'Restore', lbl_delete:'Delete',
-    reg_title:'Invoice Registry', reg_empty:'No invoices yet',
-    reg_meta_docs:'documents', reg_manual:'Manual',
-    matrix_title:'Quantity Matrix', hide_zeros:'Hide zeros',
-    matrix_product:'Product', matrix_total:'Total',
-    docs_title:'Documents', docs_print_sel:'Print selected',
-    docs_empty:'Generate invoices first',
-    sap_title:'SAP Import', sap_meta_ready:'invoices ready', sap_meta_empty:'Upload Excel',
-    sap_batch:'Batch name',
-    ops_title:'Operations', ops_orders:'Orders', ops_moves:'Movements',
-    ops_imports:'Imports', ops_audit:'Audit',
-    ops_empty_orders:'No orders', ops_empty_moves:'No movements',
-    ops_empty_imports:'No imports', ops_empty_audit:'Audit is empty',
-    ops_new_order:'New order', ops_all_statuses:'All statuses',
-    ops_status_new:'New', ops_status_prod:'In production',
-    ops_status_del:'Delivered', ops_status_can:'Cancelled',
-    ops_last_moves:'Recent movements',
-    clients_title:'Clients', clients_meta:'clients', clients_empty:'No clients yet',
-    clients_name:'Name', clients_phone:'Phone', clients_addr:'Address', clients_notes:'Notes',
-    dispatch_title:'Dispatch', dispatch_empty:'Generate invoices first',
-    schedule_title:'Delivery Schedule',
-    schedule_upload:'Upload schedule', schedule_view_only:'View only',
-    stats_title:'Statistics', stats_invoices:'Invoices',
-    stats_items:'Items', stats_sum:'Revenue', stats_avg:'Avg. check',
-    analytics_title:'Statistika',
-    settings_cat:'Catalog', settings_req:'Requisites',
-    settings_exc:'Exceptions', settings_hist:'History', settings_access:'Access',
-    settings_cat_title:'Product catalog', settings_req_title:'Requisites',
-    settings_hist_title:'Session history', settings_users_title:'Users',
-    settings_supplier:'Supplier', settings_receiver:'Receiver',
-    settings_contract:'Contract',
-    modal_manual:'Manual invoice', modal_order:'New order', modal_client:'New client',
-    // tarix
-    tarix_hujjat:'Documents', tarix_qaytarma:'Returns', tarix_buyurtma:'Orders', tarix_ishonchnoma:'Power of Attorney',
-    tarix_qaytgan:'Returned',
-    tarix_load:'Load', tarix_delete:'Delete',
-    tarix_restored:'restored',
-    // pivot / returns
-    pv_dan:'From', pv_gacha:'To', pv_mahsulot:'Product', pv_jami:'Total',
-    pv_kpi_qaytarma:'Total returns', pv_kpi_mahsulot:'Product types',
-    pv_kpi_market:'Stores', pv_kpi_kunlar:'Days',
-    pv_xil_tovar:'types', pv_ta_dokon:'stores', pv_ta_yozuv:'records', pv_dona:'pcs',
-    pv_empty:'No return history',
-    pv_upload_btn:'Returns Excel',
-    pv_del_all:'Delete all return records?',
-    pv_del_date:'delete all returns for this date?',
-    // dov
-    dov_save:'Save', dov_saved:'Saved ✓', dov_print:'Print',
-    dov_del_confirm:'Remove this power of attorney from history?',
-    // days
-    days:['Mo','Tu','We','Th','Fr','Sa','Su'],
-    days_full:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
-  },
-};
-function t(lang: Lang, key: string): string {
-  const val = I18N[lang][key];
-  return Array.isArray(val) ? val.join(',') : (val ?? key);
-}
-function tDays(lang: Lang): string[] { return I18N[lang].days as string[]; }
-function tDaysFull(lang: Lang): string[] { return I18N[lang].days_full as string[]; }
-
-// ─── DISPATCH COLORS ──────────────────────────────────────────────────────────
-// Per-route color coding, aligned to the brand palette (blue/pistachio/indigo/
-// honey/berry + one teal) instead of a separate iOS-system palette.
-const DISPATCH_COLORS = [
-  { header:'rgba(76,155,234,0.85)',  text:'#ffffff', dot:'#4c9bea',  cell:'rgba(76,155,234,0.10)' },
-  { header:'rgba(70,191,114,0.85)',  text:'#ffffff', dot:'#46bf72',  cell:'rgba(70,191,114,0.10)' },
-  { header:'rgba(124,124,230,0.85)', text:'#ffffff', dot:'#7c7ce6',  cell:'rgba(124,124,230,0.10)' },
-  { header:'rgba(233,166,58,0.85)',  text:'#ffffff', dot:'#e9a63a',  cell:'rgba(233,166,58,0.10)' },
-  { header:'rgba(232,79,106,0.85)',  text:'#ffffff', dot:'#e84f6a',  cell:'rgba(232,79,106,0.10)' },
-  { header:'rgba(64,191,180,0.85)',  text:'#ffffff', dot:'#40bfb4',  cell:'rgba(64,191,180,0.10)' },
-];
 
 // ─── SCHEDULE PANE ───────────────────────────────────────────────────────────
 
