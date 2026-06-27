@@ -4434,7 +4434,9 @@ function AnalyticsPane({
                 <RefreshCcw size={13} />
               </button>
           }
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        </div>
+        {/* Tabs on their own row; wrap so none get clipped on mobile */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <button type="button" onClick={() => setTab('products')}
               style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'products' ? 'rgba(46,168,85,0.09)' : 'var(--surface)', color: tab === 'products' ? 'var(--ok)' : 'var(--ink)' }}>
               📦 Mahsulot <span style={{ background: tab === 'products' ? 'var(--ok)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'products' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredProductRows.length}</span>
@@ -4451,7 +4453,6 @@ function AnalyticsPane({
               style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'qaytarma' ? 'rgba(217,119,6,0.09)' : 'var(--surface)', color: tab === 'qaytarma' ? '#b45309' : 'var(--ink)' }}>
               ↩️ Qaytarma <span style={{ background: tab === 'qaytarma' ? '#d97706' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'qaytarma' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{vazvratRows.length}</span>
             </button>
-          </div>
         </div>
       </div>
 
@@ -5048,11 +5049,6 @@ function SavdoTab({ sessions, vazvratRows, invoices, savdoFrom, savdoTo, savdoIn
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="kpis kpis-3">
-        <Kpi label="BERILGAN" value={fmt0(totBerilgan)} tone="ok" icon={<Truck size={15} />} />
-        <Kpi label="QAYTARMA" value={fmt0(totVazvrat)} tone="danger" icon={<RefreshCcw size={15} />} valueStyle={totVazvrat > 0 ? { color: 'var(--danger)' } : undefined} />
-        <Kpi label="SAVDO" value={fmt0(totSavdo)} accent tone="accent" icon={<TrendingUp size={15} />} />
-      </div>
       <div className="subtabs" style={{ marginBottom: 12 }}>
         {(['kunlik', 'dokonlar', 'mahsulotlar'] as const).map(st => (
           <button key={st} type="button" onClick={() => setSavdoTab(st)} className={savdoTab === st ? 'active' : ''}>
