@@ -3786,7 +3786,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const d: any = ev.data;
                     let primary = '', meta = '', value = '', valueColor = 'var(--ink)';
-                    if (ev.kind === 'nakl')        { primary = d.name || d.invoiceDate; meta = `${d.invoiceCount}d`; value = `${fmt0(d.sumTotal)} ${T('lbl_sum')}`; }
+                    if (ev.kind === 'nakl')        { primary = d.name || d.invoiceDate; meta = `${d.invoiceCount} ${T('tag_docs')}`; value = `${fmt0(d.sumTotal)} ${T('lbl_sum')}`; }
                     else if (ev.kind === 'manual')  { primary = `№${d.invNo}`; meta = d.market || ''; value = `${fmt0(d.sumTotal)} ${T('lbl_sum')}`; }
                     else if (ev.kind === 'zakas')   { primary = d.customer || '—'; meta = `${fmt0(d.totalQty)} ${T('lbl_pcs')}`; value = `${fmt0(d.totalAmount)} ${T('lbl_sum')}`; }
                     else if (ev.kind === 'dov')     { primary = d.driver || '—'; meta = `${d.plate || ''} · ${d.car || ''}`; }
