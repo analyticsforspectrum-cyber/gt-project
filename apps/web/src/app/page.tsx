@@ -3665,6 +3665,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
   // Unified history filter: 'all' shows every type tagged; others narrow to one tag.
   type TagFilter = 'all' | 'nakl' | 'manual' | 'zakas' | 'dov' | 'vazt';
   const [flt, setFlt] = React.useState<TagFilter>('all');
+  const [histMenuIdx, setHistMenuIdx] = React.useState<number | null>(null);
 
   const filteredSessions = React.useMemo(() =>
     sessions.filter(s => (!pvFrom || s.invoiceDate >= pvFrom) && (!pvTo || s.invoiceDate <= pvTo)),
@@ -3765,13 +3766,13 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const d: any = ev.data;
                     let primary = '', meta = '', value = '', valueColor = 'var(--ink)';
-                    if (ev.kind === 'nakl')        { primary = d.name || d.invoiceDate; meta = `${d.invoiceCount} ${T('reg_meta_docs')}`; value = `${fmt0(d.sumTotal)} ${T('lbl_sum')}`; }
+                    if (ev.kind === 'nakl')        { primary = d.name || d.invoiceDate; meta = `${d.invoiceCount}d`; value = `${fmt0(d.sumTotal)} ${T('lbl_sum')}`; }
                     else if (ev.kind === 'manual')  { primary = `№${d.invNo}`; meta = d.market || ''; value = `${fmt0(d.sumTotal)} ${T('lbl_sum')}`; }
                     else if (ev.kind === 'zakas')   { primary = d.customer || '—'; meta = `${fmt0(d.totalQty)} ${T('lbl_pcs')}`; value = `${fmt0(d.totalAmount)} ${T('lbl_sum')}`; }
                     else if (ev.kind === 'dov')     { primary = d.driver || '—'; meta = `${d.plate || ''} · ${d.car || ''}`; }
                     else if (ev.kind === 'vazt')    { primary = `${fmt0(d.qty)} ${T('lbl_pcs')}`; meta = `${d.count} ${T('pv_ta_yozuv')}`; value = `${fmt0(d.sum)} ${T('lbl_sum')}`; valueColor = 'var(--danger)'; }
                     return (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, rowGap: 5, flexWrap: 'wrap', padding: '7px 10px', marginBottom: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: 'var(--shadow-sm)' }}>
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', overflow: 'hidden', padding: '6px 10px', marginBottom: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: 'var(--shadow-sm)' }}>
                         {/* Date/primary */}
                         <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: ev.kind === 'nakl' ? 'var(--mono)' : undefined }}>{primary}</span>
                         {/* Tag */}
@@ -3780,15 +3781,28 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                         <span style={{ fontSize: '0.8em', color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '1 1 auto', minWidth: 0 }}>{meta}</span>
                         {/* Sum */}
                         {value && <span style={{ fontSize: '0.9em', fontWeight: 700, fontFamily: 'var(--mono)', whiteSpace: 'nowrap', flexShrink: 0, color: valueColor }}>{value}</span>}
-                        {/* Actions */}
-                        {ev.kind === 'nakl' && (
-                          <button type="button" onClick={() => loadSession(d._id)}
+                        {/* Actions — desktop: visible buttons; mobile: kebab ⋮ */}
+                        {ev.kind === 'nakl' && (<>
+                          {/* Desktop buttons */}
+                          <button type="button" className="tarix-act-desktop" onClick={() => loadSession(d._id)}
                             style={{ flexShrink: 0, padding: '5px 11px', borderRadius: 8, border: '1px solid rgba(22,163,74,0.35)', background: 'rgba(22,163,74,0.10)', color: '#16a34a', fontWeight: 700, fontSize: '0.8em', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('lbl_restore')}</button>
-                        )}
-                        {ev.kind === 'nakl' && isAdmin && (
-                          <button type="button" onClick={() => deleteSession(d._id, d.name)} title={T('lbl_delete')}
-                            style={{ flexShrink: 0, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid rgba(220,38,38,0.30)', background: 'rgba(220,38,38,0.08)', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={15} /></button>
-                        )}
+                          {isAdmin && <button type="button" className="tarix-act-desktop" onClick={() => deleteSession(d._id, d.name)} title={T('lbl_delete')}
+                            style={{ flexShrink: 0, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid rgba(220,38,38,0.30)', background: 'rgba(220,38,38,0.08)', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={15} /></button>}
+                          {/* Mobile kebab */}
+                          <div className="tarix-act-mobile" style={{ position: 'relative', flexShrink: 0 }}>
+                            <button type="button" onClick={() => setHistMenuIdx(histMenuIdx === idx ? null : idx)}
+                              style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', fontSize: 16, fontWeight: 900, lineHeight: 1 }}>⋮</button>
+                            {histMenuIdx === idx && (
+                              <div style={{ position: 'absolute', right: 0, top: 32, zIndex: 200, background: 'var(--shell)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 130, overflow: 'hidden' }}
+                                onClick={() => setHistMenuIdx(null)}>
+                                <button type="button" onClick={() => loadSession(d._id)}
+                                  style={{ width: '100%', padding: '10px 14px', textAlign: 'left', background: 'none', border: 'none', color: '#16a34a', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{T('lbl_restore')}</button>
+                                {isAdmin && <button type="button" onClick={() => deleteSession(d._id, d.name)}
+                                  style={{ width: '100%', padding: '10px 14px', textAlign: 'left', background: 'none', border: 'none', borderTop: '1px solid var(--border)', color: '#dc2626', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{T('lbl_delete')}</button>}
+                              </div>
+                            )}
+                          </div>
+                        </>)}
                         {ev.kind === 'dov' && (
                           <button type="button" onClick={() => { setDovFields(d); setDovSaved(true); setSettingsView('doverennost'); }}
                             style={{ flexShrink: 0, padding: '5px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 700, fontSize: '0.8em', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('tarix_load')}</button>

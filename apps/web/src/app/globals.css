@@ -747,7 +747,13 @@ input:focus, textarea:focus, select:focus {
 /* Touch-friendly sizing on phones: bump every interactive control to ≥40px so
    it meets the ~44px tap-target guideline, and lift FORM inputs to 16px to stop
    iOS Safari auto-zooming on focus. Dense table inputs are intentionally excluded. */
+/* Tarix row actions: desktop shows buttons, mobile shows kebab ⋮ */
+.tarix-act-mobile { display: none; }
+.tarix-act-desktop { display: inline-flex; }
+
 @media (max-width: 640px) {
+  .tarix-act-desktop { display: none !important; }
+  .tarix-act-mobile  { display: flex !important; }
   /* Analytics KPI cards: collapsible on mobile (toggle hidden on desktop). */
   .kpi-toggle { display: inline-flex !important; }
   .kpi-grid-collapsible.kpi-collapsed { display: none !important; }
