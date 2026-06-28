@@ -1388,7 +1388,7 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 }
 
 .invoiceDoc header span {
-  color: #333;
+  color: #1a1a1a;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -1413,13 +1413,13 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 
 .docMeta div, .parties div {
   border: 1px solid #b8b1a3;
-  background: #fffdf8;
+  background: transparent;
   padding: 7px 9px;
 }
 
 .docMeta span, .parties em {
   display: block;
-  color: #333;
+  color: #1a1a1a;
   font-size: 8px;
   font-style: normal;
   font-weight: 900;
@@ -1441,12 +1441,12 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 700;
-  color: #555;
+  color: #222;
   text-transform: none;
   letter-spacing: 0;
 }
 
-.contract { margin: 7px 0; color: #333; font-size: 9px; }
+.contract { margin: 7px 0; color: #1a1a1a; font-size: 9px; }
 
 .parties {
   display: grid;
