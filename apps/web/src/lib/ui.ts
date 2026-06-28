@@ -77,10 +77,12 @@ export type HistoryEvent =
   | { kind: 'vazt'; dateKey: string; data: import('@/types/domain').VazvratRecord };
 
 export const KIND_STYLE: Record<string, { labelKey: string; color: string; bg: string }> = {
-  nakl: { labelKey: 'tarix_hujjat',      color: '#2563eb', bg: 'rgba(37,99,235,0.09)' },
-  dov:  { labelKey: 'tarix_ishonchnoma', color: '#7c3aed', bg: 'rgba(124,58,237,0.09)' },
-  qayt: { labelKey: 'tarix_qaytgan',     color: '#dc2626', bg: 'rgba(220,38,38,0.09)' },
-  vazt: { labelKey: 'tarix_qaytarma',    color: '#d97706', bg: 'rgba(217,119,6,0.09)' },
+  nakl:   { labelKey: 'tarix_hujjat',      color: '#2563eb', bg: 'rgba(37,99,235,0.09)' },
+  manual: { labelKey: 'tarix_qolda',       color: '#0891b2', bg: 'rgba(8,145,178,0.09)' },
+  zakas:  { labelKey: 'tarix_buyurtma',    color: '#6366f1', bg: 'rgba(99,102,241,0.09)' },
+  dov:    { labelKey: 'tarix_ishonchnoma', color: '#7c3aed', bg: 'rgba(124,58,237,0.09)' },
+  qayt:   { labelKey: 'tarix_qaytgan',     color: '#dc2626', bg: 'rgba(220,38,38,0.09)' },
+  vazt:   { labelKey: 'tarix_qaytarma',    color: '#dc2626', bg: 'rgba(220,38,38,0.09)' },
 };
 
 // ─── TarixPane: tabbed history ────────────────────────────────────────────────
@@ -117,7 +119,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_preferences:'Shaxsiy',
     pref_bg:"Orqa fon", pref_bg_hint:"Oq yoki boshqa ochiq rang", pref_bg_custom:"O'z rangim", pref_reset:'Tiklash',
     pref_density:'Zichlik', pref_density_hint:"Qatorlar va elementlar orasidagi masofa",
-    pref_tight:'Eng ixcham', pref_compact:'Ixcham', pref_cozy:"O'rtacha", pref_comfortable:'Keng', pref_spacious:'Juda keng', pref_custom_color:'Maxsus rang', pref_custom_color_hint:'Istalgan rangni tanlang — butun ilovaga qo‘llaniladi.', pref_apply:'Qo‘llash', pref_applied:'Qo‘llandi',
+    pref_tight:'Eng ixcham', pref_compact:'Ixcham', pref_cozy:"O'rtacha", pref_comfortable:'Keng', pref_spacious:'Juda keng', pref_custom_color:'Maxsus rang', pref_custom_color_hint:'Istalgan rangni tanlang — butun ilovaga qo‘llaniladi.', pref_apply:'Qo‘llash', pref_applied:'Qo‘llandi', pref_fontsize:'Shrift o‘lchami', pref_fontsize_hint:'Butun tizim uchun yozuv kattaligi', pref_font_s:'Kichik', pref_font_m:'O‘rta', pref_font_l:'Katta', pref_font_xl:'Juda katta',
     pref_accent:"Rang uslubi", pref_accent_hint:"Tugmalar va asosiy elementlar rangi",
     pref_lang:'Til', pref_lang_hint:'Interfeys tili',
     // topbar
@@ -162,7 +164,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_contract:'Shartnoma',
     modal_manual:'Qo\'lda hujjat', modal_order:'Yangi buyurtma', modal_client:'Yangi mijoz',
     // tarix
-    tarix_hujjat:'Hujjatlar', tarix_qaytarma:'Qaytarma', tarix_buyurtma:'Buyurtma', tarix_ishonchnoma:'Ishonchnoma',
+    tarix_hujjat:'Hujjatlar', tarix_qaytarma:'Qaytarma', tarix_buyurtma:'Buyurtma', tarix_qolda:"Qo'lda", tarix_hammasi:'Hammasi', tarix_ishonchnoma:'Ishonchnoma',
     tarix_qaytgan:'Qaytgan',
     tarix_load:'Yuklash', tarix_delete:"O'chirish",
     tarix_restored:"tiklandi",
@@ -212,7 +214,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     // analytics
     an_title:'Analitika',
     kpi_ordered:'Zakaz · keldi', kpi_given:'Berilgan', kpi_returned:'Qaytarma', kpi_net_sales:'Sof savdo',
-    an_tab_products:'Mahsulot', an_tab_market:'Market', an_tab_sales:'Savdo', an_tab_returns:'Qaytarma',
+    an_tab_products:'Mahsulot', an_tab_market:'Market', an_tab_sales:'Savdo', an_tab_returns:'Qaytarma', an_col_ordered:'Kelgan zakaz', an_col_dqty:'Berilgan soni', an_col_dsum:'Berilgan summa', an_col_rqty:'Vazvrat soni', an_col_rsum:'Vazvrat summa', an_col_net:'Savdo summa', an_col_rate:'Rate %',
     nav_undelivered:'Qaytgan',
     preset_today:'Bugun', preset_week:'Bu hafta', preset_month:'Bu oy', preset_prev_month:"O'tgan oy",
     col_day:'Sana', col_store:"Do'kon", col_given_qty:'B.dona', col_returned_qty:'V.dona', col_product_name:'Mahsulot nomi',
@@ -285,7 +287,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_preferences:'Настройки',
     pref_bg:'Фон', pref_bg_hint:'Белый или светлый цвет фона', pref_bg_custom:'Свой цвет', pref_reset:'Сбросить',
     pref_density:'Плотность', pref_density_hint:'Расстояние между строками и элементами',
-    pref_tight:'Очень плотно', pref_compact:'Компактно', pref_cozy:'Обычно', pref_comfortable:'Просторно', pref_spacious:'Очень просторно', pref_custom_color:'Свой цвет', pref_custom_color_hint:'Выберите любой цвет — применится ко всему приложению.', pref_apply:'Применить', pref_applied:'Применено',
+    pref_tight:'Очень плотно', pref_compact:'Компактно', pref_cozy:'Обычно', pref_comfortable:'Просторно', pref_spacious:'Очень просторно', pref_custom_color:'Свой цвет', pref_custom_color_hint:'Выберите любой цвет — применится ко всему приложению.', pref_apply:'Применить', pref_applied:'Применено', pref_fontsize:'Размер шрифта', pref_fontsize_hint:'Размер текста для всего приложения', pref_font_s:'Мелкий', pref_font_m:'Средний', pref_font_l:'Крупный', pref_font_xl:'Очень крупный',
     pref_accent:'Цветовой стиль', pref_accent_hint:'Цвет кнопок и основных элементов',
     pref_lang:'Язык', pref_lang_hint:'Язык интерфейса',
     lbl_invoices:'накл.', lbl_pcs:'шт', lbl_sum:'сум', lbl_unsaved:'не сохранено',
@@ -328,7 +330,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_contract:'Договор',
     modal_manual:'Накладная вручную', modal_order:'Новый заказ', modal_client:'Новый клиент',
     // tarix
-    tarix_hujjat:'Документы', tarix_qaytarma:'Возвраты', tarix_buyurtma:'Заказы', tarix_ishonchnoma:'Доверенность',
+    tarix_hujjat:'Документы', tarix_qaytarma:'Возвраты', tarix_buyurtma:'Заказы', tarix_qolda:'Вручную', tarix_hammasi:'Все', tarix_ishonchnoma:'Доверенность',
     tarix_qaytgan:'Возврат',
     tarix_load:'Загрузить', tarix_delete:'Удалить',
     tarix_restored:'восстановлен',
@@ -378,7 +380,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     // analytics
     an_title:'Аналитика',
     kpi_ordered:'Заказ · поступило', kpi_given:'Выдано', kpi_returned:'Возвраты', kpi_net_sales:'Чистые продажи',
-    an_tab_products:'Товары', an_tab_market:'Магазины', an_tab_sales:'Продажи', an_tab_returns:'Возвраты',
+    an_tab_products:'Товары', an_tab_market:'Магазины', an_tab_sales:'Продажи', an_tab_returns:'Возвраты', an_col_ordered:'Заказ сумма', an_col_dqty:'Выдано шт', an_col_dsum:'Выдано сумма', an_col_rqty:'Возврат шт', an_col_rsum:'Возврат сумма', an_col_net:'Продажа сумма', an_col_rate:'Rate %',
     nav_undelivered:'Возвраты',
     preset_today:'Сегодня', preset_week:'Эта неделя', preset_month:'Этот месяц', preset_prev_month:'Прошлый месяц',
     col_day:'Дата', col_store:'Магазин', col_given_qty:'Выд.шт', col_returned_qty:'Возвр.шт', col_product_name:'Наименование',
@@ -451,7 +453,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_preferences:'Preferences',
     pref_bg:'Background', pref_bg_hint:'White or light background', pref_bg_custom:'Custom color', pref_reset:'Reset',
     pref_density:'Density', pref_density_hint:'Row and element spacing',
-    pref_tight:'Ultra compact', pref_compact:'Compact', pref_cozy:'Normal', pref_comfortable:'Comfortable', pref_spacious:'Spacious', pref_custom_color:'Custom color', pref_custom_color_hint:'Pick any color — applied across the whole app.', pref_apply:'Apply', pref_applied:'Applied',
+    pref_tight:'Ultra compact', pref_compact:'Compact', pref_cozy:'Normal', pref_comfortable:'Comfortable', pref_spacious:'Spacious', pref_custom_color:'Custom color', pref_custom_color_hint:'Pick any color — applied across the whole app.', pref_apply:'Apply', pref_applied:'Applied', pref_fontsize:'Font size', pref_fontsize_hint:'Text size for the whole app', pref_font_s:'Small', pref_font_m:'Medium', pref_font_l:'Large', pref_font_xl:'Extra large',
     pref_accent:'Color style', pref_accent_hint:'Color of buttons and key elements',
     pref_lang:'Language', pref_lang_hint:'Interface language',
     lbl_invoices:'inv.', lbl_pcs:'pcs', lbl_sum:'UZS', lbl_unsaved:'unsaved',
@@ -494,7 +496,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_contract:'Contract',
     modal_manual:'Manual invoice', modal_order:'New order', modal_client:'New client',
     // tarix
-    tarix_hujjat:'Documents', tarix_qaytarma:'Returns', tarix_buyurtma:'Orders', tarix_ishonchnoma:'Power of Attorney',
+    tarix_hujjat:'Documents', tarix_qaytarma:'Returns', tarix_buyurtma:'Orders', tarix_qolda:'Manual', tarix_hammasi:'All', tarix_ishonchnoma:'Power of Attorney',
     tarix_qaytgan:'Returned',
     tarix_load:'Load', tarix_delete:'Delete',
     tarix_restored:'restored',
@@ -544,7 +546,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     // analytics
     an_title:'Analytics',
     kpi_ordered:'Ordered · received', kpi_given:'Issued', kpi_returned:'Returns', kpi_net_sales:'Net sales',
-    an_tab_products:'Products', an_tab_market:'Markets', an_tab_sales:'Sales', an_tab_returns:'Returns',
+    an_tab_products:'Products', an_tab_market:'Markets', an_tab_sales:'Sales', an_tab_returns:'Returns', an_col_ordered:'Ordered sum', an_col_dqty:'Delivered qty', an_col_dsum:'Delivered sum', an_col_rqty:'Return qty', an_col_rsum:'Return sum', an_col_net:'Net sales', an_col_rate:'Rate %',
     nav_undelivered:'Returned',
     preset_today:'Today', preset_week:'This week', preset_month:'This month', preset_prev_month:'Last month',
     col_day:'Date', col_store:'Store', col_given_qty:'Iss.qty', col_returned_qty:'Ret.qty', col_product_name:'Product name',
