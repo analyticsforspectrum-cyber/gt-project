@@ -3676,6 +3676,12 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
   type TagFilter = 'all' | 'nakl' | 'manual' | 'zakas' | 'dov' | 'vazt';
   const [flt, setFlt] = React.useState<TagFilter>('all');
   const [histMenuIdx, setHistMenuIdx] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!histMenuIdx) return;
+    const close = () => setHistMenuIdx(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [histMenuIdx]);
 
   const filteredSessions = React.useMemo(() =>
     sessions.filter(s => (!pvFrom || s.invoiceDate >= pvFrom) && (!pvTo || s.invoiceDate <= pvTo)),
@@ -3800,7 +3806,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                             style={{ flexShrink: 0, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid rgba(220,38,38,0.30)', background: 'rgba(220,38,38,0.08)', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={15} /></button>}
                           {/* Mobile kebab */}
                           <div className="tarix-act-mobile" style={{ position: 'relative', flexShrink: 0 }}>
-                            <button type="button" onClick={() => setHistMenuIdx(histMenuIdx === `${dateKey}:${idx}` ? null : `${dateKey}:${idx}`)}
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setHistMenuIdx(histMenuIdx === `${dateKey}:${idx}` ? null : `${dateKey}:${idx}`); }}
                               style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', fontSize: 16, fontWeight: 900, lineHeight: 1 }}>⋮</button>
                             {histMenuIdx === `${dateKey}:${idx}` && (
                               <div style={{ position: 'absolute', right: 0, top: 32, zIndex: 200, background: 'var(--shell)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 130, overflow: 'hidden' }}
@@ -3823,7 +3829,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                             style={{ flexShrink: 0, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid rgba(220,38,38,0.30)', background: 'rgba(220,38,38,0.08)', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={15} /></button>
                           {/* Mobile kebab */}
                           <div className="tarix-act-mobile" style={{ position: 'relative', flexShrink: 0 }}>
-                            <button type="button" onClick={() => setHistMenuIdx(histMenuIdx === `${dateKey}:${idx}` ? null : `${dateKey}:${idx}`)}
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setHistMenuIdx(histMenuIdx === `${dateKey}:${idx}` ? null : `${dateKey}:${idx}`); }}
                               style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', fontSize: 16, fontWeight: 900, lineHeight: 1 }}>⋮</button>
                             {histMenuIdx === `${dateKey}:${idx}` && (
                               <div style={{ position: 'absolute', right: 0, top: 32, zIndex: 200, background: 'var(--shell)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 130, overflow: 'hidden' }}
