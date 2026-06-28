@@ -77,7 +77,7 @@ export type HistoryEvent =
   | { kind: 'vazt'; dateKey: string; data: import('@/types/domain').VazvratRecord };
 
 export const KIND_STYLE: Record<string, { labelKey: string; color: string; bg: string }> = {
-  nakl:   { labelKey: 'tarix_hujjat',      color: '#2563eb', bg: 'rgba(37,99,235,0.09)' },
+  nakl:   { labelKey: 'tag_docs',          color: '#2563eb', bg: 'rgba(37,99,235,0.09)' },
   manual: { labelKey: 'tarix_qolda',       color: '#0891b2', bg: 'rgba(8,145,178,0.09)' },
   zakas:  { labelKey: 'tarix_buyurtma',    color: '#6366f1', bg: 'rgba(99,102,241,0.09)' },
   dov:    { labelKey: 'tarix_ishonchnoma', color: '#7c3aed', bg: 'rgba(124,58,237,0.09)' },
@@ -164,7 +164,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_contract:'Shartnoma',
     modal_manual:'Qo\'lda hujjat', modal_order:'Yangi buyurtma', modal_client:'Yangi mijoz',
     // tarix
-    tarix_hujjat:'Hujjatlar', tarix_qaytarma:'Qaytarma', tarix_buyurtma:'Buyurtma', tarix_qolda:"Qo'lda", tarix_hammasi:'Hammasi', tarix_ishonchnoma:'Ishonchnoma',
+    tarix_hujjat:'Hujjatlar', tag_docs:'Hujjat', tarix_qaytarma:'Qaytarma', tarix_buyurtma:'Buyurtma', tarix_qolda:"Qo'lda", tarix_hammasi:'Hammasi', tarix_ishonchnoma:'Ishonchnoma',
     tarix_qaytgan:'Qaytgan',
     tarix_load:'Yuklash', tarix_delete:"O'chirish",
     tarix_restored:"tiklandi",
@@ -245,7 +245,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     sum_label:'Summa', vazvrat_choose:'Vazvrat Excel faylini tanlang', vazvrat_count:'{n} ta qaytarma yozuvi mavjud',
     loading:'Yuklanmoqda...', empty_no_orders_range:"Bu oraliqda buyurtma yo'q", sessions_count:'{n} ta sessiya',
     manuallist_title:"Qo'lda kiritilgan hujjatlar", empty_manual:"Qo'lda kiritilgan hujjat yo'q", empty_order_history:"Buyurtma tarixi yo'q",
-    empty_trash_invoices:"O'chirilgan hujjatlar yo'q", empty_trash_sessions:"O'chirilgan sessiyalar yo'q", empty_no_doc_history:"Hujjat tarixi yo'q", empty_no_dov_history:"Ishonchnoma tarixi yo'q", empty_no_history:"Hali tarix yo'q", empty_no_data_range:"Sana oralig'ida ma'lumot yo'q", empty_no_returns_range:"Sana oralig'ida qaytarma yo'q", empty_no_returns:"Qaytarma yo'q", date_range:"Sana oralig'i", undeliver_title:'Yetkazib berishni bekor qilish',
+    trash_invoices:'Hujjatlar', trash_sessions:'Sessiyalar', empty_trash_invoices:"O'chirilgan hujjatlar yo'q", empty_trash_sessions:"O'chirilgan sessiyalar yo'q", empty_no_doc_history:"Hujjat tarixi yo'q", empty_no_dov_history:"Ishonchnoma tarixi yo'q", empty_no_history:"Hali tarix yo'q", empty_no_data_range:"Sana oralig'ida ma'lumot yo'q", empty_no_returns_range:"Sana oralig'ida qaytarma yo'q", empty_no_returns:"Qaytarma yo'q", date_range:"Sana oralig'i", undeliver_title:'Yetkazib berishni bekor qilish',
     // manual / order modals
     manual_with_vat:'Narx QQS bilan', manual_add_store:"+ Do'kon", manual_qty_abbr:'Son',
     ph_store_code:'Kod', ph_market_name:'Market nomi', ph_order_no:'№ Zakaz', saving:'Saqlanmoqda…', btn_add_plus:"+ Qo'shish", ph_select_product:'Mahsulotni tanlang',
@@ -284,7 +284,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     nav_docs:'Документы', nav_dispatch:'Маршрут', nav_schedule:'График',
     nav_stats:'Статистика', nav_ops:'Операции', nav_clients:'Клиенты',
     nav_analytics:'Аналитика', nav_settings:'Настройки',
-    nav_preferences:'Настройки',
+    nav_preferences:'Личное',
     pref_bg:'Фон', pref_bg_hint:'Белый или светлый цвет фона', pref_bg_custom:'Свой цвет', pref_reset:'Сбросить',
     pref_density:'Плотность', pref_density_hint:'Расстояние между строками и элементами',
     pref_tight:'Очень плотно', pref_compact:'Компактно', pref_cozy:'Обычно', pref_comfortable:'Просторно', pref_spacious:'Очень просторно', pref_custom_color:'Свой цвет', pref_custom_color_hint:'Выберите любой цвет — применится ко всему приложению.', pref_apply:'Применить', pref_applied:'Применено', pref_fontsize:'Размер шрифта', pref_fontsize_hint:'Размер текста для всего приложения', pref_font_s:'Мелкий', pref_font_m:'Средний', pref_font_l:'Крупный', pref_font_xl:'Очень крупный',
@@ -330,7 +330,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_contract:'Договор',
     modal_manual:'Накладная вручную', modal_order:'Новый заказ', modal_client:'Новый клиент',
     // tarix
-    tarix_hujjat:'Документы', tarix_qaytarma:'Возвраты', tarix_buyurtma:'Заказы', tarix_qolda:'Вручную', tarix_hammasi:'Все', tarix_ishonchnoma:'Доверенность',
+    tarix_hujjat:'Документы', tag_docs:'Док', tarix_qaytarma:'Возвраты', tarix_buyurtma:'Заказы', tarix_qolda:'Вручную', tarix_hammasi:'Все', tarix_ishonchnoma:'Доверенность',
     tarix_qaytgan:'Возврат',
     tarix_load:'Загрузить', tarix_delete:'Удалить',
     tarix_restored:'восстановлен',
@@ -411,7 +411,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     sum_label:'Сумма', vazvrat_choose:'Выберите Excel файл возврата', vazvrat_count:'Записей возвратов: {n}',
     loading:'Загрузка...', empty_no_orders_range:'Нет заказов в этом диапазоне', sessions_count:'Сессий: {n}',
     manuallist_title:'Документы, введённые вручную', empty_manual:'Нет документов, введённых вручную', empty_order_history:'Нет истории заказов',
-    empty_trash_invoices:'Нет удалённых накладных', empty_trash_sessions:'Нет удалённых сессий', empty_no_doc_history:'Нет истории документов', empty_no_dov_history:'Нет истории доверенностей', empty_no_history:'Истории пока нет', empty_no_data_range:'Нет данных в диапазоне дат', empty_no_returns_range:'Нет возвратов в диапазоне дат', empty_no_returns:'Нет возвратов', date_range:'Диапазон дат', undeliver_title:'Отмена доставки',
+    trash_invoices:'Документы', trash_sessions:'Сессии', empty_trash_invoices:'Нет удалённых накладных', empty_trash_sessions:'Нет удалённых сессий', empty_no_doc_history:'Нет истории документов', empty_no_dov_history:'Нет истории доверенностей', empty_no_history:'Истории пока нет', empty_no_data_range:'Нет данных в диапазоне дат', empty_no_returns_range:'Нет возвратов в диапазоне дат', empty_no_returns:'Нет возвратов', date_range:'Диапазон дат', undeliver_title:'Отмена доставки',
     // manual / order modals
     manual_with_vat:'Цена с НДС', manual_add_store:'+ Магазин', manual_qty_abbr:'Кол',
     ph_store_code:'Код', ph_market_name:'Название магазина', ph_order_no:'№ Заказа', saving:'Сохранение…', btn_add_plus:'+ Добавить', ph_select_product:'Выбрать товар',
@@ -496,7 +496,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     settings_contract:'Contract',
     modal_manual:'Manual invoice', modal_order:'New order', modal_client:'New client',
     // tarix
-    tarix_hujjat:'Documents', tarix_qaytarma:'Returns', tarix_buyurtma:'Orders', tarix_qolda:'Manual', tarix_hammasi:'All', tarix_ishonchnoma:'Power of Attorney',
+    tarix_hujjat:'Documents', tag_docs:'docs', tarix_qaytarma:'Returns', tarix_buyurtma:'Orders', tarix_qolda:'Manual', tarix_hammasi:'All', tarix_ishonchnoma:'Power of Attorney',
     tarix_qaytgan:'Returned',
     tarix_load:'Load', tarix_delete:'Delete',
     tarix_restored:'restored',
@@ -577,7 +577,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     sum_label:'Sum', vazvrat_choose:'Choose returns Excel file', vazvrat_count:'{n} return records available',
     loading:'Loading...', empty_no_orders_range:'No orders in this range', sessions_count:'{n} sessions',
     manuallist_title:'Manually entered documents', empty_manual:'No manual documents', empty_order_history:'No order history',
-    empty_trash_invoices:'No deleted invoices', empty_trash_sessions:'No deleted sessions', empty_no_doc_history:'No document history', empty_no_dov_history:'No power-of-attorney history', empty_no_history:'No history yet', empty_no_data_range:'No data in the date range', empty_no_returns_range:'No returns in the date range', empty_no_returns:'No returns', date_range:'Date range', undeliver_title:'Cancel delivery',
+    trash_invoices:'Documents', trash_sessions:'Sessions', empty_trash_invoices:'No deleted invoices', empty_trash_sessions:'No deleted sessions', empty_no_doc_history:'No document history', empty_no_dov_history:'No power-of-attorney history', empty_no_history:'No history yet', empty_no_data_range:'No data in the date range', empty_no_returns_range:'No returns in the date range', empty_no_returns:'No returns', date_range:'Date range', undeliver_title:'Cancel delivery',
     // manual / order modals
     manual_with_vat:'Price with VAT', manual_add_store:'+ Store', manual_qty_abbr:'Qty',
     ph_store_code:'Code', ph_market_name:'Market name', ph_order_no:'№ Order', saving:'Saving…', btn_add_plus:'+ Add', ph_select_product:'Select product',

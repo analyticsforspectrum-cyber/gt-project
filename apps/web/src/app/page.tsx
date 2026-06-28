@@ -297,9 +297,10 @@ export default function Home() {
     const root = document.documentElement;
     root.dataset.theme = theme;
     root.dataset.density = density;
-    // Global font size — overrides density's --ui-font so the whole UI scales with it.
-    const FONT_PX: Record<string, string> = { s: '13px', m: '14.5px', l: '16px', xl: '18px' };
-    root.style.setProperty('--ui-font', FONT_PX[fontPref] || '14.5px');
+    // Global UI scale — browser-zoom-like, reliably scales the WHOLE app even though
+    // most components use fixed px sizes. s/m/l/xl → 0.9 / 1 / 1.12 / 1.25.
+    const ZOOM: Record<string, number> = { s: 0.9, m: 1, l: 1.12, xl: 1.25 };
+    root.style.setProperty('zoom', String(ZOOM[fontPref] ?? 1));
     localStorage.setItem('pref_font', fontPref);
     if (appBg) root.style.setProperty('--app-bg', appBg);
     else root.style.removeProperty('--app-bg');
@@ -3375,10 +3376,10 @@ function TrashPane({ token, fmt0, fmtDateRu, T }: {
       {/* Tabs */}
       <div className="subtabs" style={{ position: 'static', padding: 0, background: 'transparent' }}>
         <button className={arxivTab === 'invoices' ? 'active' : ''} type="button" onClick={() => setArxivTab('invoices')}>
-          Hujjatlar ({invoices.length})
+          {T('trash_invoices')} ({invoices.length})
         </button>
         <button className={arxivTab === 'sessions' ? 'active' : ''} type="button" onClick={() => setArxivTab('sessions')}>
-          Sessiyalar ({sessions.length})
+          {T('trash_sessions')} ({sessions.length})
         </button>
       </div>
 
@@ -3723,20 +3724,21 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
         </button>
         <DateRangePicker from={pvFrom} to={pvTo} setFrom={setPvFrom} setTo={setPvTo} T={T}
           inputStyle={{ fontSize: 12, fontWeight: 500, border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 8, padding: '4px 6px', background: 'var(--surface)', color: 'var(--ink)' }} />
-        {/* Tag filter — compact dropdown (saves space on mobile) */}
-        <select
-          value={flt}
-          onChange={(e) => setFlt(e.target.value as TagFilter)}
-          style={{
-            flexShrink: 0, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-            padding: '8px 12px', borderRadius: 10,
-            border: `1.5px solid ${flt === 'all' ? 'var(--border)' : (KIND_STYLE[flt]?.color || 'var(--berry)')}`,
-            background: 'var(--surface)',
-            color: flt === 'all' ? 'var(--ink)' : (KIND_STYLE[flt]?.color || 'var(--berry)'),
-          }}
-        >
-          {FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-        </select>
+        {/* Tag filter — one scrollable row of pills (compact on mobile, clean on desktop) */}
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flex: '1 1 auto', minWidth: 0, paddingBottom: 2, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+          {FILTERS.map(f => {
+            const active = flt === f.key;
+            const col = f.key === 'all' ? 'var(--berry)' : (KIND_STYLE[f.key]?.color || 'var(--berry)');
+            return (
+              <button key={f.key} type="button" onClick={() => setFlt(f.key)}
+                style={{ flexShrink: 0, padding: '6px 13px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                  border: '1.5px solid', borderColor: active ? col : 'var(--border)',
+                  background: active ? col : 'var(--surface)', color: active ? '#fff' : 'var(--ink)' }}>
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
         {flt === 'vazt' && isAdmin && vazvratRows.length > 0 && (
           <button type="button" disabled={vazvratBusy} onClick={openDeletePanel}
             style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '8px 12px', border: '1px solid #dc2626', borderRadius: 10, background: 'rgba(220,38,38,0.06)', color: '#dc2626', cursor: 'pointer' }}>
@@ -3762,41 +3764,35 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                     const ks = KIND_STYLE[ev.kind];
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const d: any = ev.data;
+                    let primary = '', meta = '', value = '', valueColor = 'var(--ink)';
+                    if (ev.kind === 'nakl')        { primary = d.name || d.invoiceDate; meta = `${d.invoiceCount} ${T('reg_meta_docs')}`; value = `${fmt0(d.sumTotal)} ${T('lbl_sum')}`; }
+                    else if (ev.kind === 'manual')  { primary = `№${d.invNo}`; meta = d.market || ''; value = `${fmt0(d.sumTotal)} ${T('lbl_sum')}`; }
+                    else if (ev.kind === 'zakas')   { primary = d.customer || '—'; meta = `${fmt0(d.totalQty)} ${T('lbl_pcs')}`; value = `${fmt0(d.totalAmount)} ${T('lbl_sum')}`; }
+                    else if (ev.kind === 'dov')     { primary = d.driver || '—'; meta = `${d.plate || ''} · ${d.car || ''}`; }
+                    else if (ev.kind === 'vazt')    { primary = `${fmt0(d.qty)} ${T('lbl_pcs')}`; meta = `${d.count} ${T('pv_ta_yozuv')}`; value = `${fmt0(d.sum)} ${T('lbl_sum')}`; valueColor = 'var(--danger)'; }
                     return (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, rowGap: 6, flexWrap: 'wrap', padding: '9px 12px', marginBottom: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: 'var(--shadow-sm)' }}>
-                        <span style={{ fontSize: '0.7em', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: ks.color, background: ks.bg, borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>{T(ks.labelKey)}</span>
-
-                        {ev.kind === 'nakl' && (<>
-                          <span style={{ fontWeight: 700, fontSize: '0.92em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name || d.invoiceDate}</span>
-                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{d.invoiceCount} {T('reg_meta_docs')}</span>
-                          <span style={{ fontSize: '0.92em', fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmt0(d.sumTotal)} so&apos;m</span>
-                          <button className="mini" type="button" onClick={() => loadSession(d._id)}>{T('lbl_restore')}</button>
-                          {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(d._id, d.name)}><Trash2 size={16} /></button>}
-                        </>)}
-
-                        {ev.kind === 'manual' && (<>
-                          <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap' }}>№{d.invNo}</span>
-                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.market}</span>
-                          <span style={{ fontSize: '0.92em', fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmt0(d.sumTotal)} so&apos;m</span>
-                        </>)}
-
-                        {ev.kind === 'zakas' && (<>
-                          <span style={{ fontWeight: 700, fontSize: '0.92em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.customer || '—'}</span>
-                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmt0(d.totalQty)} {T('lbl_pcs')}</span>
-                          <span style={{ fontSize: '0.92em', fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmt0(d.totalAmount)} so&apos;m</span>
-                        </>)}
-
-                        {ev.kind === 'dov' && (<>
-                          <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap' }}>{d.driver || '—'}</span>
-                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{d.plate} · {d.car}</span>
-                          <button className="mini" type="button" style={{ marginLeft: 'auto' }} onClick={() => { setDovFields(d); setDovSaved(true); setSettingsView('doverennost'); }}>{T('tarix_load')}</button>
-                        </>)}
-
-                        {ev.kind === 'vazt' && (<>
-                          <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap' }}>{fmt0(d.qty)} {T('lbl_pcs')}</span>
-                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{d.count} {T('pv_ta_yozuv')}</span>
-                          <span style={{ fontSize: '0.92em', fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', color: 'var(--danger)', whiteSpace: 'nowrap' }}>{fmt0(d.sum)} so&apos;m</span>
-                        </>)}
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, rowGap: 5, flexWrap: 'wrap', padding: '7px 10px', marginBottom: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: 'var(--shadow-sm)' }}>
+                        {/* Date/primary */}
+                        <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: ev.kind === 'nakl' ? 'var(--mono)' : undefined }}>{primary}</span>
+                        {/* Tag */}
+                        <span style={{ fontSize: '0.66em', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: ks.color, background: ks.bg, borderRadius: 5, padding: '2px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>{T(ks.labelKey)}</span>
+                        {/* Meta (count) — flexes + truncates so the row stays one line */}
+                        <span style={{ fontSize: '0.8em', color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '1 1 auto', minWidth: 0 }}>{meta}</span>
+                        {/* Sum */}
+                        {value && <span style={{ fontSize: '0.9em', fontWeight: 700, fontFamily: 'var(--mono)', whiteSpace: 'nowrap', flexShrink: 0, color: valueColor }}>{value}</span>}
+                        {/* Actions */}
+                        {ev.kind === 'nakl' && (
+                          <button type="button" onClick={() => loadSession(d._id)}
+                            style={{ flexShrink: 0, padding: '5px 11px', borderRadius: 8, border: '1px solid rgba(22,163,74,0.35)', background: 'rgba(22,163,74,0.10)', color: '#16a34a', fontWeight: 700, fontSize: '0.8em', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('lbl_restore')}</button>
+                        )}
+                        {ev.kind === 'nakl' && isAdmin && (
+                          <button type="button" onClick={() => deleteSession(d._id, d.name)} title={T('lbl_delete')}
+                            style={{ flexShrink: 0, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid rgba(220,38,38,0.30)', background: 'rgba(220,38,38,0.08)', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={15} /></button>
+                        )}
+                        {ev.kind === 'dov' && (
+                          <button type="button" onClick={() => { setDovFields(d); setDovSaved(true); setSettingsView('doverennost'); }}
+                            style={{ flexShrink: 0, padding: '5px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 700, fontSize: '0.8em', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('tarix_load')}</button>
+                        )}
                       </div>
                     );
                   })}
