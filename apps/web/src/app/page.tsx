@@ -3598,6 +3598,16 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
     } finally { setVazvratBusy(false); }
   };
 
+  const deleteVazvratDate = async (date: string) => {
+    if (!confirm(`${T('lbl_delete')}: ${date}?`)) return;
+    setVazvratBusy(true);
+    try {
+      await api.deleteVazvratDates(token, [date]);
+      setVazvratAllRows(vazvratRows.filter(v => v.date.slice(0, 10) !== date));
+      setVazvratAllDates(prev => prev.filter(d => d !== date));
+    } finally { setVazvratBusy(false); }
+  };
+
   const deleteAllVazvrat = async () => {
     if (!confirm(T('pv_del_all'))) return;
     setVazvratBusy(true);
@@ -3807,6 +3817,23 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                           <button type="button" onClick={() => { setDovFields(d); setDovSaved(true); setSettingsView('doverennost'); }}
                             style={{ flexShrink: 0, padding: '5px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 700, fontSize: '0.8em', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('tarix_load')}</button>
                         )}
+                        {ev.kind === 'vazt' && isAdmin && (<>
+                          {/* Desktop delete button */}
+                          <button type="button" className="tarix-act-desktop" onClick={() => deleteVazvratDate(d.date)} title={T('lbl_delete')}
+                            style={{ flexShrink: 0, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid rgba(220,38,38,0.30)', background: 'rgba(220,38,38,0.08)', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={15} /></button>
+                          {/* Mobile kebab */}
+                          <div className="tarix-act-mobile" style={{ position: 'relative', flexShrink: 0 }}>
+                            <button type="button" onClick={() => setHistMenuIdx(histMenuIdx === `${dateKey}:${idx}` ? null : `${dateKey}:${idx}`)}
+                              style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', fontSize: 16, fontWeight: 900, lineHeight: 1 }}>⋮</button>
+                            {histMenuIdx === `${dateKey}:${idx}` && (
+                              <div style={{ position: 'absolute', right: 0, top: 32, zIndex: 200, background: 'var(--shell)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 130, overflow: 'hidden' }}
+                                onClick={() => setHistMenuIdx(null)}>
+                                <button type="button" onClick={() => deleteVazvratDate(d.date)}
+                                  style={{ width: '100%', padding: '10px 14px', textAlign: 'left', background: 'none', border: 'none', color: '#dc2626', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{T('lbl_delete')}</button>
+                              </div>
+                            )}
+                          </div>
+                        </>)}
                       </div>
                     );
                   })}
