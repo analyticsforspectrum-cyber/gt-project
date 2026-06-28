@@ -2063,7 +2063,8 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
   cursor: pointer;
   transition: all 0.15s;
 }
-.statsTab:hover { background: rgba(var(--berry-rgb),0.08); border-color: var(--berry); }
+.statsTab:hover:not(.active) { background: rgba(var(--berry-rgb),0.08); border-color: var(--berry); }
+.statsTab.active:hover { filter: brightness(1.07); }
 .statsTab.active {
   background: var(--berry);
   border-color: var(--berry);
