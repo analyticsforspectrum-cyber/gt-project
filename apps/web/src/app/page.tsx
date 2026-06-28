@@ -3665,7 +3665,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
   // Unified history filter: 'all' shows every type tagged; others narrow to one tag.
   type TagFilter = 'all' | 'nakl' | 'manual' | 'zakas' | 'dov' | 'vazt';
   const [flt, setFlt] = React.useState<TagFilter>('all');
-  const [histMenuIdx, setHistMenuIdx] = React.useState<number | null>(null);
+  const [histMenuIdx, setHistMenuIdx] = React.useState<string | null>(null);
 
   const filteredSessions = React.useMemo(() =>
     sessions.filter(s => (!pvFrom || s.invoiceDate >= pvFrom) && (!pvTo || s.invoiceDate <= pvTo)),
@@ -3772,7 +3772,7 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                     else if (ev.kind === 'dov')     { primary = d.driver || '—'; meta = `${d.plate || ''} · ${d.car || ''}`; }
                     else if (ev.kind === 'vazt')    { primary = `${fmt0(d.qty)} ${T('lbl_pcs')}`; meta = `${d.count} ${T('pv_ta_yozuv')}`; value = `${fmt0(d.sum)} ${T('lbl_sum')}`; valueColor = 'var(--danger)'; }
                     return (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', overflow: 'hidden', padding: '6px 10px', marginBottom: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: 'var(--shadow-sm)' }}>
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', padding: '6px 10px', marginBottom: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: 'var(--shadow-sm)' }}>
                         {/* Date/primary */}
                         <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: ev.kind === 'nakl' ? 'var(--mono)' : undefined }}>{primary}</span>
                         {/* Tag */}
@@ -3790,9 +3790,9 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
                             style={{ flexShrink: 0, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid rgba(220,38,38,0.30)', background: 'rgba(220,38,38,0.08)', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={15} /></button>}
                           {/* Mobile kebab */}
                           <div className="tarix-act-mobile" style={{ position: 'relative', flexShrink: 0 }}>
-                            <button type="button" onClick={() => setHistMenuIdx(histMenuIdx === idx ? null : idx)}
+                            <button type="button" onClick={() => setHistMenuIdx(histMenuIdx === `${dateKey}:${idx}` ? null : `${dateKey}:${idx}`)}
                               style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', fontSize: 16, fontWeight: 900, lineHeight: 1 }}>⋮</button>
-                            {histMenuIdx === idx && (
+                            {histMenuIdx === `${dateKey}:${idx}` && (
                               <div style={{ position: 'absolute', right: 0, top: 32, zIndex: 200, background: 'var(--shell)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 130, overflow: 'hidden' }}
                                 onClick={() => setHistMenuIdx(null)}>
                                 <button type="button" onClick={() => loadSession(d._id)}
