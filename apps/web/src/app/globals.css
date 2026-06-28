@@ -1359,10 +1359,16 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 }
 
 .invoiceDoc {
-  color: #161616;
+  color: #000;
   font-family: var(--sans);
   font-size: 11px;
   line-height: 1.28;
+  background: #fff;
+  /* Always render the printable invoice at true 100%, ignoring the global font-size zoom. */
+  zoom: var(--inv-unzoom, 1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 .invoiceDoc header {
@@ -1382,7 +1388,7 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 }
 
 .invoiceDoc header span {
-  color: #666;
+  color: #333;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -1406,14 +1412,14 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 }
 
 .docMeta div, .parties div {
-  border: 1px solid #ded7c8;
-  background: #fffdf8;
+  border: 1px solid #ccc;
+  background: #fff;
   padding: 7px 9px;
 }
 
 .docMeta span, .parties em {
   display: block;
-  color: #666;
+  color: #333;
   font-size: 8px;
   font-style: normal;
   font-weight: 900;
@@ -1429,7 +1435,7 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
   color: #000;
 }
 
-.contract { margin: 7px 0; color: #4b4942; font-size: 9px; }
+.contract { margin: 7px 0; color: #333; font-size: 9px; }
 
 .parties {
   display: grid;
@@ -1443,10 +1449,10 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 .red { color: var(--danger); }
 
 .invoiceDoc table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
-.invoiceDoc th, .invoiceDoc td { border: 1px solid #d8d3c7; padding: 3px 5px; }
-.invoiceDoc th { background: #e0dcd4; color: #111; text-align: center; font-weight: 700; }
-.invoiceDoc tbody tr:nth-child(even) td { background: #fbfaf5; }
-.invoiceDoc tr.total td { background: #dcefdc; font-weight: 900; }
+.invoiceDoc th, .invoiceDoc td { border: 1px solid #999; padding: 3px 5px; }
+.invoiceDoc th { background: #fff; color: #000; text-align: center; font-weight: 700; }
+.invoiceDoc tbody tr:nth-child(even) td { background: #fff; }
+.invoiceDoc tr.total td { background: #fff; font-weight: 900; border-top: 2px solid #000; }
 
 .words { margin: 8px 0; font-size: 10px; }
 
