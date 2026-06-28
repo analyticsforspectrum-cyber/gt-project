@@ -1119,8 +1119,8 @@ const [manualOpen, setManualOpen] = useState(false);
         try {
           const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
           (window as any).JsBarcode(svg, inv.order, {
-            format: 'CODE128', width: 0.9, height: 20,
-            displayValue: true, fontSize: 7, margin: 2,
+            format: 'CODE128', width: 1.3, height: 30,
+            displayValue: true, fontSize: 9, margin: 2,
             background: '#fff', lineColor: '#000',
           });
           barcodes[inv.order] = new XMLSerializer().serializeToString(svg);
@@ -1148,7 +1148,7 @@ const [manualOpen, setManualOpen] = useState(false);
     <div><span>Дата</span><b>${fmtDate(inv.dateIso)}</b></div>
     <div><span>№ заказа</span>${barcodeSvg}</div>
     <div><span>Магазин</span><b>${inv.market ?? ''}</b></div>
-    <div><span>Код</span><b>${inv.storeCode}</b></div>
+    <div><span>Код</span><b>${inv.storeCode}</b>${inv.order ? `<span class="metaSub">Заказ: ${inv.order}</span>` : ''}</div>
   </div>
   <p class="contract">${requisites.contract ?? ''}</p>
   <div class="parties">
@@ -1201,6 +1201,7 @@ body { font-family: Arial, sans-serif; font-size: 9px; color: #000; background: 
 .docMeta > div { border: 1px solid #888; padding: 3px 5px; flex: 1; }
 .docMeta span { display: block; color: #333; font-size: 7px; font-weight: 700; text-transform: uppercase; }
 .docMeta b { font-size: 10px; font-weight: 700; font-family: "Courier New", monospace; }
+.metaSub { display: block; margin-top: 1px; font-size: 7px; font-weight: 700; color: #444; font-family: "Courier New", monospace; text-transform: none; }
 .docMeta svg { max-width: 100%; height: auto; display: block; }
 .contract { margin: 3px 0; font-size: 6.5px; color: #222; }
 .parties { display: flex; gap: 5px; margin-bottom: 4px; }
@@ -1209,7 +1210,7 @@ body { font-family: Arial, sans-serif; font-size: 9px; color: #000; background: 
 .parties b { display: block; font-size: 8px; font-weight: 700; }
 .parties span { display: block; font-size: 7.5px; }
 table { width: 100%; border-collapse: collapse; font-size: 9px; margin-top: 4px; }
-th { background: #fff; border: 1px solid #333; font-weight: 700; padding: 3px 4px; text-align: left; }
+th { background: #e0dcd4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid #333; font-weight: 700; padding: 3px 4px; text-align: left; }
 td { border: 1px solid #888; padding: 2px 4px; }
 td.right, th.right { text-align: right; }
 tr.total td { font-weight: 700; border-top: 2px solid #333; }
@@ -1242,7 +1243,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
         if (!inv.order) return;
         try {
           const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          (window as any).JsBarcode(svg, inv.order, { format: 'CODE128', width: 0.9, height: 20, displayValue: true, fontSize: 7, margin: 2, background: '#fff', lineColor: '#000' });
+          (window as any).JsBarcode(svg, inv.order, { format: 'CODE128', width: 1.3, height: 30, displayValue: true, fontSize: 9, margin: 2, background: '#fff', lineColor: '#000' });
           barcodes[inv.order] = new XMLSerializer().serializeToString(svg);
         } catch {}
       });
@@ -1252,9 +1253,9 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
       const invoiceHtml = (inv: Invoice) => {
         const lines = inv.lines.filter(l => l.qty > 0);
         const barcodeSvg = inv.order && barcodes[inv.order] ? barcodes[inv.order] : '';
-        return `<div class="invoiceDoc"><header><div><b>ГДЕ ТОРТ?</b><span>Кондитерские изделия</span></div><section><h2>Накладная — счёт-фактура</h2><strong>№ ${inv.invNo}</strong></section></header><div class="docMeta"><div><span>Дата</span><b>${fmtDate(inv.dateIso)}</b></div><div><span>№ заказа</span>${barcodeSvg}</div><div><span>Магазин</span><b>${inv.market??''}</b></div><div><span>Код</span><b>${inv.storeCode}</b></div></div><p class="contract">${requisites.contract??''}</p><div class="parties"><div><em>Поставщик</em><b>${requisites.supplier.name}</b><span>${requisites.supplier.addr}</span><span>ИНН: ${requisites.supplier.inn} · НДС: ${requisites.supplier.vat}</span></div><div><em>Получатель</em><b>${requisites.receiver.name}</b><span style="color:#c00">Адрес: ${inv.address}</span><span>ИНН: ${requisites.receiver.inn} · НДС: ${requisites.receiver.vat}</span></div></div><table><thead><tr><th>#</th><th>Наименование товара</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Стоимость</th><th>НДС</th><th>С НДС</th></tr></thead><tbody>${lines.map((l,i)=>`<tr><td>${i+1}</td><td>${l.name}</td><td>${l.unit}</td><td class="right">${fmt0N(l.qty)}</td><td class="right">${fmtN(l.price)}</td><td class="right">${fmtN(l.cost)}</td><td class="right">${fmtN(l.vat)}</td><td class="right">${fmtN(l.total)}</td></tr>`).join('')}<tr class="total"><td></td><td>Итого</td><td></td><td class="right">${fmt0N(inv.sumQty)}</td><td></td><td class="right">${fmtN(inv.sumCost)}</td><td class="right">${fmtN(inv.sumVat)}</td><td class="right">${fmtN(inv.sumTotal)}</td></tr></tbody></table><p class="words">Всего отпущено на сумму: <b>${amountWords(inv.sumTotal)}</b></p><footer><span>Руководитель ____________ <b>BAYMATOVA D.A</b></span><span>Главный бухгалтер ____________ <b>НЕ ПРЕДУСМОТРЕН</b></span></footer><footer><span>Отпустил ____________________</span><span>Получил ____________________</span></footer></div>`;
+        return `<div class="invoiceDoc"><header><div><b>ГДЕ ТОРТ?</b><span>Кондитерские изделия</span></div><section><h2>Накладная — счёт-фактура</h2><strong>№ ${inv.invNo}</strong></section></header><div class="docMeta"><div><span>Дата</span><b>${fmtDate(inv.dateIso)}</b></div><div><span>№ заказа</span>${barcodeSvg}</div><div><span>Магазин</span><b>${inv.market??''}</b></div><div><span>Код</span><b>${inv.storeCode}</b>${inv.order?`<span class="metaSub">Заказ: ${inv.order}</span>`:''}</div></div><p class="contract">${requisites.contract??''}</p><div class="parties"><div><em>Поставщик</em><b>${requisites.supplier.name}</b><span>${requisites.supplier.addr}</span><span>ИНН: ${requisites.supplier.inn} · НДС: ${requisites.supplier.vat}</span></div><div><em>Получатель</em><b>${requisites.receiver.name}</b><span style="color:#c00">Адрес: ${inv.address}</span><span>ИНН: ${requisites.receiver.inn} · НДС: ${requisites.receiver.vat}</span></div></div><table><thead><tr><th>#</th><th>Наименование товара</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Стоимость</th><th>НДС</th><th>С НДС</th></tr></thead><tbody>${lines.map((l,i)=>`<tr><td>${i+1}</td><td>${l.name}</td><td>${l.unit}</td><td class="right">${fmt0N(l.qty)}</td><td class="right">${fmtN(l.price)}</td><td class="right">${fmtN(l.cost)}</td><td class="right">${fmtN(l.vat)}</td><td class="right">${fmtN(l.total)}</td></tr>`).join('')}<tr class="total"><td></td><td>Итого</td><td></td><td class="right">${fmt0N(inv.sumQty)}</td><td></td><td class="right">${fmtN(inv.sumCost)}</td><td class="right">${fmtN(inv.sumVat)}</td><td class="right">${fmtN(inv.sumTotal)}</td></tr></tbody></table><p class="words">Всего отпущено на сумму: <b>${amountWords(inv.sumTotal)}</b></p><footer><span>Руководитель ____________ <b>BAYMATOVA D.A</b></span><span>Главный бухгалтер ____________ <b>НЕ ПРЕДУСМОТРЕН</b></span></footer><footer><span>Отпустил ____________________</span><span>Получил ____________________</span></footer></div>`;
       };
-      const css = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9px;color:#000}.page{width:210mm;padding:8mm 7mm;page-break-after:always}.half{height:138mm;max-height:138mm;overflow:hidden;padding:5mm 4mm}.half.top{border-bottom:1.5px dashed #777}.invoiceDoc{color:#000;font-size:9px;line-height:1.3}.invoiceDoc header{margin-bottom:5px;display:flex;justify-content:space-between}.invoiceDoc header b{font-size:14px;font-weight:900}.invoiceDoc header span{font-size:8px;font-weight:700;text-transform:uppercase;display:block}.invoiceDoc h2{font-size:11px;margin:0;font-weight:700}.invoiceDoc strong{font-size:10px}.docMeta{display:flex;gap:4px;margin-bottom:4px}.docMeta>div{border:1px solid #888;padding:3px 5px;flex:1}.docMeta span{display:block;color:#333;font-size:7px;font-weight:700;text-transform:uppercase}.docMeta b{font-size:10px;font-weight:700;font-family:"Courier New",monospace}.docMeta svg{max-width:100%;height:auto;display:block}.contract{margin:3px 0;font-size:6.5px}.parties{display:flex;gap:5px;margin-bottom:4px}.parties>div{border:1px solid #888;padding:3px 5px;flex:1}.parties em{display:block;color:#333;font-size:7px;font-weight:700;text-transform:uppercase}.parties b{display:block;font-size:8px;font-weight:700}.parties span{display:block;font-size:7.5px}table{width:100%;border-collapse:collapse;font-size:9px;margin-top:4px}th{background:#fff;border:1px solid #333;font-weight:700;padding:3px 4px;text-align:left}td{border:1px solid #888;padding:2px 4px}td.right{text-align:right}tr.total td{font-weight:700;border-top:2px solid #333}.words{margin-top:4px;font-size:7.5px}footer{display:flex;justify-content:space-between;margin-top:5px;font-size:7.5px;border-top:1px solid #bbb;padding-top:3px}`;
+      const css = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9px;color:#000}.page{width:210mm;padding:8mm 7mm;page-break-after:always}.half{height:138mm;max-height:138mm;overflow:hidden;padding:5mm 4mm}.half.top{border-bottom:1.5px dashed #777}.invoiceDoc{color:#000;font-size:9px;line-height:1.3}.invoiceDoc header{margin-bottom:5px;display:flex;justify-content:space-between}.invoiceDoc header b{font-size:14px;font-weight:900}.invoiceDoc header span{font-size:8px;font-weight:700;text-transform:uppercase;display:block}.invoiceDoc h2{font-size:11px;margin:0;font-weight:700}.invoiceDoc strong{font-size:10px}.docMeta{display:flex;gap:4px;margin-bottom:4px}.docMeta>div{border:1px solid #888;padding:3px 5px;flex:1}.docMeta span{display:block;color:#333;font-size:7px;font-weight:700;text-transform:uppercase}.docMeta b{font-size:10px;font-weight:700;font-family:"Courier New",monospace}.metaSub{display:block;margin-top:1px;font-size:7px;font-weight:700;color:#444;font-family:"Courier New",monospace;text-transform:none}.docMeta svg{max-width:100%;height:auto;display:block}.contract{margin:3px 0;font-size:6.5px}.parties{display:flex;gap:5px;margin-bottom:4px}.parties>div{border:1px solid #888;padding:3px 5px;flex:1}.parties em{display:block;color:#333;font-size:7px;font-weight:700;text-transform:uppercase}.parties b{display:block;font-size:8px;font-weight:700}.parties span{display:block;font-size:7.5px}table{width:100%;border-collapse:collapse;font-size:9px;margin-top:4px}th{background:#e0dcd4;-webkit-print-color-adjust:exact;print-color-adjust:exact;border:1px solid #333;font-weight:700;padding:3px 4px;text-align:left}td{border:1px solid #888;padding:2px 4px}td.right{text-align:right}tr.total td{font-weight:700;border-top:2px solid #333}.words{margin-top:4px;font-size:7.5px}footer{display:flex;justify-content:space-between;margin-top:5px;font-size:7.5px;border-top:1px solid #bbb;padding-top:3px}`;
       const pagesHtml = list.map(inv => `<div class="page"><div class="half top">${invoiceHtml(inv)}</div><div class="half">${invoiceHtml(inv)}</div></div>`).join('');
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99998;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-family:sans-serif;';
@@ -5037,8 +5038,8 @@ function BarcodeCanvas({ value }: { value: string }) {
       if (ref.current && (window as any).JsBarcode) {
         try {
           (window as any).JsBarcode(ref.current, value, {
-            format: 'CODE128', width: 0.9, height: 20,
-            displayValue: true, fontSize: 7, margin: 2,
+            format: 'CODE128', width: 1.4, height: 34,
+            displayValue: true, fontSize: 10, margin: 2,
             background: '#fff', lineColor: '#000',
           });
         } catch {}
@@ -5074,7 +5075,11 @@ function InvoiceDocument({ invoice, requisites }: { invoice: Invoice; requisites
           {invoice.order && <BarcodeCanvas value={invoice.order} />}
         </div>
         <DocMeta label="Магазин" value={invoice.market} />
-        <DocMeta label="Код" value={invoice.storeCode} />
+        <div>
+          <span>Код</span>
+          <b>{invoice.storeCode}</b>
+          {invoice.order && <span className="metaSub">Заказ: {invoice.order}</span>}
+        </div>
       </div>
       <p className="contract">{requisites.contract}</p>
       <div className="parties">

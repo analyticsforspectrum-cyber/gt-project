@@ -1412,8 +1412,8 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 }
 
 .docMeta div, .parties div {
-  border: 1px solid #ccc;
-  background: #fff;
+  border: 1px solid #b8b1a3;
+  background: #fffdf8;
   padding: 7px 9px;
 }
 
@@ -1435,6 +1435,17 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
   color: #000;
 }
 
+.metaSub {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: #555;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .contract { margin: 7px 0; color: #333; font-size: 9px; }
 
 .parties {
@@ -1449,10 +1460,10 @@ input[type="checkbox"]:not(.dispatch-dot):checked::after { transform: translateX
 .red { color: var(--danger); }
 
 .invoiceDoc table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
-.invoiceDoc th, .invoiceDoc td { border: 1px solid #999; padding: 3px 5px; }
-.invoiceDoc th { background: #fff; color: #000; text-align: center; font-weight: 700; }
-.invoiceDoc tbody tr:nth-child(even) td { background: #fff; }
-.invoiceDoc tr.total td { background: #fff; font-weight: 900; border-top: 2px solid #000; }
+.invoiceDoc th, .invoiceDoc td { border: 1px solid #9a9489; padding: 3px 5px; }
+.invoiceDoc th { background: #e0dcd4; color: #111; text-align: center; font-weight: 700; border-color: #6f6a60; }
+.invoiceDoc tbody tr:nth-child(even) td { background: #fbfaf5; }
+.invoiceDoc tr.total td { background: #f1efe8; font-weight: 900; border-top: 2px solid #4a463f; }
 
 .words { margin: 8px 0; font-size: 10px; }
 
