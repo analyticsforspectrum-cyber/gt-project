@@ -164,6 +164,10 @@ export default function Home() {
   const [density, setDensity] = useState<Density>(() =>
     typeof window !== 'undefined' ? ((localStorage.getItem('pref_density') as Density) || 'cozy') : 'cozy'
   );
+  // Global font size (overrides density's font; drives --ui-font for the whole app).
+  const [fontPref, setFontPref] = useState<'s' | 'm' | 'l' | 'xl'>(() =>
+    typeof window !== 'undefined' ? ((localStorage.getItem('pref_font') as 's' | 'm' | 'l' | 'xl') || 'm') : 'm'
+  );
   const [appBg, setAppBg] = useState<string>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('pref_bg') || '') : ''
   );
@@ -293,6 +297,10 @@ export default function Home() {
     const root = document.documentElement;
     root.dataset.theme = theme;
     root.dataset.density = density;
+    // Global font size — overrides density's --ui-font so the whole UI scales with it.
+    const FONT_PX: Record<string, string> = { s: '13px', m: '14.5px', l: '16px', xl: '18px' };
+    root.style.setProperty('--ui-font', FONT_PX[fontPref] || '14.5px');
+    localStorage.setItem('pref_font', fontPref);
     if (appBg) root.style.setProperty('--app-bg', appBg);
     else root.style.removeProperty('--app-bg');
     // Apply accent colors. A 'custom' accent derives its dark/rgb from the picked hex.
@@ -314,7 +322,7 @@ export default function Home() {
     localStorage.setItem('pref_accent_v3', accent);
     localStorage.setItem('pref_accent_custom', customAccent);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theme, density, appBg, accent, customAccent]);
+  }, [theme, density, appBg, accent, customAccent, fontPref]);
   const [unsaved, setUnsaved] = useState(false);
 const [manualOpen, setManualOpen] = useState(false);
   const [manual, setManual] = useState({
@@ -1403,8 +1411,6 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
           {isAdmin  && <Tab active={view === 'analytics'}  icon={<BarChart3 size={18} />}     label={T('nav_analytics')} onClick={() => { setView('analytics'); void loadAnalytics(); }} />}
           <Tab             active={view === 'undelivered'} icon={<AlertTriangle size={18} />} label={T('nav_undelivered')} onClick={() => setView('undelivered')}
             badge={invoices.filter(i => i.status === 'saved').length || undefined} />
-          {!isAdmin && <Tab active={view === 'manual-list'} icon={<PenLine size={18} />} label="Qo'lda" onClick={() => setView('manual-list')}
-            badge={invoices.filter(i => i.manual && i.status !== 'cancelled').length || undefined} />}
           <Tab             active={view === 'settings'}    icon={<Settings size={18} />}      label={T('nav_settings')}  onClick={() => setView('settings')} />
           <Tab             active={view === 'preferences'} icon={<Palette size={18} />}       label={T('nav_preferences')} onClick={() => setView('preferences')} />
         </nav>
@@ -2088,8 +2094,8 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 title={T('ops_title')}
                 meta={`${orders.length} · ${inventoryMovements.length}`}
                 actions={
-                  <button className="small" type="button" onClick={() => loadCore(token!, user?.role)}>
-                    <RefreshCcw size={15} />
+                  <button className="small" type="button" onClick={() => loadCore(token!, user?.role)} title={T('act_refresh')}>
+                    <RefreshCcw size={15} /> {T('act_refresh')}
                   </button>
                 }
               />
@@ -2380,6 +2386,17 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 </div>
 
                 <div className="prefCard">
+                  <h3>{T('pref_fontsize')}</h3>
+                  <p className="prefHint">{T('pref_fontsize_hint')}</p>
+                  <div className="seg" role="group">
+                    <button type="button" style={{ fontSize: 12 }}   className={fontPref === 's' ? 'on' : ''}  onClick={() => setFontPref('s')}>{T('pref_font_s')}</button>
+                    <button type="button" style={{ fontSize: 14 }}   className={fontPref === 'm' ? 'on' : ''}  onClick={() => setFontPref('m')}>{T('pref_font_m')}</button>
+                    <button type="button" style={{ fontSize: 16 }}   className={fontPref === 'l' ? 'on' : ''}  onClick={() => setFontPref('l')}>{T('pref_font_l')}</button>
+                    <button type="button" style={{ fontSize: 18 }}   className={fontPref === 'xl' ? 'on' : ''} onClick={() => setFontPref('xl')}>{T('pref_font_xl')}</button>
+                  </div>
+                </div>
+
+                <div className="prefCard">
                   <h3>{T('pref_accent')}</h3>
                   <p className="prefHint">{T('pref_accent_hint')}</p>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
@@ -2594,6 +2611,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   sessions={sessions}
                   dovHistory={dovHistory}
                   qaytganInvoices={invoices.filter(i => i.status === 'saved' && !!i.undeliverComment)}
+                  manualInvoices={invoices.filter(i => i.manual && i.status !== 'cancelled')}
                   vazvratRows={vazvratAllRows}
                   setVazvratAllRows={setVazvratAllRows}
                   orders={orders}
@@ -3508,11 +3526,11 @@ function DovHistory({ dovHistory, expandedDates, toggleDateGroup, setDovFields, 
 }
 
 
-function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazvratAllRows, orders, token,
+function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazvratRows, setVazvratAllRows, orders, token,
   expandedDates, toggleDateGroup, loadSession, deleteSession, setDovFields, setDovSaved, setSettingsView,
   deleteDovEntry, refreshSessions, isAdmin, fmtDateRu, fmt0, T }: {
   sessions: import('@/types/domain').SessionSummary[]; dovHistory: import('@/types/domain').DovEntry[];
-  qaytganInvoices: import('@/types/domain').Invoice[]; vazvratRows: import('@/types/domain').VazvratRecord[];
+  qaytganInvoices: import('@/types/domain').Invoice[]; manualInvoices: import('@/types/domain').Invoice[]; vazvratRows: import('@/types/domain').VazvratRecord[];
   setVazvratAllRows: (rows: import('@/types/domain').VazvratRecord[]) => void;
   orders: import('@/types/domain').Order[]; token: string;
   expandedDates: Set<string>; toggleDateGroup: (k: string) => void;
@@ -3643,314 +3661,188 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, vazvratRows, setVazv
     finally { setVazvratBusy(false); }
   };
 
-  const [tab, setTab] = React.useState<TarixTab>('nakl');
+  // Unified history filter: 'all' shows every type tagged; others narrow to one tag.
+  type TagFilter = 'all' | 'nakl' | 'manual' | 'zakas' | 'dov' | 'vazt';
+  const [flt, setFlt] = React.useState<TagFilter>('all');
 
   const filteredSessions = React.useMemo(() =>
     sessions.filter(s => (!pvFrom || s.invoiceDate >= pvFrom) && (!pvTo || s.invoiceDate <= pvTo)),
     [sessions, pvFrom, pvTo]
   );
 
-  const TABS: { key: TarixTab; label: string; count: number; color: string }[] = [
-    { key: 'nakl',    label: T('tarix_hujjat'),      count: filteredSessions.length, color: '#2563eb' },
-    { key: 'vazvrat', label: T('tarix_qaytarma'),    count: vazvratRows.length,      color: '#d97706' },
-    { key: 'zakas',   label: T('tarix_buyurtma'),    count: filteredSessions.length, color: '#7c3aed' },
-    { key: 'dov',     label: T('tarix_ishonchnoma'), count: dovHistory.length,       color: '#059669' },
+  // Per-date Qaytarma (vazvrat) summary for the unified list.
+  const vazvratByDate = React.useMemo(() => {
+    const m: Record<string, { date: string; qty: number; sum: number; count: number }> = {};
+    for (const v of vazvratRows) {
+      const d = v.date.slice(0, 10);
+      if ((pvFrom && d < pvFrom) || (pvTo && d > pvTo)) continue;
+      if (!m[d]) m[d] = { date: d, qty: 0, sum: 0, count: 0 };
+      m[d].qty += v.qty; m[d].sum += v.totalWithVat; m[d].count += 1;
+    }
+    return Object.values(m);
+  }, [vazvratRows, pvFrom, pvTo]);
+
+  // Build the unified, date-grouped, tagged event list.
+  const unifiedGroups = React.useMemo(() => {
+    type Ev = { kind: 'nakl' | 'manual' | 'zakas' | 'dov' | 'vazt'; dateKey: string; sortTs: string; data: unknown };
+    const evs: Ev[] = [];
+    if (flt === 'all' || flt === 'nakl')
+      for (const s of filteredSessions) evs.push({ kind: 'nakl', dateKey: s.invoiceDate.slice(0, 10), sortTs: s.savedAt || s.invoiceDate, data: s });
+    if (flt === 'all' || flt === 'manual')
+      for (const inv of manualInvoices) { const d = (inv.dateIso || '').slice(0, 10); if ((pvFrom && d < pvFrom) || (pvTo && d > pvTo)) continue; evs.push({ kind: 'manual', dateKey: d, sortTs: inv.dateIso, data: inv }); }
+    if (flt === 'all' || flt === 'zakas')
+      for (const o of orders) { const d = (o.deliveryDate || o.createdAt || '').slice(0, 10); if ((pvFrom && d < pvFrom) || (pvTo && d > pvTo)) continue; evs.push({ kind: 'zakas', dateKey: d, sortTs: o.createdAt || o.deliveryDate, data: o }); }
+    if (flt === 'all' || flt === 'dov')
+      for (const h of dovHistory) { const d = new Date(h.printedAt).toISOString().slice(0, 10); if ((pvFrom && d < pvFrom) || (pvTo && d > pvTo)) continue; evs.push({ kind: 'dov', dateKey: d, sortTs: h.printedAt, data: h }); }
+    if (flt === 'all' || flt === 'vazt')
+      for (const vd of vazvratByDate) evs.push({ kind: 'vazt', dateKey: vd.date, sortTs: vd.date, data: vd });
+    const map: Record<string, Ev[]> = {};
+    for (const e of evs) (map[e.dateKey] ??= []).push(e);
+    return Object.keys(map).sort((a, b) => b.localeCompare(a)).map(dateKey => ({
+      dateKey,
+      items: map[dateKey].sort((a, b) => (b.sortTs || '').localeCompare(a.sortTs || '')),
+    }));
+  }, [flt, filteredSessions, manualInvoices, orders, dovHistory, vazvratByDate, pvFrom, pvTo]);
+
+  const FILTERS: { key: TagFilter; label: string }[] = [
+    { key: 'all',    label: T('tarix_hammasi') },
+    { key: 'nakl',   label: T('tarix_hujjat') },
+    { key: 'manual', label: T('tarix_qolda') },
+    { key: 'zakas',  label: T('tarix_buyurtma') },
+    { key: 'dov',    label: T('tarix_ishonchnoma') },
+    { key: 'vazt',   label: T('tarix_qaytarma') },
   ];
 
   return (
     <>
-      {/* Tab bar + refresh */}
+      {/* Toolbar: refresh + date range + tag filter */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div className="tarix-tabs">
-          {TABS.map(t => (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer',
-                background: tab === t.key ? t.color : 'var(--surface)',
-                color: tab === t.key ? '#fff' : 'var(--ink)',
-                boxShadow: tab === t.key ? `0 2px 8px ${t.color}44` : '0 1px 3px rgba(0,0,0,0.06)',
-              }}>
-              {t.label}
-              <span style={{ fontSize: 11, fontWeight: 800, background: tab === t.key ? 'rgba(255,255,255,0.25)' : 'rgba(var(--ink-rgb),0.08)', borderRadius: 6, padding: '1px 6px' }}>{t.count}</span>
-            </button>
-          ))}
-        </div>
-        {/* Refresh + date range */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>
-          <button type="button" onClick={refreshSessions}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--berry)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(var(--berry-rgb,180,0,80),0.28)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            <RefreshCcw size={13} /> Yangilash
+        <button type="button" onClick={refreshSessions}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--berry)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(var(--berry-rgb),0.28)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <RefreshCcw size={13} /> {T('act_refresh')}
+        </button>
+        <DateRangePicker from={pvFrom} to={pvTo} setFrom={setPvFrom} setTo={setPvTo} T={T}
+          inputStyle={{ fontSize: 12, fontWeight: 500, border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 8, padding: '4px 6px', background: 'var(--surface)', color: 'var(--ink)' }} />
+        {/* Tag filter — compact dropdown (saves space on mobile) */}
+        <select
+          value={flt}
+          onChange={(e) => setFlt(e.target.value as TagFilter)}
+          style={{
+            flexShrink: 0, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+            padding: '8px 12px', borderRadius: 10,
+            border: `1.5px solid ${flt === 'all' ? 'var(--border)' : (KIND_STYLE[flt]?.color || 'var(--berry)')}`,
+            background: 'var(--surface)',
+            color: flt === 'all' ? 'var(--ink)' : (KIND_STYLE[flt]?.color || 'var(--berry)'),
+          }}
+        >
+          {FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+        </select>
+        {flt === 'vazt' && isAdmin && vazvratRows.length > 0 && (
+          <button type="button" disabled={vazvratBusy} onClick={openDeletePanel}
+            style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '8px 12px', border: '1px solid #dc2626', borderRadius: 10, background: 'rgba(220,38,38,0.06)', color: '#dc2626', cursor: 'pointer' }}>
+            <Trash2 size={13} /> {T('lbl_delete')}
           </button>
-          {/* Date range */}
-          <DateRangePicker from={pvFrom} to={pvTo} setFrom={setPvFrom} setTo={setPvTo} T={T}
-            inputStyle={{ fontSize: 12, fontWeight: 500, border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 8, padding: '4px 6px', background: 'var(--surface)', color: 'var(--ink)' }} />
-        </div>
+        )}
       </div>
 
-      {/* Nakladnoy tab */}
-      {tab === 'nakl' && (() => {
-        return filteredSessions.length === 0 ? <Empty title={T('empty_no_doc_history')} /> :
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          {filteredSessions.map(s => {
-            return (
-              <div key={s._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #2563eb', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{s.name || s.invoiceDate}</div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{s.invoiceCount} ta nakl · {s.invoiceDate}</div>
-                </div>
-                <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{fmt0(s.sumTotal)} so&apos;m</span>
-                <button className="mini" type="button" onClick={() => loadSession(s._id)}>{T('lbl_restore')}</button>
-                {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(s._id, s.name)}><Trash2 size={14} /></button>}
-              </div>
-            );
-          })}
-        </div>;
-      })()}
-
-      {/* Vazvrat tab — Pivot table */}
-      {tab === 'vazvrat' && (() => {
-        // Date filter
-        const from = pvFrom || (allDates[allDates.length - 1] ?? '');
-        const to   = pvTo   || (allDates[0] ?? '');
-        const filtered = vazvratRows.filter(v => {
-          const d = v.date.slice(0, 10);
-          return (!from || d >= from) && (!to || d <= to);
-        });
-
-        // Pivot: rows=product, cols=market, value=qty+sum
-        const markets  = [...new Set(filtered.map(v => v.marketName || v.marketCode))].sort();
-        type Cell = { qty: number; sum: number };
-        const pivot: Record<string, Record<string, Cell>> = {};
-        const colTotals: Record<string, Cell> = {};
-        const rowTotals: Record<string, Cell> = {};
-        let grandQty = 0; let grandSum = 0;
-        for (const v of filtered) {
-          const p = v.productName;
-          const m = v.marketName || v.marketCode;
-          if (!pivot[p]) pivot[p] = {};
-          if (!pivot[p][m]) pivot[p][m] = { qty: 0, sum: 0 };
-          pivot[p][m].qty += v.qty;
-          pivot[p][m].sum += v.totalWithVat;
-          if (!rowTotals[p]) rowTotals[p] = { qty: 0, sum: 0 };
-          rowTotals[p].qty += v.qty; rowTotals[p].sum += v.totalWithVat;
-          if (!colTotals[m]) colTotals[m] = { qty: 0, sum: 0 };
-          colTotals[m].qty += v.qty; colTotals[m].sum += v.totalWithVat;
-          grandQty += v.qty; grandSum += v.totalWithVat;
-        }
-        // Sort products by total qty descending
-        const products = [...new Set(filtered.map(v => v.productName))]
-          .sort((a, b) => (rowTotals[b]?.qty ?? 0) - (rowTotals[a]?.qty ?? 0));
-
-        const thStyle: React.CSSProperties = { padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.12)', textAlign: 'center' };
-        const tdStyle: React.CSSProperties = { padding: '4px 8px', fontSize: 12, border: '1px solid rgba(var(--ink-rgb),0.1)', textAlign: 'center', whiteSpace: 'nowrap', width: 42 };
-        const stickyCol: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)', fontWeight: 600, textAlign: 'left', minWidth: 220, maxWidth: 280, willChange: 'transform' };
-
-        const activeDays = allDates.filter(d => (!from||d>=from)&&(!to||d<=to)).length;
-        const kpi = [
-          { label: T('pv_kpi_qaytarma'), value: `${grandQty} ${T('pv_dona')}`, sub: fmt0(grandSum) + ' so\'m', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
-          { label: T('pv_kpi_mahsulot'), value: products.length, sub: T('pv_xil_tovar'), color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
-          { label: T('pv_kpi_market'), value: markets.length, sub: T('pv_ta_dokon'), color: '#0891b2', bg: 'rgba(8,145,178,0.08)' },
-          { label: T('pv_kpi_kunlar'), value: activeDays, sub: `${filtered.length} ${T('pv_ta_yozuv')}`, color: '#059669', bg: 'rgba(5,150,105,0.08)' },
-        ];
-
-        return (
-          <>
-            {/* Top bar: delete + range notice */}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, color: 'var(--muted)', background: 'rgba(var(--ink-rgb),0.06)', borderRadius: 6, padding: '3px 8px', flexShrink: 0 }}>
-                So&apos;nggi {VAZVRAT_DEFAULT_DAYS} kun
-              </span>
-              {isAdmin && vazvratRows.length > 0 && (
-                <button type="button" disabled={vazvratBusy} onClick={openDeletePanel}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '7px 12px', border: '1px solid #dc2626', borderRadius: 9, background: 'rgba(220,38,38,0.06)', color: '#dc2626', cursor: 'pointer' }}>
-                  <Trash2 size={13} /> O&apos;chir
-                </button>
-              )}
-
-              {/* Delete date panel */}
-              {showDeletePanel && (
-                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  onClick={() => setShowDeletePanel(false)}>
-                  <div style={{ background: 'var(--shell)', borderRadius: 16, padding: 24, width: 360, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
-                    onClick={e => e.stopPropagation()}>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{T('pick_date')}</div>
-
-                    {/* Search */}
-                    <input type="text" placeholder="Qidirish (yyyy-mm-dd)..." value={deleteDateSearch}
-                      onChange={e => setDeleteDateSearch(e.target.value)}
-                      style={{ padding: '7px 11px', borderRadius: 8, border: '1px solid rgba(var(--ink-rgb),0.18)', fontSize: 13, background: 'var(--surface)' }} />
-
-                    {/* Date list */}
-                    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320 }}>
-                      {datesBusy ? (
-                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{T('loading')}</div>
-                      ) : filteredDeleteDates.length === 0 ? (
-                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{T('msg_not_found')}</div>
-                      ) : filteredDeleteDates.map(d => (
-                        <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: selectedDeleteDates.has(d) ? 'rgba(239,68,68,0.08)' : 'var(--surface)', border: `1px solid ${selectedDeleteDates.has(d) ? '#ef4444' : 'rgba(var(--ink-rgb),0.08)'}` }}>
-                          <input type="checkbox" checked={selectedDeleteDates.has(d)} onChange={() => toggleDeleteDate(d)} style={{ accentColor: '#ef4444' }} />
-                          <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600 }}>{d}</span>
-                        </label>
-                      ))}
-                      {!deleteDateSearch && vazvratAllDates.length > 10 && (
-                        <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', paddingTop: 4 }}>
-                          Jami {vazvratAllDates.length} ta sana. Qidirish orqali ko&apos;proq toping.
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <button className="small" type="button" onClick={() => setShowDeletePanel(false)}>{T('lbl_cancel')}</button>
-                      <button className="small dark" type="button"
-                        disabled={selectedDeleteDates.size === 0 || vazvratBusy}
-                        onClick={confirmDeleteDates}
-                        style={{ background: '#ef4444', borderColor: '#ef4444', opacity: selectedDeleteDates.size === 0 ? 0.5 : 1 }}>
-                        {vazvratBusy ? '…' : `O'chirish (${selectedDeleteDates.size} ta sana)`}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* KPI cards */}
-            {filtered.length > 0 && (
-              <div className="qaytarma-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
-                {kpi.map(k => (
-                  <div key={k.label} style={{ padding: '10px 14px', borderRadius: 12, background: k.bg, border: `1px solid ${k.color}33`, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: k.color, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{k.label}</span>
-                    <span style={{ fontSize: 20, fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.value}</span>
-                    <span style={{ fontSize: 10, color: k.color, opacity: 0.65, whiteSpace: 'nowrap' }}>{k.sub}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {filtered.length === 0 ? <Empty title={T('pv_empty')} /> : (
-              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh', borderRadius: 10, border: '1px solid rgba(var(--ink-rgb),0.1)' }}>
-                <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: '100%' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ ...thStyle, ...stickyCol, position: 'sticky', top: 0, left: 0, zIndex: 20, background: 'var(--surface)' }}>{T('pv_mahsulot')}</th>
-                      {markets.map(m => (
-                        <th key={m} style={{ ...thStyle, position: 'sticky', top: 0, zIndex: 10, padding: '8px 6px', fontSize: 11, fontWeight: 600, textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap', background: 'var(--surface)' }}>
-                          {m.replace(/^korzinka\s*[-,]?\s*/i, '').replace(/\s*\/\d+$/, '') || m}
-                        </th>
-                      ))}
-                      <th style={{ ...thStyle, position: 'sticky', top: 0, zIndex: 10, background: '#fffbf0', borderLeft: '2px solid #e8a825', minWidth: 90 }}>{T('lbl_total')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((p, pi) => {
-                      const bg = pi % 2 === 0 ? 'var(--surface)' : 'var(--surface-hi, #f7f8fa)';
-                      return (
-                        <tr key={p}>
-                          <td style={{ ...tdStyle, ...stickyCol, background: bg, borderRight: '2px solid rgba(var(--ink-rgb),0.18)', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.3, padding: '6px 10px' }} title={p}>{p}</td>
-                          {markets.map(m => {
-                            const c = pivot[p]?.[m];
-                            return (
-                              <td key={m} style={{ ...tdStyle, background: bg }}>
-                                {c ? <span style={{ fontWeight: 700 }}>{c.qty}</span> : <span style={{ color: 'rgba(var(--ink-rgb),0.18)' }}>—</span>}
-                              </td>
-                            );
-                          })}
-                          <td style={{ ...tdStyle, fontWeight: 800, color: '#d97706', borderLeft: '2px solid #e8a825', background: '#fffbf0', minWidth: 90 }}>
-                            <div>{rowTotals[p]?.qty ?? 0}</div>
-                            <div style={{ fontSize: 10 }}>{fmt0(rowTotals[p]?.sum ?? 0)}</div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td style={{ ...tdStyle, ...stickyCol, fontWeight: 800, background: '#fffbf0', borderTop: '2px solid #e8a825' }}>{T('lbl_total')}</td>
-                      {markets.map(m => (
-                        <td key={m} style={{ ...tdStyle, fontWeight: 700, background: '#fffbf0', borderTop: '2px solid #e8a825' }}>
-                          <div>{colTotals[m]?.qty ?? 0}</div>
-                          <div style={{ fontSize: 10 }}>{fmt0(colTotals[m]?.sum ?? 0)}</div>
-                        </td>
-                      ))}
-                      <td style={{ ...tdStyle, fontWeight: 900, color: '#d97706', background: '#fff3d0', borderLeft: '2px solid #e8a825', borderTop: '2px solid #e8a825' }}>
-                        <div>{grandQty}</div>
-                        <div style={{ fontSize: 10 }}>{fmt0(grandSum)}</div>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </>
-        );
-      })()}
-
-      {/* Zakas tab — grouped by base date (YYYY-MM-DD) */}
-      {tab === 'zakas' && (() => {
-        // Group sessions by base date (first 10 chars of invoiceDate)
-        const dateMap = new Map<string, { dateKey: string; items: any[]; totalNakl: number; totalSum: number }>();
-        for (const s of filteredSessions) {
-          const dk = (s.invoiceDate || '').slice(0, 10);
-          if (!dateMap.has(dk)) dateMap.set(dk, { dateKey: dk, items: [], totalNakl: 0, totalSum: 0 });
-          const g = dateMap.get(dk)!;
-          g.items.push(s);
-          g.totalNakl += s.invoiceCount || 0;
-          g.totalSum  += s.sumTotal || 0;
-        }
-        const groups = [...dateMap.values()].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
-        return groups.length === 0 ? <Empty title={T('empty_order_history')} /> : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {groups.map(g => {
-              const open = expandedDates.has('zakas-' + g.dateKey);
-              const multi = g.items.length > 1;
+      {/* Unified tagged history (all document types except the detailed Qaytarma pivot) */}
+      {(
+        unifiedGroups.length === 0 ? <Empty title={T('empty_no_history')} /> : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {unifiedGroups.map(({ dateKey, items }) => {
+              const dayLabel = new Date(dateKey + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
               return (
-                <div key={g.dateKey}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #7c3aed', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)', cursor: multi ? 'pointer' : 'default' }}
-                    onClick={() => { if (multi) toggleDateGroup('zakas-' + g.dateKey); else loadSession(g.items[0]._id); }}>
-                    {multi && <span style={{ color: '#7c3aed', fontWeight: 800, fontSize: 15, transform: open ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>›</span>}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{fmtDateRu(g.dateKey)}</div>
-                      {multi && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.items.length} ta versiya</div>}
-                    </div>
-                    <span style={{ fontSize: 12, color: 'var(--ok)', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt0(g.totalNakl)} hujjat</span>
-                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{fmt0(g.totalSum)} so&apos;m</span>
+                <div key={dateKey} style={{ marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 6px' }}>
+                    <div style={{ height: 1, flex: 1, background: 'var(--soft-line)' }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{dayLabel}</span>
+                    <div style={{ height: 1, width: 20, background: 'var(--soft-line)' }} />
                   </div>
-                  {open && multi && (
-                    <div style={{ marginLeft: 16, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {g.items.map((s: any) => (
-                        <div key={s._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.05)', borderLeft: '2px solid #c4b5fd', borderRadius: 8, cursor: 'pointer' }}
-                          onClick={() => loadSession(s._id)}>
-                          <div style={{ flex: 1, fontSize: 12, color: 'var(--muted)' }}>{s.name || s.invoiceDate}</div>
-                          <span style={{ fontSize: 11, color: 'var(--ok)', fontWeight: 700 }}>{fmt0(s.invoiceCount)} hujjat</span>
-                          <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700 }}>{fmt0(s.sumTotal)} so&apos;m</span>
-                          {isAdmin && <button className="iconbtn danger" type="button" onClick={e => { e.stopPropagation(); deleteSession(s._id, s.name); }}><Trash2 size={13} /></button>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {items.map((ev, idx) => {
+                    const ks = KIND_STYLE[ev.kind];
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const d: any = ev.data;
+                    return (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, rowGap: 6, flexWrap: 'wrap', padding: '9px 12px', marginBottom: 5, background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: `3px solid ${ks.color}`, borderRadius: 10, boxShadow: 'var(--shadow-sm)' }}>
+                        <span style={{ fontSize: '0.7em', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: ks.color, background: ks.bg, borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>{T(ks.labelKey)}</span>
+
+                        {ev.kind === 'nakl' && (<>
+                          <span style={{ fontWeight: 700, fontSize: '0.92em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name || d.invoiceDate}</span>
+                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{d.invoiceCount} {T('reg_meta_docs')}</span>
+                          <span style={{ fontSize: '0.92em', fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmt0(d.sumTotal)} so&apos;m</span>
+                          <button className="mini" type="button" onClick={() => loadSession(d._id)}>{T('lbl_restore')}</button>
+                          {isAdmin && <button className="iconbtn danger" type="button" onClick={() => deleteSession(d._id, d.name)}><Trash2 size={16} /></button>}
+                        </>)}
+
+                        {ev.kind === 'manual' && (<>
+                          <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap' }}>№{d.invNo}</span>
+                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.market}</span>
+                          <span style={{ fontSize: '0.92em', fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmt0(d.sumTotal)} so&apos;m</span>
+                        </>)}
+
+                        {ev.kind === 'zakas' && (<>
+                          <span style={{ fontWeight: 700, fontSize: '0.92em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.customer || '—'}</span>
+                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmt0(d.totalQty)} {T('lbl_pcs')}</span>
+                          <span style={{ fontSize: '0.92em', fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmt0(d.totalAmount)} so&apos;m</span>
+                        </>)}
+
+                        {ev.kind === 'dov' && (<>
+                          <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap' }}>{d.driver || '—'}</span>
+                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{d.plate} · {d.car}</span>
+                          <button className="mini" type="button" style={{ marginLeft: 'auto' }} onClick={() => { setDovFields(d); setDovSaved(true); setSettingsView('doverennost'); }}>{T('tarix_load')}</button>
+                        </>)}
+
+                        {ev.kind === 'vazt' && (<>
+                          <span style={{ fontWeight: 700, fontSize: '0.92em', whiteSpace: 'nowrap' }}>{fmt0(d.qty)} {T('lbl_pcs')}</span>
+                          <span style={{ fontSize: '0.82em', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{d.count} {T('pv_ta_yozuv')}</span>
+                          <span style={{ fontSize: '0.92em', fontWeight: 700, fontFamily: 'var(--mono)', marginLeft: 'auto', color: 'var(--danger)', whiteSpace: 'nowrap' }}>{fmt0(d.sum)} so&apos;m</span>
+                        </>)}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
           </div>
-        );
-      })()}
+        )
+      )}
 
-      {/* Ishonchnoma tab */}
-      {tab === 'dov' && (
-        dovHistory.length === 0 ? <Empty title={T('empty_no_dov_history')} /> :
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          {dovHistory.map((h, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', border: '1px solid rgba(var(--ink-rgb),0.07)', borderLeft: '3px solid #059669', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{h.driver || '—'}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{h.plate} · {h.car}</div>
-              </div>
-              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{new Date(h.printedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-              <button className="mini" type="button" onClick={() => { setDovFields(h); setDovSaved(true); setSettingsView('doverennost'); }}>{T('tarix_load')}</button>
-              <button className="mini" type="button" style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }} onClick={() => { if (window.confirm(T('dov_del_confirm'))) deleteDovEntry(i); }}>{T('tarix_delete')}</button>
+      {/* Qaytarma filter — detailed returns pivot + admin tools */}
+      {/* Returns: delete-by-date panel (date-by-date list itself comes from the unified list above) */}
+      {showDeletePanel && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowDeletePanel(false)}>
+          <div style={{ background: 'var(--shell)', borderRadius: 16, padding: 24, width: 360, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{T('pick_date')}</div>
+            <input type="text" placeholder="yyyy-mm-dd..." value={deleteDateSearch}
+              onChange={e => setDeleteDateSearch(e.target.value)}
+              style={{ padding: '7px 11px', borderRadius: 8, border: '1px solid rgba(var(--ink-rgb),0.18)', fontSize: 13, background: 'var(--surface)' }} />
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320 }}>
+              {datesBusy ? (
+                <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{T('loading')}</div>
+              ) : filteredDeleteDates.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{T('msg_not_found')}</div>
+              ) : filteredDeleteDates.map(d => (
+                <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: selectedDeleteDates.has(d) ? 'rgba(239,68,68,0.08)' : 'var(--surface)', border: `1px solid ${selectedDeleteDates.has(d) ? '#ef4444' : 'rgba(var(--ink-rgb),0.08)'}` }}>
+                  <input type="checkbox" checked={selectedDeleteDates.has(d)} onChange={() => toggleDeleteDate(d)} style={{ accentColor: '#ef4444' }} />
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600 }}>{d}</span>
+                </label>
+              ))}
             </div>
-          ))}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="small" type="button" onClick={() => setShowDeletePanel(false)}>{T('lbl_cancel')}</button>
+              <button className="small dark" type="button"
+                disabled={selectedDeleteDates.size === 0 || vazvratBusy}
+                onClick={confirmDeleteDates}
+                style={{ background: '#ef4444', borderColor: '#ef4444', opacity: selectedDeleteDates.size === 0 ? 0.5 : 1 }}>
+                {vazvratBusy ? '…' : `${T('lbl_delete')} (${selectedDeleteDates.size})`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
     </>
   );
 }
@@ -4083,7 +3975,10 @@ function AnalyticsPane({
   onToast: (kind: 'ok' | 'err' | 'info', text: string) => void;
   T?: (k: string) => string;
 }) {
-  const [tab, setTab] = useState<'overview' | 'products' | 'markets' | 'clients' | 'savdo' | 'qaytarma'>('overview');
+  const [tab, setTab] = useState<'product' | 'store' | 'sales'>('product');
+  const [kpiOpen, setKpiOpen] = useState(true);
+  const [sortKey, setSortKey] = useState<string>('dSum');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const toggleItem = (key: string) => setExpandedItems(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
@@ -4356,6 +4251,66 @@ function AnalyticsPane({
 
   const top5ProductsByQty = useMemo(() => filteredProductRows.slice(0, 5), [filteredProductRows]);
 
+  // ── 3-tab datasets: Product / Store / Sales (single source: snapshot + vazvrat) ──
+  // Ordered (zakaz) = init×price, Delivered (berilgan) = qty/total, Returns (vazvrat) joined.
+  // Rate % = return qty / delivered qty × 100. Net = delivered sum − return sum.
+  const tabData = useMemo(() => {
+    const norm = (s: string) => (s || '').toLowerCase().replace(/korzinka|супермаркет|магазин/gi, '').replace(/\/\s*\d+\s*$/, '').replace(/[^a-zа-я0-9]/gi, '').trim();
+    const inRange = (d: string) => (!savdoFrom || d >= savdoFrom) && (!savdoTo || d <= savdoTo);
+
+    // Returns keyed by product (sku), store (normalized name), and date.
+    const retProd: Record<string, { qty: number; sum: number; name: string }> = {};
+    const retStore: Record<string, { qty: number; sum: number; label: string }> = {};
+    const retDay: Record<string, { qty: number; sum: number }> = {};
+    for (const v of vazvratRows) {
+      const d = v.date.slice(0, 10); if (!inRange(d)) continue;
+      (retProd[v.sapCode] ??= { qty: 0, sum: 0, name: v.productName }); retProd[v.sapCode].qty += v.qty; retProd[v.sapCode].sum += v.totalWithVat;
+      const nk = norm(v.marketName || v.marketCode);
+      (retStore[nk] ??= { qty: 0, sum: 0, label: shortMkt(v.marketName || v.marketCode) }); retStore[nk].qty += v.qty; retStore[nk].sum += v.totalWithVat;
+      (retDay[d] ??= { qty: 0, sum: 0 }); retDay[d].qty += v.qty; retDay[d].sum += v.totalWithVat;
+    }
+
+    const prod: Record<string, { name: string; orderedSum: number; dQty: number; dSum: number }> = {};
+    const store: Record<string, { label: string; orderedSum: number; dQty: number; dSum: number }> = {};
+    const day: Record<string, { date: string; orderedSum: number; dSum: number }> = {};
+    for (const inv of filteredInvoices) {
+      const d = (inv.dateIso || '').slice(0, 10);
+      const sk = norm(inv.market || inv.storeCode);
+      (store[sk] ??= { label: shortMkt(inv.market || inv.storeCode), orderedSum: 0, dQty: 0, dSum: 0 });
+      (day[d] ??= { date: d, orderedSum: 0, dSum: 0 });
+      for (const l of (inv.lines || [])) {
+        if (!l.sku) continue;
+        const up = l.qty > 0 ? l.total / l.qty : (l.price || 0);
+        const ord = (l.init || l.qty || 0) * up;
+        if (!prod[l.sku]) { const cat = catalog.find(p => p.sku === l.sku); prod[l.sku] = { name: cat?.name || (l as unknown as { name?: string }).name || l.sku, orderedSum: 0, dQty: 0, dSum: 0 }; }
+        prod[l.sku].orderedSum += ord; prod[l.sku].dQty += l.qty || 0; prod[l.sku].dSum += l.total || 0;
+        store[sk].orderedSum += ord; store[sk].dQty += l.qty || 0; store[sk].dSum += l.total || 0;
+        day[d].orderedSum += ord; day[d].dSum += l.total || 0;
+      }
+    }
+
+    // Include return-only products/stores/dates (returns with no delivery in range)
+    // so the table totals match the KPI returns total.
+    for (const [sku, r] of Object.entries(retProd)) if (!prod[sku]) prod[sku] = { name: r.name || sku, orderedSum: 0, dQty: 0, dSum: 0 };
+    for (const [nk, r] of Object.entries(retStore)) if (!store[nk]) store[nk] = { label: r.label, orderedSum: 0, dQty: 0, dSum: 0 };
+    for (const dt of Object.keys(retDay)) if (!day[dt]) day[dt] = { date: dt, orderedSum: 0, dSum: 0 };
+
+    const rate = (rQty: number, dQty: number) => dQty > 0 ? (rQty / dQty) * 100 : (rQty > 0 ? 100 : 0);
+    const productTable = Object.entries(prod).map(([sku, p]) => {
+      const r = retProd[sku] || { qty: 0, sum: 0 };
+      return { key: sku, name: p.name, orderedSum: p.orderedSum, dQty: p.dQty, dSum: p.dSum, rQty: r.qty, rSum: r.sum, net: p.dSum - r.sum, rate: rate(r.qty, p.dQty) };
+    }).sort((a, b) => b.dSum - a.dSum);
+    const storeTable = Object.entries(store).map(([nk, s]) => {
+      const r = retStore[nk] || { qty: 0, sum: 0 };
+      return { key: nk, name: s.label, orderedSum: s.orderedSum, dQty: s.dQty, dSum: s.dSum, rQty: r.qty, rSum: r.sum, net: s.dSum - r.sum, rate: rate(r.qty, s.dQty) };
+    }).sort((a, b) => b.dSum - a.dSum);
+    const dailyTable = Object.values(day).map(d => {
+      const r = retDay[d.date] || { qty: 0, sum: 0 };
+      return { key: d.date, date: d.date, orderedSum: d.orderedSum, dSum: d.dSum, rSum: r.sum, net: d.dSum - r.sum };
+    }).sort((a, b) => b.date.localeCompare(a.date));
+    return { productTable, storeTable, dailyTable };
+  }, [filteredInvoices, vazvratRows, savdoFrom, savdoTo, catalog]);
+
   // Berildi = haqiqiy yetkazilgan (live DB)
   const aBerildiSum  = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumTotal, 0), [filteredInvoices]);
   const aBerildiDona = useMemo(() => filteredInvoices.reduce((s, inv) => s + inv.sumQty, 0), [filteredInvoices]);
@@ -4401,8 +4356,12 @@ function AnalyticsPane({
           <BarChart3 size={17} style={{ color: 'var(--berry)' }} />
           <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.01em' }}>{T('an_title')}</span>
           <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{savdoFrom} — {savdoTo}</span>
+          <button type="button" className="kpi-toggle" onClick={() => setKpiOpen(o => !o)}
+            style={{ marginLeft: 'auto', display: 'none', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: 'var(--berry)', background: 'rgba(var(--berry-rgb),0.10)', border: 'none', borderRadius: 8, padding: '5px 10px', cursor: 'pointer' }}>
+            {kpiOpen ? '▲' : '▼'} KPI
+          </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+        <div className={`kpi-grid-collapsible${kpiOpen ? '' : ' kpi-collapsed'}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
           {[
             { label: T('kpi_ordered'),   dona: aBuyurtmaDona, sum: aBuyurtmaSum, accent: 'var(--berry)',  icon: <ClipboardList size={14} /> },
             { label: T('kpi_given'),     dona: aBerildiDona,  sum: aBerildiSum,  accent: '#16a34a',       icon: <TrendingUp size={14} /> },
@@ -4423,476 +4382,105 @@ function AnalyticsPane({
         {/* Row 2: DateRange + refresh + toggles — horizontal scroll on mobile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto', paddingBottom: 2, flexWrap: 'nowrap' }}>
           <DateRangePicker from={savdoFrom} to={savdoTo} onChange={(f,t) => { setSavdoFrom(f); setSavdoTo(t); }} T={T} />
-          {tab === 'savdo'
-            ? <button type="button" disabled={savdoBusy} onClick={loadVazvrat}
-                style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
-                <RefreshCcw size={12} /> {savdoBusy ? '…' : 'Yuklash'}
-              </button>
-            : <button type="button" onClick={onRefresh}
-                style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', padding: '5px 8px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
-                <RefreshCcw size={13} />
-              </button>
-          }
+          <button type="button" disabled={savdoBusy} onClick={() => { onRefresh(); void loadVazvrat(); }}
+            style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '5px 10px', border: '1px solid rgba(var(--ink-rgb),0.13)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>
+            <RefreshCcw size={12} /> {savdoBusy ? '…' : T('act_refresh')}
+          </button>
         </div>
-        {/* Tabs on their own row; wrap so none get clipped on mobile */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-            <button type="button" onClick={() => setTab('products')}
-              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'products' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'products' ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: tab === 'products' ? 'var(--berry)' : 'var(--ink)' }}>
-              📦 {T('an_tab_products')} <span style={{ background: tab === 'products' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'products' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredProductRows.length}</span>
+        {/* 3 tabs: Product / Store / Sales — single row, horizontal scroll on mobile */}
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+          {([
+            { key: 'product', icon: '📦', label: T('an_tab_products'), count: tabData.productTable.length },
+            { key: 'store',   icon: '🏪', label: T('an_tab_market'),   count: tabData.storeTable.length },
+            { key: 'sales',   icon: '📊', label: T('an_tab_sales'),    count: tabData.dailyTable.length },
+          ] as const).map(tb => (
+            <button key={tb.key} type="button" onClick={() => { setTab(tb.key); setSortKey(tb.key === 'sales' ? 'date' : 'dSum'); setSortDir('desc'); }}
+              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === tb.key ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.15)', background: tab === tb.key ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: tab === tb.key ? 'var(--berry)' : 'var(--ink)' }}>
+              {tb.icon} {tb.label} <span style={{ background: tab === tb.key ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.12)', color: tab === tb.key ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{tb.count}</span>
             </button>
-            <button type="button" onClick={() => setTab('markets')}
-              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'markets' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'markets' ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: tab === 'markets' ? 'var(--berry)' : 'var(--ink)' }}>
-              🏪 {T('an_tab_market')} <span style={{ background: tab === 'markets' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'markets' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{filteredMarkets.length}</span>
-            </button>
-            <button type="button" onClick={() => { setTab('savdo'); void loadVazvrat(); }}
-              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'savdo' ? 'var(--berry)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'savdo' ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: tab === 'savdo' ? 'var(--berry)' : 'var(--ink)' }}>
-              📊 {T('an_tab_sales')}
-            </button>
-            <button type="button" onClick={() => { setTab('qaytarma'); void loadVazvrat(); }}
-              style={{ flexShrink:0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: '1.5px solid', cursor: 'pointer', borderColor: tab === 'qaytarma' ? 'var(--danger)' : 'rgba(var(--ink-rgb),0.15)', background: tab === 'qaytarma' ? 'rgba(240,90,82,0.10)' : 'var(--surface)', color: tab === 'qaytarma' ? 'var(--danger)' : 'var(--ink)' }}>
-              ↩️ {T('an_tab_returns')} <span style={{ background: tab === 'qaytarma' ? 'var(--danger)' : 'rgba(var(--ink-rgb),0.12)', color: tab === 'qaytarma' ? '#fff' : 'var(--ink)', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{vazvratRows.length}</span>
-            </button>
+          ))}
         </div>
       </div>
 
-      {tab === 'overview' && (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {/* legacy overview — redirect to products */}
-          {(() => { setTimeout(() => setTab('products'), 0); return null; })()}
-          {/* ── Top-5 leaderboards ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+      {(() => {
+        const isSales = tab === 'sales';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rows: any[] = tab === 'product' ? tabData.productTable : tab === 'store' ? tabData.storeTable : tabData.dailyTable;
+        type Col = { key: string; label: string; align?: 'left' | 'right'; kind: 'name' | 'date' | 'sum' | 'qty' | 'net' | 'rate'; tone?: 'ret' | 'muted' };
+        const cols: Col[] = isSales ? [
+          { key: 'date',       label: T('lbl_date'),       kind: 'date' },
+          { key: 'orderedSum', label: T('an_col_ordered'), align: 'right', kind: 'sum', tone: 'muted' },
+          { key: 'dSum',       label: T('an_col_dsum'),    align: 'right', kind: 'sum' },
+          { key: 'rSum',       label: T('an_col_rsum'),    align: 'right', kind: 'sum', tone: 'ret' },
+          { key: 'net',        label: T('an_col_net'),     align: 'right', kind: 'net' },
+        ] : [
+          { key: 'name',       label: tab === 'product' ? T('lbl_product') : T('lbl_store'), kind: 'name' },
+          { key: 'orderedSum', label: T('an_col_ordered'), align: 'right', kind: 'sum', tone: 'muted' },
+          { key: 'dQty',       label: T('an_col_dqty'),    align: 'right', kind: 'qty' },
+          { key: 'dSum',       label: T('an_col_dsum'),    align: 'right', kind: 'sum' },
+          { key: 'rQty',       label: T('an_col_rqty'),    align: 'right', kind: 'qty', tone: 'ret' },
+          { key: 'rSum',       label: T('an_col_rsum'),    align: 'right', kind: 'sum', tone: 'ret' },
+          { key: 'net',        label: T('an_col_net'),     align: 'right', kind: 'net' },
+          { key: 'rate',       label: T('an_col_rate'),    align: 'right', kind: 'rate' },
+        ];
+        const sorted = [...rows].sort((a, b) => {
+          const dir = sortDir === 'asc' ? 1 : -1;
+          const av = a[sortKey], bv = b[sortKey];
+          if (typeof av === 'string') return String(av).localeCompare(String(bv)) * dir;
+          return (((av ?? 0) as number) - ((bv ?? 0) as number)) * dir;
+        });
+        const tot = rows.reduce((t, r) => ({ orderedSum: t.orderedSum + (r.orderedSum || 0), dQty: t.dQty + (r.dQty || 0), dSum: t.dSum + (r.dSum || 0), rQty: t.rQty + (r.rQty || 0), rSum: t.rSum + (r.rSum || 0), net: t.net + (r.net || 0) }), { orderedSum: 0, dQty: 0, dSum: 0, rQty: 0, rSum: 0, net: 0 });
+        const totRate = tot.dQty > 0 ? (tot.rQty / tot.dQty) * 100 : 0;
+        const rateColor = (r: number) => r >= 15 ? '#dc2626' : r >= 5 ? '#d97706' : '#16a34a';
+        const rateBg = (r: number) => r >= 15 ? 'rgba(220,38,38,0.10)' : r >= 5 ? 'rgba(217,119,6,0.10)' : 'rgba(22,163,74,0.10)';
+        const setSort = (k: string) => { if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(k); setSortDir('desc'); } };
+        const arrow = (k: string) => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+        const thBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', fontWeight: 800, color: 'inherit', padding: 0, whiteSpace: 'nowrap' };
+        const num: React.CSSProperties = { textAlign: 'right', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' };
 
-            {/* 1. Eng ko'p zakaz: top 5 market by sum */}
-            {(() => {
-              return (
-                <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5MarketsBySum.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>🏆 Eng ko'p zakaz (top 5)</div>
-                  {top5MarketsBySum.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>{T('msg_no_data')}</div>}
-                  {top5MarketsBySum.map((m, i) => (
-                    <div key={m.storeCode} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 90px', gap: 6, alignItems: 'center', padding: '9px 16px', borderBottom: i < top5MarketsBySum.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.label)}</span>
-                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right' }}>{fmt0(m.sum)}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
+        const renderCell = (r: Record<string, unknown>, c: Col) => {
+          const v = r[c.key];
+          if (c.kind === 'name') return <td key={c.key} style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', fontWeight: 600, maxWidth: 240, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={String(v)}>{String(v)}</td>;
+          if (c.kind === 'date') return <td key={c.key} style={{ textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'var(--mono)' }}>{fmtDateRu(String(v))}</td>;
+          if (c.kind === 'rate') { const n = v as number; return <td key={c.key} style={{ textAlign: 'right' }}><span style={{ display: 'inline-block', minWidth: 48, padding: '2px 8px', borderRadius: 999, fontWeight: 800, fontFamily: 'var(--mono)', fontSize: 11.5, color: rateColor(n), background: rateBg(n) }}>{n.toFixed(1)}%</span></td>; }
+          if (c.kind === 'net') { const n = v as number; return <td key={c.key} style={{ ...num, fontWeight: 700, color: n < 0 ? '#dc2626' : '#16a34a' }}>{fmt0(n)}</td>; }
+          const color = c.tone === 'ret' ? '#dc2626' : c.tone === 'muted' ? 'var(--ink-2)' : 'var(--ink)';
+          return <td key={c.key} style={{ ...num, color }}>{fmt0(v as number)}</td>;
+        };
 
-            {/* 2. Eng ko'p vazvrat market */}
-            {(() => {
-              const top5 = vazvratByMarket.slice(0, 5);
-              return (
-                <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>⚠️ Eng ko'p qaytarma market (top 5)</div>
-                  {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>{T('empty_no_returns')}</div>}
-                  {top5.map((m, i) => (
-                    <div key={m.name + i} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 80px', gap: 6, alignItems: 'center', padding: '9px 16px', borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#dc2626' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortMkt(m.name)}</span>
-                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', color: '#dc2626' }}>{fmt0(m.total)}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* 3. Eng ko'p sotilgan tovar */}
-            {(() => {
-              return (
-                <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5ProductsByQty.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>📦 Eng ko'p sotilgan tovar (top 5)</div>
-                  {top5ProductsByQty.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>{T('msg_no_data')}</div>}
-                  {top5ProductsByQty.map((r, i) => (
-                    <div key={r.product.sku} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 45px 80px', gap: 6, alignItems: 'start', padding: '9px 16px', borderBottom: i < top5ProductsByQty.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--muted)', textAlign: 'center', paddingTop: 2 }}>{i + 1}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{r.product.name}</span>
-                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(r.givenQty)}</span>
-                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right' }}>{fmt0(r.givenSum)}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* 4. Eng ko'p qaytarma tovar */}
-            {(() => {
-              const top5 = vazvratByProduct.slice(0, 5);
-              return (
-                <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid rgba(var(--ink-rgb),0.08)', overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted)', borderBottom: top5.length ? '1px solid rgba(var(--ink-rgb),0.06)' : 'none' }}>🔄 Eng ko'p qaytarma tovar (top 5)</div>
-                  {top5.length === 0 && <div style={{ padding: '10px 16px', color: 'var(--muted)', fontSize: 12 }}>{T('empty_no_returns')}</div>}
-                  {top5.map((p, i) => (
-                    <div key={p.name + i} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 45px 80px', gap: 6, alignItems: 'start', padding: '9px 16px', borderBottom: i < top5.length - 1 ? '1px solid rgba(var(--ink-rgb),0.04)' : 'none' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? '#f97316' : 'var(--muted)', textAlign: 'center', paddingTop: 2 }}>{i + 1}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{p.name}</span>
-                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--muted)', textAlign: 'right' }}>{fmt0(p.qty)}</span>
-                      <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', color: '#f97316' }}>{fmt0(p.total)}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {tab === 'products' && (
-        filteredProductRows.length === 0
-          ? <Empty title={T('empty_no_data_range')} />
-          : <div className="tablewrap" style={{ flex: 1, overflow: 'auto' }}>
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th style={{ width: 24 }}>#</th>
-                    <th>{T('lbl_product')}</th>
-                    <th className="right">{T('col_ordered')}</th>
-                    <th className="right" style={{ color: '#d97706' }}>{T('col_decreased')}</th>
-                    <th className="right" style={{ color: 'var(--ok)' }}>{T('col_given')}</th>
-                    <th className="right">{T('col_sum')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredProductRows.map((row) => {
-                    const pKey = 'prod-' + row.product.sku;
-                    const open = expandedItems.has(pKey);
-                    // per-market breakdown for this product
-                    const byMarket: Record<string, { market: string; qty: number; sum: number; invNos: number[] }> = {};
-                    for (const inv of filteredInvoices) {
-                      const line = inv.lines.find(l => l.sku === row.product.sku);
-                      if (!line || !line.qty) continue;
-                      if (!byMarket[inv.storeCode]) byMarket[inv.storeCode] = { market: inv.market, qty: 0, sum: 0, invNos: [] };
-                      byMarket[inv.storeCode].qty += line.qty;
-                      byMarket[inv.storeCode].sum += line.total;
-                      byMarket[inv.storeCode].invNos.push(inv.invNo);
-                    }
-                    const marketRows = Object.values(byMarket).sort((a,b) => b.qty - a.qty);
-                    return (
-                      <React.Fragment key={row.product.sku}>
-                        <tr onClick={() => toggleItem(pKey)} style={{ cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : undefined }}>
-                          <td style={{ textAlign: 'center', color: open ? 'var(--ok)' : 'var(--muted)', fontWeight: 700, fontSize: 12 }}>
-                            <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>›</span>
-                          </td>
-                          <td><b>{row.product.name}</b></td>
-                          <td className="right mono">{fmt0(row.initTotal)}</td>
-                          <td className="right mono" style={{ color: (row.initTotal - row.givenQty) > 0 ? '#d97706' : 'var(--muted)' }}>{(row.initTotal - row.givenQty) > 0 ? fmt0(row.initTotal - row.givenQty) : '—'}</td>
-                          <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(row.givenQty)}</td>
-                          <td className="right mono">{fmt0(row.givenSum)}</td>
-                        </tr>
-                        {open && marketRows.map(mr => (
-                          <tr key={mr.market} style={{ background: 'rgba(var(--ink-rgb),0.02)', fontSize: 12 }}>
-                            <td></td>
-                            <td style={{ paddingLeft: 24, color: 'var(--muted)' }}>› {shortMkt(mr.market)}</td>
-                            <td></td>
-                            <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(mr.qty)}</td>
-                            <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(mr.sum)}</td>
-                            <td style={{ color: 'var(--muted)', fontSize: 11 }}>{mr.invNos.length} hujjat</td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-      )}
-
-      {tab === 'markets' && (
-        filteredMarkets.length === 0
-          ? <Empty title={T('empty_no_data_range')} />
-          : <div className="tablewrap" style={{ flex: 1, overflow: 'auto' }}>
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th style={{ width: 24 }}>#</th>
-                    <th>{T('lbl_store')}</th>
-                    <th className="right">Zakaz</th>
-                    <th className="right" style={{ color: 'var(--ok)' }}>{T('col_given')}</th>
-                    <th className="right">{T('col_sum')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMarkets.map((m) => {
-                    const mKey = 'mkt-' + m.label;
-                    const open = expandedItems.has(mKey);
-                    const mInvoices = filteredInvoices.filter(inv => inv.market === m.label).sort((a,b) => a.invNo - b.invNo);
-                    return (
-                      <React.Fragment key={m.label}>
-                        <tr onClick={() => toggleItem(mKey)} style={{ cursor: 'pointer', background: open ? 'rgba(var(--ink-rgb),0.03)' : undefined }}>
-                          <td style={{ textAlign: 'center', color: open ? 'var(--ok)' : 'var(--muted)', fontWeight: 700, fontSize: 12 }}>
-                            <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>›</span>
-                          </td>
-                          <td><b>{shortMkt(m.label)}</b></td>
-                          <td className="right mono">{m.count} <span style={{ fontSize: 10, color: 'var(--muted)' }}>doc</span></td>
-                          <td className="right mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{fmt0(m.qty)}</td>
-                          <td className="right mono">{fmt0(m.sum)}</td>
-                        </tr>
-                        {open && mInvoices.map(inv => {
-                          const iKey = 'inv-' + inv.invNo;
-                          const iOpen = expandedItems.has(iKey);
-                          return (
-                            <React.Fragment key={inv.invNo}>
-                              <tr onClick={(e) => { e.stopPropagation(); toggleItem(iKey); }} style={{ background: 'rgba(var(--ink-rgb),0.02)', cursor: 'pointer', fontSize: 12 }}>
-                                <td></td>
-                                <td style={{ paddingLeft: 20, color: 'var(--muted)' }}>
-                                  <span style={{ display: 'inline-block', transform: iOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', marginRight: 4, color: 'var(--accent)' }}>›</span>
-                                  Hujjat #{inv.invNo} <span style={{ color: 'var(--muted)', fontSize: 11 }}>· {inv.dateIso}</span>
-                                </td>
-                                <td></td>
-                                <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(inv.sumQty)}</td>
-                                <td className="right mono" style={{ fontWeight: 600 }}>{fmt0(inv.sumTotal)}</td>
-                                <td></td>
-                              </tr>
-                              {iOpen && inv.lines.filter(l => l.qty > 0).map((l, li) => (
-                                <tr key={li} style={{ background: 'rgba(70,191,114,0.03)', fontSize: 11 }}>
-                                  <td></td>
-                                  <td style={{ paddingLeft: 36, color: 'var(--muted)' }}>{l.name}</td>
-                                  <td></td>
-                                  <td className="right mono" style={{ color: 'var(--muted)' }}>{l.qty}</td>
-                                  <td className="right mono" style={{ color: 'var(--muted)' }}>{fmt0(l.total)}</td>
-                                  <td style={{ color: 'var(--muted)', fontSize: 11 }}>{fmt0(l.price)} × {l.qty}</td>
-                                </tr>
-                              ))}
-                            </React.Fragment>
-                          );
-                        })}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-      )}
-
-      {tab === 'clients' && (
-        customerStats.length ? (
-          <div className="tablewrap" style={{ flex: 1, overflow: 'auto' }}>
-            <table className="data">
+        return rows.length === 0 ? <Empty title={T('empty_no_data_range')} /> : (
+          <div style={{ flex: 1, overflow: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <table className="data" style={{ borderCollapse: 'collapse', width: '100%', minWidth: isSales ? 520 : 760, fontSize: 12.5 }}>
               <thead>
                 <tr>
-                  <th>{T('clients_name')}</th>
-                  <th className="right">{T('ops_orders')}</th>
-                  <th className="right">{T('stats_sum')}</th>
-                  <th>{T('lbl_date')}</th>
+                  {cols.map((c, ci) => (
+                    <th key={c.key} style={{ textAlign: c.align === 'right' ? 'right' : 'left', ...(ci === 0 ? { position: 'sticky', left: 0, zIndex: 2, minWidth: 150 } : {}) }}>
+                      <button type="button" style={thBtn} onClick={() => setSort(c.key)}>{c.label}{arrow(c.key)}</button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {customerStats.map((row) => (
-                  <tr key={row.customer}>
-                    <td><b>{row.customer}</b></td>
-                    <td className="right mono">{row.ordersCount}</td>
-                    <td className="right mono">{fmt0(row.revenue)}</td>
-                    <td>{fmtDateRu(row.lastOrderDate)}</td>
-                  </tr>
+                {sorted.map(r => (
+                  <tr key={r.key}>{cols.map(c => renderCell(r, c))}</tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 800 }}>
+                  {cols.map((c, ci) => {
+                    const base: React.CSSProperties = { background: 'var(--surface-hi)', ...(ci === 0 ? { position: 'sticky', left: 0, zIndex: 1, textAlign: 'left' } : num) };
+                    if (ci === 0) return <td key={c.key} style={base}>{T('lbl_total')}</td>;
+                    if (c.kind === 'rate') return <td key={c.key} style={{ ...base, color: rateColor(totRate) }}>{totRate.toFixed(1)}%</td>;
+                    if (c.kind === 'net') return <td key={c.key} style={{ ...base, color: tot.net < 0 ? '#dc2626' : '#16a34a' }}>{fmt0(tot.net)}</td>;
+                    const tv = (tot as Record<string, number>)[c.key] ?? 0;
+                    return <td key={c.key} style={{ ...base, color: c.tone === 'ret' ? '#dc2626' : undefined }}>{fmt0(tv)}</td>;
+                  })}
+                </tr>
+              </tfoot>
             </table>
-          </div>
-        ) : <Empty title={T('clients_empty')} />
-      )}
-
-      {/* ─── QAYTARMA PIVOT TAB ─────────────────────────────────────── */}
-      {tab === 'qaytarma' && (() => {
-        const from = savdoFrom;
-        const to   = savdoTo;
-        const filtered = vazvratRows.filter(v => {
-          const d = v.date.slice(0, 10);
-          return (!from || d >= from) && (!to || d <= to);
-        });
-
-        // ── Per-product report: server pre-joined berilgan vs vazvrat per SKU ──
-        const prodRows = savdoAnalytics
-          .map(r => ({
-            name: r.name || r.sku,
-            bQty: r.berilganQty, bSum: r.berilganSum,
-            rQty: r.vazvratQty,  rSum: r.vazvratSum,
-            rate: r.berilganSum > 0 ? (r.vazvratSum / r.berilganSum) * 100 : (r.vazvratSum > 0 ? 100 : 0),
-          }))
-          .filter(r => r.rQty > 0 || r.bQty > 0);
-
-        // ── Per-market report: vazvrat by market + berilgan matched by normalized name ──
-        // Normalize market names across sources: drop chain prefix + trailing store-number suffix (/1, /2),
-        // so invoice "Turkmenskiy /1" matches vazvrat "Korzinka - Turkmenskiy".
-        const norm = (s: string) => (s || '').toLowerCase().replace(/korzinka|супермаркет|магазин/gi, '').replace(/\/\s*\d+\s*$/, '').replace(/[^a-zа-я0-9]/gi, '').trim();
-        const bByMarket: Record<string, { qty: number; sum: number }> = {};
-        filteredMarkets.forEach(m => {
-          const k = norm(m.label);
-          if (!bByMarket[k]) bByMarket[k] = { qty: 0, sum: 0 };
-          bByMarket[k].qty += m.qty; bByMarket[k].sum += m.sum;
-        });
-        const mktRows = vazvratByMarket.map(m => {
-          const b = bByMarket[norm(m.name)] || { qty: 0, sum: 0 };
-          return { name: m.name, bQty: b.qty, bSum: b.sum, rQty: m.qty, rSum: m.total, rate: b.sum > 0 ? (m.total / b.sum) * 100 : -1 };
-        });
-
-        const totBerilgan = prodRows.reduce((s, r) => s + r.bSum, 0);
-        const totQaytarma = filtered.reduce((s, v) => s + v.totalWithVat, 0);
-        const totQaytarmaQty = filtered.reduce((s, v) => s + v.qty, 0);
-        const overallRate = totBerilgan > 0 ? (totQaytarma / totBerilgan) * 100 : 0;
-        const markets  = [...new Set(filtered.map(v => v.marketName || v.marketCode))];
-        const products = [...new Set(filtered.map(v => v.productName))];
-
-        const rateColor = (r: number) => r < 0 ? 'var(--muted)' : r >= 15 ? '#dc2626' : r >= 5 ? '#d97706' : '#16a34a';
-        const rateBg    = (r: number) => r < 0 ? 'transparent' : r >= 15 ? 'rgba(220,38,38,0.10)' : r >= 5 ? 'rgba(217,119,6,0.10)' : 'rgba(22,163,74,0.10)';
-
-        const rows = (qView === 'market' ? mktRows : prodRows);
-        const sorted = [...rows].sort((a, b) => {
-          const dir = qSort.dir === 'asc' ? 1 : -1;
-          if (qSort.key === 'name') return a.name.localeCompare(b.name) * dir;
-          return (((a as unknown as Record<string, number>)[qSort.key] ?? 0) - ((b as unknown as Record<string, number>)[qSort.key] ?? 0)) * dir;
-        });
-        const setSort = (key: typeof qSort.key) => setQSort(p => p.key === key ? { key, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' });
-        const arrow = (key: string) => qSort.key === key ? (qSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
-
-        const kpi = [
-          { label: 'Jami qaytarma', value: fmt0(totQaytarma), sub: `${fmt0(totQaytarmaQty)} dona`, accent: 'var(--danger)', icon: <RefreshCcw size={14} /> },
-          { label: 'Qaytarma foizi', value: overallRate.toFixed(1) + '%', sub: 'berilgandan', accent: rateColor(overallRate), icon: <TrendingUp size={14} /> },
-          { label: 'Marketlar', value: String(markets.length), sub: "ta do'kon", accent: 'var(--berry)', icon: <MapIcon size={14} /> },
-          { label: 'Mahsulot turlari', value: String(products.length), sub: 'xil tovar', accent: 'var(--berry)', icon: <FileText size={14} /> },
-        ];
-
-        const thBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', fontWeight: 800, color: 'inherit', padding: 0, whiteSpace: 'nowrap' };
-
-        return (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' }}>
-            {/* KPI cards */}
-            <div className="qaytarma-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, flexShrink: 0 }}>
-              {kpi.map(k => (
-                <div key={k.label} style={{ position: 'relative', overflow: 'hidden', padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-                  <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: k.accent }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: k.accent, marginBottom: 5 }}>
-                    {k.icon}
-                    <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</span>
-                  </div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: k.accent, fontFamily: 'var(--mono)', lineHeight: 1.05 }}>{k.value}</div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontWeight: 600 }}>{k.sub}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Sub-view toggle */}
-            <div style={{ display: 'flex', gap: 6, flexShrink: 0, overflowX: 'auto', paddingBottom: 2 }}>
-              {([['product', '📦 Mahsulot bo‘yicha'], ['market', '🏪 Market bo‘yicha'], ['pivot', '▦ Pivot jadval']] as const).map(([id, label]) => (
-                <button key={id} type="button" onClick={() => setQView(id)}
-                  style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                    border: '1.5px solid', borderColor: qView === id ? 'var(--berry)' : 'var(--border)',
-                    background: qView === id ? 'rgba(var(--berry-rgb),0.10)' : 'var(--surface)', color: qView === id ? 'var(--berry)' : 'var(--ink)' }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Report: product / market (sortable) */}
-            {(qView === 'product' || qView === 'market') && (
-              sorted.length === 0 ? <Empty title={T('empty_no_returns_range')} /> : (
-                <div style={{ flex: 1, overflow: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
-                  {(() => {
-                    const fBerQty = sorted.reduce((s, r) => s + (r.bQty || 0), 0);
-                    const fBerSum = sorted.reduce((s, r) => s + (r.bSum || 0), 0);
-                    const fRetQty = sorted.reduce((s, r) => s + (r.rQty || 0), 0);
-                    const fRetSum = sorted.reduce((s, r) => s + (r.rSum || 0), 0);
-                    const fRate = fBerSum > 0 ? (fRetSum / fBerSum) * 100 : -1;
-                    const num: React.CSSProperties = { textAlign: 'right', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' };
-                    return (
-                  <table className="data" style={{ borderCollapse: 'collapse', width: '100%', minWidth: 680, fontSize: 12.5 }}>
-                    <thead>
-                      <tr>
-                        <th style={{ position: 'sticky', left: 0, zIndex: 2, textAlign: 'left', minWidth: 160, maxWidth: 280 }}>
-                          <button type="button" style={thBtn} onClick={() => setSort('name')}>{qView === 'market' ? 'Market' : 'Mahsulot'}{arrow('name')}</button>
-                        </th>
-                        <th style={{ textAlign: 'right' }}><button type="button" style={thBtn} onClick={() => setSort('bQty')}>Berilgan dona{arrow('bQty')}</button></th>
-                        <th style={{ textAlign: 'right' }}><button type="button" style={thBtn} onClick={() => setSort('bSum')}>Berilgan summa{arrow('bSum')}</button></th>
-                        <th style={{ textAlign: 'right' }}><button type="button" style={thBtn} onClick={() => setSort('rQty')}>Qaytdi dona{arrow('rQty')}</button></th>
-                        <th style={{ textAlign: 'right' }}><button type="button" style={thBtn} onClick={() => setSort('rSum')}>Qaytarma summa{arrow('rSum')}</button></th>
-                        <th style={{ textAlign: 'right', minWidth: 88 }}><button type="button" style={thBtn} onClick={() => setSort('rate')}>Foiz %{arrow('rate')}</button></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.map((r, i) => (
-                        <tr key={r.name + i}>
-                          <td style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', fontWeight: 600, maxWidth: 280, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.name}>{r.name}</td>
-                          <td style={{ ...num, color: 'var(--ink-2)' }}>{r.bQty > 0 ? fmt0(r.bQty) : '—'}</td>
-                          <td style={{ ...num, color: 'var(--ink-2)' }}>{r.bSum > 0 ? fmt0(r.bSum) : '—'}</td>
-                          <td style={num}>{fmt0(r.rQty)}</td>
-                          <td style={{ ...num, fontWeight: 700, color: 'var(--danger)' }}>{fmt0(r.rSum)}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            <span style={{ display: 'inline-block', minWidth: 50, padding: '2px 8px', borderRadius: 999, fontWeight: 800, fontFamily: 'var(--mono)', fontSize: 11.5, color: rateColor(r.rate), background: rateBg(r.rate) }}>
-                              {r.rate < 0 ? '—' : r.rate.toFixed(1) + '%'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ fontWeight: 800 }}>
-                        <td style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', background: 'var(--surface-hi)' }}>{T('lbl_total')}</td>
-                        <td style={{ ...num, background: 'var(--surface-hi)' }}>{fBerQty > 0 ? fmt0(fBerQty) : '—'}</td>
-                        <td style={{ ...num, background: 'var(--surface-hi)' }}>{fBerSum > 0 ? fmt0(fBerSum) : '—'}</td>
-                        <td style={{ ...num, background: 'var(--surface-hi)' }}>{fmt0(fRetQty)}</td>
-                        <td style={{ ...num, color: 'var(--danger)', background: 'var(--surface-hi)' }}>{fmt0(fRetSum)}</td>
-                        <td style={{ ...num, color: rateColor(fRate), background: 'var(--surface-hi)' }}>{fRate < 0 ? '—' : fRate.toFixed(1) + '%'}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                    );
-                  })()}
-                </div>
-              )
-            )}
-
-            {/* Pivot matrix (product × market) */}
-            {qView === 'pivot' && (() => {
-              const pivot: Record<string, Record<string, number>> = {};
-              const rowT: Record<string, number> = {}; const colT: Record<string, number> = {};
-              let gQty = 0;
-              for (const v of filtered) {
-                const p = v.productName; const m = v.marketName || v.marketCode;
-                (pivot[p] ??= {})[m] = (pivot[p][m] || 0) + v.qty;
-                rowT[p] = (rowT[p] || 0) + v.qty; colT[m] = (colT[m] || 0) + v.qty; gQty += v.qty;
-              }
-              const mk = [...markets].sort();
-              const pr = [...products].sort((a, b) => (rowT[b] || 0) - (rowT[a] || 0));
-              return pr.length === 0 ? <Empty title={T('empty_no_returns_range')} /> : (
-                <div style={{ flex: 1, overflow: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <table className="data matrix" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
-                    <thead>
-                      <tr>
-                        <th className="productcol" style={{ position: 'sticky', left: 0, zIndex: 3, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>{T('lbl_product')}</th>
-                        {mk.map(m => <th key={m} title={m} style={{ whiteSpace: 'nowrap' }}>{m.replace(/^Korzinka\s*[-–]\s*/i, '')}</th>)}
-                        <th style={{ color: 'var(--danger)', whiteSpace: 'nowrap' }}>{T('lbl_total')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pr.map(p => (
-                        <tr key={p}>
-                          <td className="productcol" style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p}>{p}</td>
-                          {mk.map(m => { const c = pivot[p]?.[m]; return <td key={m} style={{ textAlign: 'center', color: c ? 'var(--ink)' : 'var(--ink-3)' }}>{c || '—'}</td>; })}
-                          <td style={{ textAlign: 'center', fontWeight: 800, color: 'var(--danger)' }}>{rowT[p] || 0}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ fontWeight: 800 }}>
-                        <td className="productcol" style={{ position: 'sticky', left: 0, zIndex: 1, textAlign: 'left', width: 220, minWidth: 220, maxWidth: 220, whiteSpace: 'nowrap' }}>{T('lbl_total')}</td>
-                        {mk.map(m => <td key={m} style={{ textAlign: 'center', color: 'var(--danger)' }}>{colT[m] || 0}</td>)}
-                        <td style={{ textAlign: 'center', color: 'var(--danger)' }}>{gQty}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              );
-            })()}
           </div>
         );
       })()}
-
-      {/* ─── SAVDO TAB ─────────────────────────────────────────────── */}
-      {tab === 'savdo' && <SavdoTab
-        sessions={sessions} vazvratRows={vazvratRows} invoices={invoices}
-        savdoFrom={savdoFrom} savdoTo={savdoTo} savdoInvoices={filteredInvoices}
-        savdoAnalytics={savdoAnalytics} savdoTab={savdoTab} setSavdoTab={setSavdoTab}
-        fmtDateRu={fmtDateRu} fmt0={fmt0} T={T}
-      />}
 
     </section>
   );

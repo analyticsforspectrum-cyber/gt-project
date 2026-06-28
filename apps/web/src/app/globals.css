@@ -736,6 +736,9 @@ input:focus, textarea:focus, select:focus {
    it meets the ~44px tap-target guideline, and lift FORM inputs to 16px to stop
    iOS Safari auto-zooming on focus. Dense table inputs are intentionally excluded. */
 @media (max-width: 640px) {
+  /* Analytics KPI cards: collapsible on mobile (toggle hidden on desktop). */
+  .kpi-toggle { display: inline-flex !important; }
+  .kpi-grid-collapsible.kpi-collapsed { display: none !important; }
   .small  { min-height: 40px; padding: 9px 16px; font-size: 13px; }
   .mini   { min-height: 34px; padding: 7px 12px; font-size: 12px; }
   .iconbtn { width: 40px; height: 40px; }
