@@ -2410,7 +2410,6 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
 /* Zebra rows — faqat yashil/oq */
 .schedule-tablewrap tbody tr:nth-child(odd)  td { background: rgba(var(--shell-rgb),1); }
 .schedule-tablewrap tbody tr:nth-child(even) td { background: rgba(var(--ok-rgb),0.13); }
-.schedule-tablewrap tbody tr:hover td { background: rgba(var(--ok-rgb),0.22) !important; }
 
 /* light theme */
 :root[data-theme="light"] .schedule-tablewrap { background: #fff; border-color: #c0dcc8; }
@@ -2419,7 +2418,6 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
 :root[data-theme="light"] .schedule-tablewrap thead th { background: #e8f7ee; color: #2d6a4f; }
 :root[data-theme="light"] .schedule-tablewrap tbody tr:nth-child(odd)  td { background: #fff; }
 :root[data-theme="light"] .schedule-tablewrap tbody tr:nth-child(even) td { background: #d6f0e2; }
-:root[data-theme="light"] .schedule-tablewrap tbody tr:hover td { background: rgba(34,197,94,0.18) !important; }
 :root[data-theme="light"] .sched-freeze-3 { border-right-color: #8ec9a2 !important; }
 
 /* sched-code-inline — kod+nom bitta cellda (mobile) */
