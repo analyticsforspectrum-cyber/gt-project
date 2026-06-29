@@ -262,7 +262,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     sch_exception_day:'Bugun istisno kun — grafik buzilishi hisoblanmaydi',
     sch_off_count:"{n} ta market bugun grafikda yo'q ({day})", sch_not_loaded:'Grafik yuklanmagan',
     sch_all_ok:'Barcha marketlar grafikda ({day})', sch_not_found:'{n} ta market grafikda topilmadi',
-    toast_schedule_loaded:'Grafik yuklandi: {n} market, {m} haydovchi', toast_schedule_deleted:"Grafik o'chirildi",
+    toast_schedule_loaded:'Grafik yuklandi: {n} market, {m} haydovchi', toast_schedule_deleted:"Grafik o'chirildi", toast_schedule_empty:"Grafik bo'sh — fayl formatini tekshiring (storeCode, market, haydovchi, Du…Ya)",
     // undelivered
     undeliv_title:'Yetkazilmagan hujjatlar', undeliv_empty:'Barcha hujjatlar yetkazilgan',
     // confirms / alerts
@@ -430,7 +430,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     sch_exception_day:'Сегодня особый день — нарушение графика не учитывается',
     sch_off_count:'{n} магазинов нет в графике сегодня ({day})', sch_not_loaded:'График не загружен',
     sch_all_ok:'Все магазины в графике ({day})', sch_not_found:'{n} магазинов не найдено в графике',
-    toast_schedule_loaded:'График загружен: {n} магазинов, {m} водителей', toast_schedule_deleted:'График удалён',
+    toast_schedule_loaded:'График загружен: {n} магазинов, {m} водителей', toast_schedule_deleted:'График удалён', toast_schedule_empty:'Файл пуст — проверьте формат (storeCode, магазин, водитель, Пн…Вс)',
     // undelivered
     undeliv_title:'Недоставленные накладные', undeliv_empty:'Все накладные доставлены',
     // confirms / alerts
@@ -598,7 +598,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     sch_exception_day:"Today is a special day — schedule deviation isn't counted",
     sch_off_count:'{n} stores not on schedule today ({day})', sch_not_loaded:'Schedule not loaded',
     sch_all_ok:'All stores on schedule ({day})', sch_not_found:'{n} stores not found in schedule',
-    toast_schedule_loaded:'Schedule loaded: {n} stores, {m} drivers', toast_schedule_deleted:'Schedule deleted',
+    toast_schedule_loaded:'Schedule loaded: {n} stores, {m} drivers', toast_schedule_deleted:'Schedule deleted', toast_schedule_empty:'File is empty — check format (storeCode, market, driver, Mon…Sun)',
     // undelivered
     undeliv_title:'Undelivered invoices', undeliv_empty:'All invoices delivered',
     // confirms / alerts

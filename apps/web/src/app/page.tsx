@@ -5391,11 +5391,19 @@ function SchedulePane({
       driver: String(r[2]).trim(),
       days: [r[3], r[4], r[5], r[6], r[7], r[8], r[9]].map((v) => !!v && v !== '' && v !== 0),
     }));
+    if (rows.length === 0) {
+      showToast('err', T('toast_schedule_empty'));
+      return;
+    }
     setScheduleRows(rows);
     const drivers = [...new Set(rows.map((r) => r.driver).filter(Boolean))];
     setScheduleDrivers(drivers);
-    localStorage.setItem('gdetort_schedule', JSON.stringify(rows));
-    localStorage.setItem('gdetort_schedule_drivers', JSON.stringify(drivers));
+    try {
+      localStorage.setItem('gdetort_schedule', JSON.stringify(rows));
+      localStorage.setItem('gdetort_schedule_drivers', JSON.stringify(drivers));
+    } catch {
+      showToast('err', 'localStorage xatoligi — grafik saqlanmadi (xotira to\'la bo\'lishi mumkin)');
+    }
     showToast('ok', T('toast_schedule_loaded').replace('{n}', String(rows.length)).replace('{m}', String(drivers.length)));
   }
 
