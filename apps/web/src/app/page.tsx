@@ -1549,20 +1549,20 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   <h3>⚠️ {T('undeliver_title')}</h3>
                   <button className="iconbtn" type="button" onClick={() => setUndeliverModal(null)}>✕</button>
                 </div>
-                <div className="modalBody" style={{ padding: '20px 24px' }}>
-                  <p style={{ color: 'var(--muted)', marginBottom: 12, fontSize: 14 }}>
+                <div className="modalBody" style={{ padding: '12px 16px' }}>
+                  <p style={{ color: 'var(--muted)', marginBottom: 8, fontSize: 13 }}>
                     {T('undeliver_warn').replace('{n}', String(undeliverModal.invNo))}
                   </p>
                   <textarea
                     autoFocus
-                    rows={3}
+                    rows={2}
                     placeholder={T('undeliver_ph')}
                     value={undeliverModal.comment}
                     onChange={(e) => setUndeliverModal({ ...undeliverModal, comment: e.target.value })}
                     style={{
-                      width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                      width: '100%', boxSizing: 'border-box', resize: 'none',
                       background: 'rgba(var(--hi-rgb),0.06)', border: '1px solid rgba(var(--hi-rgb),0.14)',
-                      borderRadius: 8, color: 'inherit', fontSize: 14, padding: '8px 12px',
+                      borderRadius: 8, color: 'inherit', fontSize: 14, padding: '7px 10px',
                       fontFamily: 'inherit', outline: 'none',
                     }}
                   />
