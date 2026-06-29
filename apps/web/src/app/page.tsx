@@ -595,7 +595,7 @@ const [manualOpen, setManualOpen] = useState(false);
       if (forceName !== undefined) {
         sessionName = forceName;
       } else if (sessionSuffix.trim()) {
-        sessionName = dateIso + ' ' + sessionSuffix.trim();
+        sessionName = dateIso + '_' + sessionSuffix.trim();
       } else {
         // Auto-name: use dateIso as base, check backend for duplicates
         sessionName = dateIso;
