@@ -1547,7 +1547,17 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
               <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
                 <div className="modalHead">
                   <h3>⚠️ {T('undeliver_title')}</h3>
-                  <button className="iconbtn" type="button" onClick={() => setUndeliverModal(null)}>✕</button>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button
+                      className="small"
+                      type="button"
+                      style={{ background: 'var(--danger)', color: '#fff', opacity: undeliverModal.comment.trim() ? 1 : 0.4, padding: '4px 12px', fontSize: 13 }}
+                      onClick={confirmUndeliver}
+                    >
+                      {T('act_confirm')}
+                    </button>
+                    <button className="iconbtn" type="button" onClick={() => setUndeliverModal(null)}>✕</button>
+                  </div>
                 </div>
                 <div className="modalBody" style={{ padding: '8px 16px' }}>
                   <p style={{ color: 'var(--muted)', marginBottom: 6, fontSize: 12, lineHeight: 1.4 }}>
@@ -1566,17 +1576,6 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                       fontFamily: 'inherit', outline: 'none', lineHeight: 1.4,
                     }}
                   />
-                </div>
-                <div className="modalFoot" style={{ gap: 8 }}>
-                  <button className="small" type="button" onClick={() => setUndeliverModal(null)}>{T('lbl_cancel')}</button>
-                  <button
-                    className="small"
-                    type="button"
-                    style={{ background: 'var(--danger)', color: '#fff', opacity: undeliverModal.comment.trim() ? 1 : 0.4 }}
-                    onClick={confirmUndeliver}
-                  >
-                    {T('act_confirm')}
-                  </button>
                 </div>
               </div>
             </div>
