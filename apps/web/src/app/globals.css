@@ -2843,10 +2843,14 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
     width: 100%;
     max-width: 100%;
     margin: 0;
+    /* when keyboard opens, modal stays anchored to bottom and shrinks */
+    max-height: 55dvh;
+    display: flex;
+    flex-direction: column;
   }
-  .modalHead { padding: 14px 16px 10px; }
-  .modalFoot { padding: 10px 16px; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
-  .modalBody { padding: 12px 16px; max-height: 60dvh; }
+  .modalHead { padding: 12px 16px 8px; flex-shrink: 0; }
+  .modalFoot { padding: 8px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); flex-shrink: 0; }
+  .modalBody { padding: 10px 16px; flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .modalHead h3 { font-size: 15px; font-weight: 700; }
 
   /* ── Tables — horizontal scroll ── */
