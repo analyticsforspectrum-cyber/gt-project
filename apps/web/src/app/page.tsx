@@ -1482,7 +1482,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                           className={[selected.has(invoice.invNo) ? 'picked' : '', invoice.status === 'cancelled' ? 'cancelled-row' : ''].join(' ')}
                           style={invoice.status === 'cancelled' ? { opacity: 0.4 } : undefined}
                         >
-                          <td className="check" title={invoice.status === 'saved' && invoice.undeliverComment ? `⚠️ ${invoice.undeliverComment}` : undefined}>
+                          <td className="check" title={invoice.undeliverComment ? `⚠️ ${invoice.undeliverComment}` : undefined}>
                             <input
                               type="checkbox"
                               checked={invoice.status === 'delivered'}
@@ -1678,7 +1678,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                     <div><span>{T('col_status')}</span><b style={{ color: invoiceDetail.status === 'delivered' ? 'var(--ok)' : invoiceDetail.status === 'cancelled' ? 'var(--danger)' : 'var(--muted)' }}>
                       {invoiceDetail.status === 'delivered' ? '✓ ' + T('lbl_delivered') : invoiceDetail.status === 'cancelled' ? '✗ ' + T('st_cancelled') : '— ' + T('st_undelivered')}
                     </b></div>
-                    {invoiceDetail.status === 'saved' && invoiceDetail.undeliverComment && (
+                    {invoiceDetail.undeliverComment && (
                       <div style={{ gridColumn: '1 / -1', background: 'rgba(255,160,0,0.10)', border: '1px solid rgba(255,160,0,0.25)', borderRadius: 8, padding: '8px 12px', marginTop: 4 }}>
                         <span style={{ color: 'var(--muted)', fontSize: 12, display: 'block', marginBottom: 3 }}>
                           ⚠️ {T('col_reason')}{invoiceDetail.undeliveredAt ? ` · ${new Date(invoiceDetail.undeliveredAt).toLocaleString('uz-UZ')}` : ''}:
