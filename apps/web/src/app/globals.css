@@ -2364,7 +2364,8 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
   border: 1px solid rgba(var(--ink-rgb),0.15);
   background: rgba(var(--shell-rgb),1);
   border-radius: 10px;
-  overflow-x: auto;
+  max-height: 70vh;
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 .schedule-tablewrap table {
@@ -2381,7 +2382,7 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
 .schedule-tablewrap .data th:last-child,
 .schedule-tablewrap .data td:last-child { border-right: none; }
 
-/* Header */
+/* Header — frozen on vertical scroll (desktop + mobile) */
 .schedule-tablewrap thead th {
   font-weight: 700;
   font-size: 12px;
@@ -2389,7 +2390,12 @@ input.date-no-icon::-webkit-calendar-picker-indicator {
   text-transform: uppercase;
   color: rgba(var(--ink-rgb),0.7);
   background: rgba(var(--shell-rgb),1);
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
+/* Corner cells (frozen column headers) sit above both axes */
+.schedule-tablewrap thead th.sched-freeze { z-index: 6; }
 
 /* Freeze columns on desktop: shrink-to-fit */
 .sched-freeze-1 { width: 1px; font-weight: 600; font-size: 12px; font-family: 'SF Mono', monospace; }
