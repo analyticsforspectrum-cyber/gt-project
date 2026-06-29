@@ -266,6 +266,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     undeliv_title:'Yetkazilmagan hujjatlar', undeliv_empty:'Barcha hujjatlar yetkazilgan',
     // confirms / alerts
     confirm_overwrite_session:'"{name}" nomli sessiya mavjud.\n\nUstiga yozilsinmi?\n\n"Bekor" — yangi nom bilan saqlash',
+    toast_registry_exists:'"{name}" nomli reestr allaqachon mavjud — qaytadan yaratilmadi',
     confirm_delete_session:"\"{name}\" sessiyasini o'chirilsinmi?", confirm_delete_product:"{name} o'chirilsinmi?",
     confirm_reset_catalog:'Katalogni dastlabki holatga qaytarilsinmi?', confirm_reset_requisites:'Tafsilotlar tiklansinmi?',
     confirm_delete_invoice:"№ {n} hujjat o'chirilsinmi?", alert_no_data_file:"Faylda ma'lumot topilmadi",
@@ -432,6 +433,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     undeliv_title:'Недоставленные накладные', undeliv_empty:'Все накладные доставлены',
     // confirms / alerts
     confirm_overwrite_session:'Сессия с названием "{name}" уже существует.\n\nПерезаписать?\n\n"Отмена" — сохранить под новым именем',
+    toast_registry_exists:'Реестр "{name}" уже существует — повторно не создан',
     confirm_delete_session:'Удалить сессию "{name}"?', confirm_delete_product:'Удалить {name}?',
     confirm_reset_catalog:'Сбросить каталог к исходному списку?', confirm_reset_requisites:'Сбросить реквизиты?',
     confirm_delete_invoice:'Удалить накладную № {n}?', alert_no_data_file:'В файле нет данных',
@@ -598,6 +600,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     undeliv_title:'Undelivered invoices', undeliv_empty:'All invoices delivered',
     // confirms / alerts
     confirm_overwrite_session:'A session named "{name}" already exists.\n\nOverwrite?\n\n"Cancel" — save under a new name',
+    toast_registry_exists:'A registry named "{name}" already exists — not created again',
     confirm_delete_session:'Delete session "{name}"?', confirm_delete_product:'Delete {name}?',
     confirm_reset_catalog:'Reset catalog to the default list?', confirm_reset_requisites:'Reset requisites?',
     confirm_delete_invoice:'Delete invoice № {n}?', alert_no_data_file:'No data found in file',

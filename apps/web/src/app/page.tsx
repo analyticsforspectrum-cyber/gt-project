@@ -88,6 +88,7 @@ export default function Home() {
   const [dateIso, setDateIso] = useState(todayIso());
   const [filterDate, setFilterDate] = useState('');
   const [sessionSuffix, setSessionSuffix] = useState('');
+  const [orderFileName, setOrderFileName] = useState('');
   const [ordersTab, setOrdersTab] = useState<'import' | 'history' | 'vazvrat'>('import');
   const [vazvratUploadBusy, setVazvratUploadBusy] = useState(false);
   const [histFrom, setHistFrom] = useState(() => daysAgo(10));
@@ -601,20 +602,12 @@ const [manualOpen, setManualOpen] = useState(false);
       }
 
       // Duplicate check (only when not silent auto-save)
-      if (!silent) {
+      if (!silent && forceName === undefined) {
         const dup = await api.checkSessionDuplicate(token, dateIso, sessionName);
         if (dup.exists) {
-          const confirmed = window.confirm(t(lang, 'confirm_overwrite_session').replace('{name}', sessionName));
-          if (!confirmed) {
-            // Find next free name
-            let n = 2;
-            while (true) {
-              const candidate = `${dateIso} #${n}`;
-              const check = await api.checkSessionDuplicate(token, dateIso, candidate);
-              if (!check.exists) { sessionName = candidate; break; }
-              n++;
-            }
-          }
+          // A registry with this file name already exists → do not create a duplicate.
+          showToast('err', t(lang, 'toast_registry_exists').replace('{name}', sessionName));
+          return;
         }
       }
 
@@ -1877,7 +1870,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                   <input type="file" accept=".xls,.xlsx" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
-                      if (!file) { setSapRaw(''); setXlsSheets([]); setXlsSelectedSheet(''); setXlsWorkbook(null); return; }
+                      if (!file) { setSapRaw(''); setXlsSheets([]); setXlsSelectedSheet(''); setXlsWorkbook(null); setOrderFileName(''); return; }
                       try {
                         const XLSX = await import('xlsx');
                         const buf = await file.arrayBuffer();
@@ -1889,6 +1882,10 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                         const ws = wb.Sheets[defaultSheet];
                         const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
                         setSapRaw(rows.map((r) => r.join('\t')).join('\n'));
+                        // Bind the registry name to the uploaded file name (strip extension).
+                        const baseName = file.name.replace(/\.(xlsx?|csv)$/i, '').trim();
+                        setOrderFileName(baseName);
+                        setSessionSuffix(baseName);
                         showToast('ok', t(lang, 'toast_file_loaded').replace('{n}', String(rows.length)));
                       } catch { showToast('err', t(lang, 'toast_file_read_error')); }
                     }}
@@ -2017,11 +2014,9 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                           <button className="mini" type="button" onClick={() => loadSession(session._id)}>
                             {T('lbl_restore')}
                           </button>
-                          {isAdmin && (
-                            <button className="iconbtn danger" type="button" onClick={() => deleteSession(session._id, session.name)}>
-                              <Trash2 size={15} />
-                            </button>
-                          )}
+                          <button className="iconbtn danger" type="button" title={T('lbl_delete')} onClick={() => deleteSession(session._id, session.name)}>
+                            <Trash2 size={15} />
+                          </button>
                         </div>
                       ))}
                     </div>
