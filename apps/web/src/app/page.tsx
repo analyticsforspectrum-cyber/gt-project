@@ -136,18 +136,9 @@ export default function Home() {
   } | null>(null);
 
   // Schedule (Grafik) state — persisted to localStorage
-  const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try { return JSON.parse(localStorage.getItem('gdetort_schedule') || '[]') as ScheduleRow[]; } catch { return []; }
-  });
-  const [scheduleDrivers, setScheduleDrivers] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try { return JSON.parse(localStorage.getItem('gdetort_schedule_drivers') || '[]') as string[]; } catch { return []; }
-  });
-  const [exceptionDates, setExceptionDates] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try { return JSON.parse(localStorage.getItem('gdetort_exceptions') || '[]') as string[]; } catch { return []; }
-  });
+  const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
+  const [scheduleDrivers, setScheduleDrivers] = useState<string[]>([]);
+  const [exceptionDates, setExceptionDates] = useState<string[]>([]);
 
   // Dispatch state: per storeCode → { driverIdx, part }
   const [dispatchMap, setDispatchMap] = useState<Record<string, { driverIdx: number; part: number }>>({});
@@ -294,6 +285,18 @@ export default function Home() {
   ];
 
   // Apply visual preferences to <html> so all token-based styling reacts.
+  // Load localStorage-only state after client mount (avoids SSR hydration mismatch)
+  useEffect(() => {
+    try {
+      const rows = JSON.parse(localStorage.getItem('gdetort_schedule') || '[]') as ScheduleRow[];
+      const drivers = JSON.parse(localStorage.getItem('gdetort_schedule_drivers') || '[]') as string[];
+      const exc = JSON.parse(localStorage.getItem('gdetort_exceptions') || '[]') as string[];
+      if (rows.length) setScheduleRows(rows);
+      if (drivers.length) setScheduleDrivers(drivers);
+      if (exc.length) setExceptionDates(exc);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme;
