@@ -261,4 +261,4 @@ export interface DovEntry extends DovFields {
   printedAt: string; // ISO string
 }
 
-export type SettingsView = 'catalog' | 'requisites' | 'users' | 'audit' | 'doverennost' | null;
+export type SettingsView = 'catalog' | 'requisites' | 'users' | 'audit' | 'doverennost' | 'guide' | null;

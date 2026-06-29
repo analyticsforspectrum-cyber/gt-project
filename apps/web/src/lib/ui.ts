@@ -254,7 +254,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     set_catalog_count:'{n} ta mahsulot', act_refresh:'Yangilash', act_upload:'Yuklash',
     exceptions_help:'Quyidagi sanalarda grafik buzilishlari hisoblanmaydi (bayram, maxsus kun).',
     role_user:'foydalanuvchi', role_admin:'admin', user_active:'faol', user_inactive:"o'chiq", act_enable:'Yoqish', act_disable:"O'chirish",
-    tab_doverennost:'Ishonchnoma', tab_trash:'Arxiv',
+    tab_doverennost:'Ishonchnoma', tab_trash:'Arxiv', tab_guide:'Qo\'llanma',
     // stats
     stats_keldi:'Keldi', stats_order_sum:'Zakaz summa', stats_given_sum:'Berilgan summa', stats_col_schedule:'Grafik',
     // schedule
@@ -422,7 +422,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     set_catalog_count:'товаров: {n}', act_refresh:'Обновить', act_upload:'Загрузить',
     exceptions_help:'В указанные даты нарушения графика не учитываются (праздник, особый день).',
     role_user:'пользователь', role_admin:'админ', user_active:'активен', user_inactive:'выключен', act_enable:'Включить', act_disable:'Выключить',
-    tab_doverennost:'Доверенность', tab_trash:'Архив',
+    tab_doverennost:'Доверенность', tab_trash:'Архив', tab_guide:'Руководство',
     // stats
     stats_keldi:'Поступило', stats_order_sum:'Сумма заказа', stats_given_sum:'Сумма выдачи', stats_col_schedule:'График',
     // schedule
@@ -590,7 +590,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     set_catalog_count:'{n} products', act_refresh:'Refresh', act_upload:'Upload',
     exceptions_help:'On these dates schedule deviations are not counted (holiday, special day).',
     role_user:'user', role_admin:'admin', user_active:'active', user_inactive:'inactive', act_enable:'Enable', act_disable:'Disable',
-    tab_doverennost:'Power of attorney', tab_trash:'Archive',
+    tab_doverennost:'Power of attorney', tab_trash:'Archive', tab_guide:'Guide',
     // stats
     stats_keldi:'Received', stats_order_sum:'Order sum', stats_given_sum:'Issued sum', stats_col_schedule:'Schedule',
     // schedule

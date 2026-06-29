@@ -2502,6 +2502,7 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
                 {isAdmin && <button className={settingsView === 'users' ? 'active' : ''} type="button" onClick={() => setSettingsView('users')}>{T('settings_access')}</button>}
                 <button className={(settingsView as string) === 'doverennost' ? 'active' : ''} type="button" onClick={() => setSettingsView('doverennost' as any)}>{T('tab_doverennost')}</button>
                 {isAdmin && <button className={(settingsView as string) === 'trash' ? 'active' : ''} type="button" onClick={() => setSettingsView('trash' as any)} style={(settingsView as string) === 'trash' ? {} : { color: '#ef4444' }}>🗑 {T('tab_trash')}</button>}
+                <button className={(settingsView as string) === 'guide' ? 'active' : ''} type="button" onClick={() => setSettingsView('guide' as any)}>📖 {T('tab_guide')}</button>
               </div>
 
               {settingsView === 'catalog' && (
@@ -2772,6 +2773,8 @@ footer { display: flex; justify-content: space-between; margin-top: 5px; font-si
               {(settingsView as string) === 'trash' && isAdmin && token && (
                 <TrashPane token={token} fmt0={fmt0} fmtDateRu={fmtDateRu} T={T} />
               )}
+
+              {(settingsView as string) === 'guide' && <GuidePane lang={lang} />}
             </section>
           )}
         </main>
@@ -5829,5 +5832,245 @@ function DispatchPane({
         </>
       )}
     </section>
+  );
+}
+
+// ─── Guide Pane ────────────────────────────────────────────────────────────
+
+function GuidePane({ lang }: { lang: string }) {
+  const isUz = lang === 'uz';
+  const isRu = lang === 'ru';
+
+  type Section = { icon: string; title: string; items: string[] };
+
+  const sections: Section[] = isUz ? [
+    {
+      icon: '📦',
+      title: 'Buyurtmalar (Orders)',
+      items: [
+        'SAP Excel faylini yuklang → varaqni tanlang → "Hujjat yarating".',
+        'Fayl nomi avtomatik sessiya nomiga aylanadi (sana_nomfayl).',
+        'Bir xil fayl ikkinchi marta yuklansa — rejestr qayta yaratilmaydi.',
+        'Tarix bo\'limida sessiyalarni tiklash yoki o\'chirish mumkin.',
+      ],
+    },
+    {
+      icon: '🧾',
+      title: 'Hujjatlar (Documents)',
+      items: [
+        'Hujjatni bosib chiqarish uchun "Chop etish" tugmasini bosing.',
+        'Kerakli hujjatlarni belgilab, tanlanganlarni birgalikda chiqaring.',
+        'Barcha hujjatlar 100% o\'lchamda chop etiladi.',
+      ],
+    },
+    {
+      icon: '🚚',
+      title: 'Yetkazib berish (Schedule)',
+      items: [
+        'Excel grafikni yuklang (format: market kodi, kun).',
+        'Bugungi grafik bosh sahifada ko\'rinadi.',
+        'Istisno kunlar sozlamada belgilanadi — o\'sha kunga buzilish hisoblanmaydi.',
+      ],
+    },
+    {
+      icon: '↩️',
+      title: 'Qaytarmalar (Vazvrat)',
+      items: [
+        'Qaytarma Excel faylini yuklang.',
+        'Sanalar bo\'yicha filtrlash va ko\'rish mumkin.',
+        'Admin sana bo\'yicha yoki hammasini o\'chirishi mumkin.',
+      ],
+    },
+    {
+      icon: '📊',
+      title: 'Tahlil (Analytics)',
+      items: [
+        'Sana oralig\'ini tanlang va "Yangilash" tugmasini bosing.',
+        'Mahsulot / Do\'kon / Savdo bo\'yicha ko\'ring.',
+        'Qaytarma foizi = qaytarilgan / berilgan × 100.',
+      ],
+    },
+    {
+      icon: '⚙️',
+      title: 'Sozlamalar (Settings)',
+      items: [
+        'Mahsulotlar: narx va tartibni o\'zgartiring.',
+        'Tafsilot: yetkazib beruvchi va qabul qiluvchi ma\'lumotlari.',
+        'Kirish (admin): foydalanuvchilar ro\'yxati va huquqlari.',
+        'Arxiv (admin): o\'chirilgan sessiya va hujjatlarni tiklash.',
+      ],
+    },
+    {
+      icon: '🎨',
+      title: 'Ko\'rinish (Preferences)',
+      items: [
+        'Mavzu: yorug\' / qorong\'i.',
+        'Aksent rangi, jadval zichligi, shrift o\'lchami.',
+        'Til: O\'zbekcha / Русский / English.',
+      ],
+    },
+  ] : isRu ? [
+    {
+      icon: '📦',
+      title: 'Заказы (Orders)',
+      items: [
+        'Загрузите Excel-выгрузку SAP → выберите лист → «Создать накладные».',
+        'Имя файла автоматически становится именем реестра (дата_имяфайла).',
+        'Повторная загрузка того же файла не создаёт дубль реестра.',
+        'В разделе «История» можно восстановить или удалить сессию.',
+      ],
+    },
+    {
+      icon: '🧾',
+      title: 'Документы (Documents)',
+      items: [
+        'Нажмите «Печать» для вывода накладной.',
+        'Отметьте нужные накладные и распечатайте все сразу.',
+        'Все накладные выводятся в масштабе 100%.',
+      ],
+    },
+    {
+      icon: '🚚',
+      title: 'Расписание (Schedule)',
+      items: [
+        'Загрузите Excel-график (формат: код магазина, день).',
+        'Текущий день отображается на главной странице.',
+        'Исключения задаются в настройках — нарушение в эти дни не фиксируется.',
+      ],
+    },
+    {
+      icon: '↩️',
+      title: 'Возвраты (Vazvrat)',
+      items: [
+        'Загрузите Excel с возвратами.',
+        'Просматривайте и фильтруйте по датам.',
+        'Администратор может удалить по дате или все сразу.',
+      ],
+    },
+    {
+      icon: '📊',
+      title: 'Аналитика (Analytics)',
+      items: [
+        'Выберите диапазон дат и нажмите «Обновить».',
+        'Вкладки: Товар / Магазин / Продажи.',
+        '% возврата = возвращено / выдано × 100.',
+      ],
+    },
+    {
+      icon: '⚙️',
+      title: 'Настройки (Settings)',
+      items: [
+        'Каталог: редактируйте цены и порядок товаров.',
+        'Реквизиты: данные поставщика и получателя.',
+        'Доступ (admin): список пользователей и роли.',
+        'Архив (admin): восстановление удалённых сессий и накладных.',
+      ],
+    },
+    {
+      icon: '🎨',
+      title: 'Внешний вид (Preferences)',
+      items: [
+        'Тема: светлая / тёмная.',
+        'Акцентный цвет, плотность таблиц, размер шрифта.',
+        'Язык: O\'zbek / Русский / English.',
+      ],
+    },
+  ] : [
+    {
+      icon: '📦',
+      title: 'Orders',
+      items: [
+        'Upload a SAP Excel export → choose a sheet → "Generate invoices".',
+        'File name becomes the registry name automatically (date_filename).',
+        'Re-uploading the same file will not create a duplicate registry.',
+        'In History you can restore or delete sessions.',
+      ],
+    },
+    {
+      icon: '🧾',
+      title: 'Documents',
+      items: [
+        'Click "Print" to print an invoice.',
+        'Select multiple invoices and print them all at once.',
+        'All invoices print at 100% scale.',
+      ],
+    },
+    {
+      icon: '🚚',
+      title: 'Schedule',
+      items: [
+        'Upload an Excel schedule (format: store code, day).',
+        'Today\'s schedule is shown on the main screen.',
+        'Exception days are set in Settings — no violations counted on those days.',
+      ],
+    },
+    {
+      icon: '↩️',
+      title: 'Returns (Vazvrat)',
+      items: [
+        'Upload Excel file with returns.',
+        'Browse and filter by date.',
+        'Admin can delete by date or clear all.',
+      ],
+    },
+    {
+      icon: '📊',
+      title: 'Analytics',
+      items: [
+        'Pick a date range and click "Refresh".',
+        'Tabs: Product / Store / Sales.',
+        'Return % = returned / issued × 100.',
+      ],
+    },
+    {
+      icon: '⚙️',
+      title: 'Settings',
+      items: [
+        'Catalog: edit prices and product order.',
+        'Requisites: supplier and receiver details.',
+        'Access (admin): manage users and roles.',
+        'Archive (admin): restore deleted sessions and invoices.',
+      ],
+    },
+    {
+      icon: '🎨',
+      title: 'Preferences',
+      items: [
+        'Theme: light / dark.',
+        'Accent color, table density, font size.',
+        'Language: O\'zbek / Русский / English.',
+      ],
+    },
+  ];
+
+  return (
+    <div style={{ padding: '4px 0 24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+        {sections.map((sec) => (
+          <div key={sec.title} style={{
+            background: 'var(--surface2, rgba(var(--hi-rgb),0.04))',
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            padding: '14px 16px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 20, lineHeight: 1 }}>{sec.icon}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg)' }}>{sec.title}</span>
+            </div>
+            <ul style={{ margin: 0, padding: '0 0 0 4px', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sec.items.map((item, i) => (
+                <li key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.45 }}>
+                  <span style={{ color: 'var(--berry)', fontWeight: 700, flexShrink: 0, marginTop: 1 }}>·</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <p style={{ marginTop: 20, fontSize: 11.5, color: 'var(--muted)', textAlign: 'center', opacity: 0.7 }}>
+        ГДЕ ТОРТ? · B2B platform · v1.0
+      </p>
+    </div>
   );
 }
