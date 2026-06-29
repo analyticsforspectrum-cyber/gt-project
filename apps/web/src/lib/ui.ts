@@ -183,6 +183,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     // toasts ({n}/{m}/{name} interpolated in code)
     toast_status_not_updated:'Holat yangilanmadi — tarmoq xatosi.',
     toast_data_load_failed:"Ma'lumotlar yuklanmadi. Sahifani yangilang.",
+    toast_session_expired:"Sessiya muddati tugadi. Iltimos, qaytadan kiring.",
     toast_login_ok:'Tizimga kirildi',
     toast_upload_sap:'SAP faylini yuklang',
     toast_parse_ready:'Tayyor: {n} ta hujjat. "Saqlash" tugmasini bosing!',
@@ -350,6 +351,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     // toasts ({n}/{m}/{name} interpolated in code)
     toast_status_not_updated:'Статус не обновлён — ошибка сети.',
     toast_data_load_failed:'Не удалось загрузить данные. Обновите страницу.',
+    toast_session_expired:'Срок сессии истёк. Пожалуйста, войдите снова.',
     toast_login_ok:'Вход выполнен',
     toast_upload_sap:'Загрузите файл SAP',
     toast_parse_ready:'Готово: {n} накл. Нажмите «Сохранить»!',
@@ -517,6 +519,7 @@ export const I18N: Record<Lang, Record<string, string | string[]>> = {
     // toasts ({n}/{m}/{name} interpolated in code)
     toast_status_not_updated:'Status not updated — network error.',
     toast_data_load_failed:'Failed to load data. Refresh the page.',
+    toast_session_expired:'Session expired. Please sign in again.',
     toast_login_ok:'Logged in',
     toast_upload_sap:'Upload SAP file',
     toast_parse_ready:'Ready: {n} invoices. Click "Save"!',

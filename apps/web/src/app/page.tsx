@@ -545,13 +545,20 @@ const [manualOpen, setManualOpen] = useState(false);
     setView('register');
   }
 
+  // When the JWT has expired the API returns 401 — surface it and send the user
+  // back to login instead of silently swallowing the error.
+  function handleSessionExpired() {
+    showToast('err', t(lang, 'toast_session_expired'));
+    logout();
+  }
+
   async function refreshSessions(authToken = token) {
     if (!authToken) return;
     try {
       const result = await api.sessions(authToken);
       setSessions(result);
-    } catch {
-      // ignore auth errors (token expired etc.)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) handleSessionExpired();
     }
   }
 
