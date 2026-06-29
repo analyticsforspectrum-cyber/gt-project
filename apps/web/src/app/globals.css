@@ -713,8 +713,8 @@ input:focus, textarea:focus, select:focus {
   border: 1px solid rgba(var(--ink-rgb),0.12);
 }
 .command.ghost:hover:not(:disabled),
-.small:hover:not(:disabled),
-.mini:hover:not(:disabled),
+.small:hover:not(:disabled):not(.dark),
+.mini:hover:not(:disabled):not(.dark),
 .iconbtn:hover:not(:disabled) {
   background: rgba(var(--ink-rgb),0.105);
 }
