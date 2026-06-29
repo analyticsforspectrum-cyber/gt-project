@@ -3739,12 +3739,12 @@ function TarixPane({ sessions, dovHistory, qaytganInvoices, manualInvoices, vazv
     <>
       {/* Toolbar: refresh + date range + tag filter */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <DateRangePicker from={pvFrom} to={pvTo} setFrom={setPvFrom} setTo={setPvTo} T={T}
+          inputStyle={{ fontSize: 12, fontWeight: 500, border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 8, padding: '4px 6px', background: 'var(--surface)', color: 'var(--ink)' }} />
         <button type="button" onClick={refreshSessions}
           style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--berry)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(var(--berry-rgb),0.28)', whiteSpace: 'nowrap', flexShrink: 0 }}>
           <RefreshCcw size={13} /> {T('act_refresh')}
         </button>
-        <DateRangePicker from={pvFrom} to={pvTo} setFrom={setPvFrom} setTo={setPvTo} T={T}
-          inputStyle={{ fontSize: 12, fontWeight: 500, border: '1px solid rgba(var(--ink-rgb),0.12)', borderRadius: 8, padding: '4px 6px', background: 'var(--surface)', color: 'var(--ink)' }} />
         {/* Tag filter — one scrollable row of pills (compact on mobile, clean on desktop) */}
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flex: '1 1 auto', minWidth: 0, paddingBottom: 2, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
           {FILTERS.map(f => {
@@ -4501,7 +4501,7 @@ function AnalyticsPane({
               <thead>
                 <tr>
                   {cols.map((c, ci) => (
-                    <th key={c.key} style={{ textAlign: c.align === 'right' ? 'right' : 'left', ...(ci === 0 ? { position: 'sticky', left: 0, zIndex: 2, minWidth: 150 } : {}) }}>
+                    <th key={c.key} style={{ textAlign: c.align === 'right' ? 'right' : 'left', position: 'sticky', top: 0, zIndex: ci === 0 ? 3 : 2, ...(ci === 0 ? { left: 0, minWidth: 150 } : {}) }}>
                       <button type="button" style={thBtn} onClick={() => setSort(c.key)}>{c.label}{arrow(c.key)}</button>
                     </th>
                   ))}
